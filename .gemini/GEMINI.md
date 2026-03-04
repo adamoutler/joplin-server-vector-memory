@@ -6,7 +6,7 @@ Welcome, fellow Gemini. This document provides a comprehensive technical overvie
 The **Joplin Server Vector Memory MCP** is a dual-component system designed to provide an AI-native semantic search engine for personal notes. It acts as a secure, local bridge between an End-to-End Encrypted (E2EE) Joplin Server ecosystem and an MCP (Model Context Protocol) client.
 
 ### Core Mission
-To securely sync and decrypt Joplin notes locally, generate vector embeddings of their content, store them in a MySQL 9.3 database, and expose semantic search capabilities to AI assistants via an MCP server, all while maintaining the integrity of Joplin's E2EE model.
+To securely sync and decrypt Joplin notes locally, generate vector embeddings of their content, store them in a local SQLite database utilizing the `sqlite-vec` extension, and expose semantic search and bi-directional management capabilities to AI assistants via an MCP server, all while maintaining the integrity of Joplin's E2EE model.
 
 ---
 
@@ -14,9 +14,9 @@ To securely sync and decrypt Joplin notes locally, generate vector embeddings of
 The application is built using a hybrid Node.js and Python stack:
 
 - **Sync Client (Node.js)**: A headless daemon utilizing the official `@joplin/lib` package. It authenticates with the Joplin Server, downloads encrypted blobs, and decrypts them locally using the user's Master Password.
-- **Embedding Generation**: Processes decrypted Markdown text through an embedding model (e.g., `nomic-embed-text` via Ollama or OpenAI API) to generate high-dimensional vector arrays.
-- **Storage (MySQL 9.3+)**: Utilizes MySQL's native `VECTOR` data type and vector distance functions (like `VECTOR_DISTANCE()`) to store the decrypted text, metadata, and embeddings.
-- **MCP Server (Python / FastMCP)**: Connects to the MySQL database and exposes tools to the AI, allowing it to perform semantic searches over the personal knowledge base.
+- **Embedding Generation**: Processes decrypted Markdown text through an embedding model (e.g., `nomic-embed-text` via Ollama) to generate high-dimensional vector arrays.
+- **Storage (SQLite & sqlite-vec)**: Utilizes a local SQLite database with the embedded `sqlite-vec` extension to store the decrypted text, metadata, and embeddings natively on disk with zero infrastructure overhead.
+- **MCP Server (Python / FastMCP)**: Connects to the local SQLite database and exposes bi-directional tools to the AI, allowing it to perform semantic searches, read full notes, and trigger memory creation/deletion over the personal knowledge base.
 
 ---
 
@@ -28,8 +28,8 @@ The Node.js daemon runs autonomously, hooking into Joplin’s `ResourceService` 
 ### E2EE Integrity
 The architecture ensures notes remain fully encrypted on the central Joplin Server. Decryption and vectorization only happen within the trusted boundary of the local network.
 
-### Native MySQL Vector Search
-Leverages MySQL 9.3's `VECTOR` capabilities to perform rapid brute-force distance calculations for semantic querying, bypassing the need for heavy, dedicated vector databases.
+### Embedded Vector Search
+Leverages the `sqlite-vec` extension to perform rapid distance calculations for semantic querying, bypassing the need for heavy, dedicated vector databases (like MySQL or Milvus) and reducing memory overhead.
 
 ---
 
@@ -37,12 +37,12 @@ Leverages MySQL 9.3's `VECTOR` capabilities to perform rapid brute-force distanc
 
 ### Deployment Strategy
 - The system is designed to run locally or on a trusted server.
-- Components (Node.js Sync Client, Python MCP Server, MySQL 9.3 database) are best managed via **Docker Compose** for consistent environment provisioning and networking.
+- Components (Node.js Sync Client, Python MCP Server) and bundled services (like Ollama for embeddings) are best managed via **Docker Compose** for consistent environment provisioning and networking, with SQLite running seamlessly inside the shared filesystem volume.
 
 ### CI/CD Pipeline (Jenkins)
 The project will use a Jenkins pipeline for CI/CD:
 - **Build Receipt System**: Reports detailed build logs.
-- **Credential Injection**: Securely handles Joplin Server credentials, Master Password, and Database credentials.
+- **Credential Injection**: Securely handles Joplin Server credentials, Master Password, and tokens.
 
 ### The `git p` Protocol
 **MANDATORY**: Never use `git push` directly. Use `git p`.
@@ -66,7 +66,7 @@ The project will use a Jenkins pipeline for CI/CD:
 ### Project Structure
 - `client/`: Node.js Sync Client using `@joplin/lib`.
 - `server/`: Python FastMCP Server.
-- `database/`: MySQL schema definitions and init scripts.
+- `database/`: SQLite schema definitions, virtual tables, and init scripts.
 - `tests/`: Unit and integration tests for both components.
 
 ### Testing Mandates
@@ -90,13 +90,13 @@ When addressing "code smells" or decoupling tight architectures, you MUST follow
 
 ### Before Modifying Code:
 1. **Check Component Scope**: Ensure you are modifying the correct component (Node.js for sync/decryption, Python for MCP/search).
-2. **Database Schema**: Any changes to note metadata requirements must be reflected in the MySQL schema and migration scripts.
-3. **Dependencies**: Verify `package.json` for the client and `requirements.txt` for the server before assuming library availability.
+2. **Database Schema**: Any changes to note metadata requirements must be reflected in the SQLite schema and virtual table definitions. Remember that `sqlite-vec` uses specific syntax (`CREATE VIRTUAL TABLE ... USING vec0`).
+3. **Dependencies**: Verify `package.json` for the client and `requirements.txt` for the server before assuming library availability. `sqlite-vec` compilation/loading may require specific system dependencies (e.g., build-essential).
 
 ### Common Tasks:
 - **Updating Sync Logic**: Modify the Node.js `client/` codebase.
 - **Adding MCP Tools**: Modify the Python `server/` codebase.
-- **Adjusting Schema**: Update `database/` SQL files.
+- **Adjusting Schema**: Update `database/` SQL files or init functions.
 
 ---
 
@@ -127,7 +127,7 @@ Before assigning any tickets to the `quality_control_agent`, you MUST execute th
 3. Move cycle items into the **Todo** state.
 4. Move the single item you are about to execute into the **In-Progress** state.
 5. Assign the item to the `quality_control_agent`.
-6. Ensure completion using `codebase_investigator` as a quick check.
+6. **CRITICAL VALIDATION:** Before marking any ticket as done, you MUST use `codebase_investigator` to validate the work and ensure all Definition of Done criteria are fully met.
 7. Move the item to the **Done** state.
 8. Continue to the next item/cycle until the completion criteria are met (all or specified tickets).
 

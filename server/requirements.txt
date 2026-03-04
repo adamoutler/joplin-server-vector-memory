@@ -1,0 +1,4 @@
+fastmcp
+ollama
+sqlite-vec
+pytest

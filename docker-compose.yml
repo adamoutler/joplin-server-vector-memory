@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  client:
+    build:
+      context: ./client
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
+      - JOPLIN_USERNAME=${JOPLIN_USERNAME}
+      - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
+      - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ./server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    entrypoint: [ "/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait" ]
+    # A lightweight entrypoint override could be used to auto-pull the model, or handled by the client
+    restart: unless-stopped
+
+volumes:
+  ollama_data:

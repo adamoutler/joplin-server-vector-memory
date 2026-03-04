@@ -1,0 +1,21 @@
+{
+  "name": "joplin-sync-client",
+  "version": "1.0.0",
+  "description": "Headless sync client for Joplin",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@joplin/lib": "^3.2.12",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "sqlite-vec": "^0.1.7-alpha.2"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0",
+    "sqlite3": "^5.1.7",
+    "supertest": "^7.2.2"
+  }
+}
