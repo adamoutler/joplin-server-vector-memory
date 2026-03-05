@@ -9,7 +9,7 @@ jest.mock('@joplin/utils/Logger', () => {
     constructor() {}
     addTarget() {}
     setLevel() {}
-    static initializeGlobalLogger() {}
+    static initializeGlobalLogger = jest.fn();
     static create() { return new MockLogger(); }
   }
   MockLogger.LEVEL_WARN = 20;
@@ -125,6 +125,12 @@ describe('JoplinSyncClient', () => {
     await client.init();
     expect(client.db).toBeDefined();
     expect(client.synchronizer).toBeDefined();
+  });
+
+  it('should call Logger.initializeGlobalLogger exactly once', async () => {
+    const Logger = require('@joplin/utils/Logger').default;
+    await client.init();
+    expect(Logger.initializeGlobalLogger).toHaveBeenCalledTimes(1);
   });
 
   it('should call synchronizer start on sync', async () => {

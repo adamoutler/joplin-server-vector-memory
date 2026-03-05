@@ -33,11 +33,16 @@ describe('Dashboard Endpoints', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    global.fetch = jest.fn((url) => {
+    global.fetch = jest.fn(async (url, options) => {
       if (url.endsWith('/api/sessions')) {
-        return Promise.resolve({ ok: true, status: 200 });
+        const body = options?.body ? JSON.parse(options.body) : {};
+        if (body.email === 'admin' && body.password === 'password123') {
+          return { ok: true, status: 200, json: async () => ({ id: 'session_token' }) };
+        } else {
+          return { ok: false, status: 403, json: async () => ({ error: 'Forbidden' }) };
+        }
       }
-      return Promise.resolve({ ok: true, status: 200 });
+      return { ok: true, status: 200 };
     });
     // Re-require app to reset state if needed
     jest.isolateModules(() => {
@@ -54,7 +59,13 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(401);
   });
 
-  test('GET /status returns status ready or offline', async () => {
+  test('GET /status returns 401 if invalid authentication', async () => {
+    const invalidAuthHeader = 'Basic ' + Buffer.from('admin:wrongpassword').toString('base64');
+    const response = await request(app).get('/status').set('Authorization', invalidAuthHeader);
+    expect(response.status).toBe(401);
+  });
+
+  test('GET /status returns status ready or offline with valid auth', async () => {
     fs.existsSync.mockReturnValue(false); 
     
     const response = await request(app).get('/status').set('Authorization', authHeader);
