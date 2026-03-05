@@ -1,6 +1,6 @@
 const { shimInit } = require('@joplin/lib/shim-init-node');
 const Setting = require('@joplin/lib/models/Setting').default;
-const Database = require('@joplin/lib/database').default;
+const JoplinDatabase = require('@joplin/lib/JoplinDatabase').default;
 const SyncTargetRegistry = require('@joplin/lib/SyncTargetRegistry').default;
 const sqlite3 = require('sqlite3');
 const sqliteVec = require('sqlite-vec');
@@ -23,17 +23,25 @@ class JoplinSyncClient extends EventEmitter {
   }
 
   async init() {
-    shimInit();
+    shimInit({ nodeSqlite: sqlite3 });
 
     if (!fs.existsSync(this.profileDir)) {
       fs.mkdirSync(this.profileDir, { recursive: true });
     }
 
     const dbPath = path.join(this.profileDir, 'database.sqlite');
-    this.sqliteDb = new sqlite3.Database(dbPath);
-    this.db = new Database(this.sqliteDb);
-    this.db.setDebugEnabled(false);
-    await this.db.open();
+    
+    // In Joplin's Database class, you must pass a driver. 
+    // Usually it's DatabaseDriverNode, but since we are stubbing basic init,
+    // let's see if Database needs a specific driver or if raw sqlite3 throws errors later.
+    // If it fails on this.db.open(), we'll need to instantiate DatabaseDriverNode.
+    const { DatabaseDriverNode } = require('@joplin/lib/database-driver-node');
+    const driver = new DatabaseDriverNode();
+    this.db = new JoplinDatabase(driver);
+    await this.db.open({ name: dbPath });
+    
+    const BaseModel = require('@joplin/lib/BaseModel').default;
+    BaseModel.setDb(this.db);
 
     // Initialize vector db
     const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, 'vector.sqlite');
@@ -51,7 +59,56 @@ class JoplinSyncClient extends EventEmitter {
     });
 
     Setting.setConstant('profileDir', this.profileDir);
+    Setting.setConstant('env', 'prod');
+    Setting.setConstant('appId', 'net.cozic.joplin-cli');
+    Setting.setConstant('appType', 'cli');
+    
+    const dummyLogger = {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: console.error,
+        setLevel: () => {}
+    };
+
+    const BaseService = require('@joplin/lib/services/BaseService').default;
+    BaseService.logger_ = dummyLogger;
+
+    const ShareService = require('@joplin/lib/services/share/ShareService').default;
+    ShareService.instance().initialize({ getState: () => ({ shareService: { shares: [] } }) }, null, null);
+
+    const KeychainService = require('@joplin/lib/services/keychain/KeychainService').default;
+    const keychainService = new KeychainService();
+    
+    class CustomDummyDriver {
+      get name() { return 'dummy'; }
+      get appId() { return 'joplin'; }
+      get clientId() { return 'joplin-client'; }
+      async supported() { return true; }
+      async setPassword(service, account, password) {}
+      async password(service, account) { return null; }
+      async deletePassword(service, account) {}
+      async detectIfMacOsKeychainBug() { return false; }
+    }
+    
+    keychainService.initialize([new CustomDummyDriver()]);
+    Setting.setKeychainService(keychainService);
+    
     await Setting.load();
+
+    const BaseItem = require('@joplin/lib/models/BaseItem').default;
+    BaseItem.loadClass('Note', require('@joplin/lib/models/Note').default);
+    BaseItem.loadClass('Folder', require('@joplin/lib/models/Folder').default);
+    BaseItem.loadClass('Resource', require('@joplin/lib/models/Resource').default);
+    BaseItem.loadClass('Tag', require('@joplin/lib/models/Tag').default);
+    BaseItem.loadClass('NoteTag', require('@joplin/lib/models/NoteTag').default);
+    BaseItem.loadClass('MasterKey', require('@joplin/lib/models/MasterKey').default);
+    BaseItem.loadClass('Revision', require('@joplin/lib/models/Revision').default);
+
+    const SyncTargetJoplinServer = require('@joplin/lib/SyncTargetJoplinServer').default;
+    SyncTargetRegistry.addClass(SyncTargetJoplinServer);
+    const SyncTargetWebDAV = require('@joplin/lib/SyncTargetWebDAV');
+    SyncTargetRegistry.addClass(SyncTargetWebDAV);
 
     // Configure sync to Joplin Server (target = 9)
     await Setting.setValue('sync.target', 9);
@@ -62,11 +119,14 @@ class JoplinSyncClient extends EventEmitter {
 
     // Initialize sync target
     const syncTargetId = Setting.value('sync.target');
-    const syncTarget = SyncTargetRegistry.classById(syncTargetId).newSyncTarget(this.db);
+    const SyncTargetClass = SyncTargetRegistry.classById(syncTargetId);
+    const syncTarget = new SyncTargetClass(this.db);
     this.synchronizer = await syncTarget.synchronizer();
 
-    this.synchronizer.on('syncStart', () => this.emit('syncStart'));
-    this.synchronizer.on('syncComplete', () => this.emit('syncComplete'));
+    this.synchronizer.dispatch = (action) => {
+      if (action.type === 'SYNC_STARTED') this.emit('syncStart');
+      if (action.type === 'SYNC_COMPLETED') this.emit('syncComplete');
+    };
 
     return this.db;
   }
@@ -148,51 +208,48 @@ class JoplinSyncClient extends EventEmitter {
   async generateEmbeddings() {
     this.emit('embeddingStart');
     
-    return new Promise((resolve, reject) => {
-      this.sqliteDb.all('SELECT id, title, body FROM notes WHERE encryption_applied = 0', async (err, notes) => {
-        if (err) {
-          console.error('Error fetching notes from DB:', err);
-          return reject(err);
-        }
+    try {
+      const notes = await this.db.selectAll('SELECT id, title, body FROM notes WHERE encryption_applied = 0');
+      
+      const config = this.getConfig();
+      const ollamaUrl = config.ollamaUrl;
+      const model = config.embeddingModel;
+      
+      for (const note of notes || []) {
+        if (!note.body) continue;
         
-        const config = this.getConfig();
-        const ollamaUrl = config.ollamaUrl;
-        const model = config.embeddingModel;
-        
-        for (const note of notes || []) {
-          if (!note.body) continue;
+        try {
+          const response = await fetch(`${ollamaUrl}/api/embeddings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: model,
+              prompt: note.body
+            })
+          });
           
-          try {
-            const response = await fetch(`${ollamaUrl}/api/embeddings`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: model,
-                prompt: note.body
-              })
-            });
-            
-            if (!response.ok) {
-              console.error(`Failed to generate embedding for note ${note.id}: ${response.status} ${response.statusText}`);
-              continue;
-            }
-            
-            const data = await response.json();
-            
-            await this.upsertVector(note.id, note.title, note.body, data.embedding);
-            
-            this.emit('noteEmbeddingGenerated', {
-              noteId: note.id,
-              embedding: data.embedding
-            });
-          } catch (error) {
-            console.error(`Error generating embedding for note ${note.id}:`, error);
+          if (!response.ok) {
+            console.error(`Failed to generate embedding for note ${note.id}: ${response.status} ${response.statusText}`);
+            continue;
           }
+          
+          const data = await response.json();
+          
+          await this.upsertVector(note.id, note.title, note.body, data.embedding);
+          
+          this.emit('noteEmbeddingGenerated', {
+            noteId: note.id,
+            embedding: data.embedding
+          });
+        } catch (error) {
+          console.error(`Error generating embedding for note ${note.id}:`, error);
         }
-        this.emit('embeddingComplete');
-        resolve();
-      });
-    });
+      }
+      this.emit('embeddingComplete');
+    } catch (err) {
+      console.error('Error fetching notes from DB:', err);
+      throw err;
+    }
   }
 }
 

@@ -23,8 +23,7 @@ services:
   server:
     build:
       context: ./server
-    ports:
-      - "8000:8000"
+    command: sleep infinity
     volumes:
       - ./data:/app/data
     environment:
