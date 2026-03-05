@@ -9,6 +9,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const PORT = process.env.PORT || 3000;
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
+const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
+
+// Ensure data dir exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
 const authCache = new Map();
 const AUTH_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
@@ -44,6 +53,25 @@ app.use(async (req, res, next) => {
   const reqUser = auth[0];
   const reqPass = auth.slice(1).join(':');
 
+  // Check local config first
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      if (config.joplinUsername && config.joplinPassword) {
+        if (reqUser === config.joplinUsername && reqPass === config.joplinPassword) {
+          authCache.set(base64Credentials, now);
+          return next();
+        } else {
+          authCache.delete(base64Credentials);
+          res.setHeader('WWW-Authenticate', 'Basic');
+          return res.status(401).send('Authentication required.');
+        }
+      }
+    } catch(e) {
+      // ignore parse errors and fallback
+    }
+  }
+
   try {
     const response = await fetch(`${joplinUrl}/api/sessions`, {
       method: 'POST',
@@ -64,15 +92,6 @@ app.use(async (req, res, next) => {
     process.exit(1);
   }
 });
-
-const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
-const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
-
-// Ensure data dir exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
 
 let syncStatus = 'ready'; // ready, syncing, error
 let syncClient = null;

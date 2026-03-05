@@ -105,6 +105,20 @@ jest.mock('sqlite3', () => ({
   },
 }));
 
+jest.mock('@joplin/lib/services/share/ShareService', () => {
+  const mockInitialize = jest.fn();
+  class ShareService {
+    static instance() {
+      if (!this._instance) {
+        this._instance = new ShareService();
+      }
+      return this._instance;
+    }
+    initialize = mockInitialize;
+  }
+  return { default: ShareService };
+});
+
 describe('JoplinSyncClient', () => {
   let client;
 
@@ -131,6 +145,22 @@ describe('JoplinSyncClient', () => {
     const Logger = require('@joplin/utils/Logger').default;
     await client.init();
     expect(Logger.initializeGlobalLogger).toHaveBeenCalledTimes(1);
+  });
+
+  it('should initialize ShareService with a mock store containing dispatch', async () => {
+    const ShareService = require('@joplin/lib/services/share/ShareService').default;
+    await client.init();
+    expect(ShareService.instance().initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dispatch: expect.any(Function),
+        getState: expect.any(Function)
+      }),
+      null,
+      null
+    );
+    // Let's actually verify getState returns what we expect
+    const getStateMock = ShareService.instance().initialize.mock.calls[0][0].getState;
+    expect(getStateMock()).toEqual({ shareService: { shares: [], shareInvitations: [] } });
   });
 
   it('should call synchronizer start on sync', async () => {

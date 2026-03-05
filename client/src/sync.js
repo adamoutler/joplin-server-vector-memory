@@ -82,7 +82,7 @@ class JoplinSyncClient extends EventEmitter {
     BaseService.logger_ = dummyLogger;
 
     const ShareService = require('@joplin/lib/services/share/ShareService').default;
-    ShareService.instance().initialize({ getState: () => ({ shareService: { shares: [] } }) }, null, null);
+    ShareService.instance().initialize({ getState: () => ({ shareService: { shares: [], shareInvitations: [] } }), dispatch: () => {} }, null, null);
 
     const KeychainService = require('@joplin/lib/services/keychain/KeychainService').default;
     const keychainService = new KeychainService();

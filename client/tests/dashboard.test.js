@@ -33,6 +33,8 @@ describe('Dashboard Endpoints', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    fs.existsSync.mockReturnValue(false);
+    fs.readFileSync.mockReturnValue('{}');
     global.fetch = jest.fn(async (url, options) => {
       if (url.endsWith('/api/sessions')) {
         const body = options?.body ? JSON.parse(options.body) : {};
@@ -91,6 +93,39 @@ describe('Dashboard Endpoints', () => {
     // Second request should still succeed because of the cache
     response = await request(app).get('/status').set('Authorization', authHeader);
     expect(response.status).toBe(200);
+  });
+
+  test('GET /status uses local config to authenticate instantly without calling fetch', async () => {
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockReturnValue(JSON.stringify({
+      joplinUsername: 'localadmin',
+      joplinPassword: 'localpassword'
+    }));
+
+    const localAuthHeader = 'Basic ' + Buffer.from('localadmin:localpassword').toString('base64');
+    
+    // Clear mock calls to fetch to verify it's not called
+    global.fetch.mockClear();
+
+    const response = await request(app).get('/status').set('Authorization', localAuthHeader);
+    expect(response.status).toBe(200);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  test('GET /status fails instantly if local config credentials do not match', async () => {
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockReturnValue(JSON.stringify({
+      joplinUsername: 'localadmin',
+      joplinPassword: 'localpassword'
+    }));
+
+    const wrongLocalAuthHeader = 'Basic ' + Buffer.from('localadmin:wronglocalpassword').toString('base64');
+    
+    global.fetch.mockClear();
+
+    const response = await request(app).get('/status').set('Authorization', wrongLocalAuthHeader);
+    expect(response.status).toBe(401);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   test('POST /auth validates and saves credentials', async () => {
