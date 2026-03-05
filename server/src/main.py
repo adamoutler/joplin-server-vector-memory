@@ -99,6 +99,9 @@ def remember(title: str, content: str) -> dict:
     Remember a new note by storing its title and content.
     Mocks relaying to Joplin Server by directly inserting into local SQLite.
     """
+    if not title.startswith("[Agent Memory] "):
+        title = f"[Agent Memory] {title}"
+
     note_id = str(uuid.uuid4())
     try:
         embedding = get_embedding(f"{title}\n{content}")
@@ -162,8 +165,95 @@ def delete_note(note_id: str) -> dict:
         "message": "Note deleted successfully (mocked relay to Joplin)."
     }
 
+from starlette.applications import Starlette
+from starlette.routing import Route, Mount
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
 # Create the Starlette/ASGI app for uvicorn
-app = mcp.http_app(transport='sse')
+fastmcp_app = mcp.http_app(transport='sse')
+
+def check_auth(request: Request) -> bool:
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return False
+    token = auth_header.split(" ")[1]
+    
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    valid_token = None
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                config = json.load(f)
+                valid_token = config.get("token")
+    except Exception as e:
+        logger.error(f"Error reading config for auth: {e}")
+        
+    if not valid_token:
+        return False
+        
+    return token == valid_token
+
+async def api_search(request: Request):
+    if not check_auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    query = data.get("query")
+    if not query:
+        return JSONResponse({"error": "Missing query parameter"}, status_code=400)
+    results = search_notes(query)
+    return JSONResponse(results)
+
+async def api_get(request: Request):
+    if not check_auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    note_id = data.get("note_id")
+    if not note_id:
+        return JSONResponse({"error": "Missing note_id parameter"}, status_code=400)
+    result = get_note(note_id)
+    return JSONResponse(result)
+
+async def api_remember(request: Request):
+    if not check_auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    title = data.get("title")
+    content = data.get("content")
+    if not title or not content:
+        return JSONResponse({"error": "Missing title or content parameter"}, status_code=400)
+    result = remember(title, content)
+    return JSONResponse(result)
+
+async def api_delete(request: Request):
+    if not check_auth(request):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    note_id = data.get("note_id")
+    if not note_id:
+        return JSONResponse({"error": "Missing note_id parameter"}, status_code=400)
+    result = delete_note(note_id)
+    return JSONResponse(result)
+
+app = Starlette(routes=[
+    Route("/api/search", api_search, methods=["POST"]),
+    Route("/api/get", api_get, methods=["POST"]),
+    Route("/api/remember", api_remember, methods=["POST"]),
+    Route("/api/delete", api_delete, methods=["POST"]),
+    Mount("/", app=fastmcp_app)
+])
 
 if __name__ == "__main__":
     import sys

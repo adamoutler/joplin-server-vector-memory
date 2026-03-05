@@ -9,6 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const authCache = new Map();
+const AUTH_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
 app.use(async (req, res, next) => {
   const joplinUrl = process.env.JOPLIN_SERVER_URL;
   if (!joplinUrl) {
@@ -27,7 +30,17 @@ app.use(async (req, res, next) => {
     return res.status(401).send('Authentication required.');
   }
 
-  const auth = Buffer.from(match[1], 'base64').toString().split(':');
+  const base64Credentials = match[1];
+  const now = Date.now();
+  
+  if (authCache.has(base64Credentials)) {
+    const lastSuccess = authCache.get(base64Credentials);
+    if (now - lastSuccess < AUTH_CACHE_TTL) {
+      return next();
+    }
+  }
+
+  const auth = Buffer.from(base64Credentials, 'base64').toString().split(':');
   const reqUser = auth[0];
   const reqPass = auth.slice(1).join(':');
 
@@ -39,8 +52,10 @@ app.use(async (req, res, next) => {
     });
 
     if (response.ok) {
+      authCache.set(base64Credentials, now);
       return next();
     } else {
+      authCache.delete(base64Credentials);
       res.setHeader('WWW-Authenticate', 'Basic');
       return res.status(401).send('Authentication required.');
     }
@@ -67,7 +82,7 @@ app.get('/', (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Joplin Server Token Access & Dashboard</title>
+      <title>Joplin Memory Server Dashboard</title>
       <style>
         body { font-family: sans-serif; margin: 2rem; max-width: 600px; background: #f9f9f9; color: #333; }
         .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -93,7 +108,7 @@ app.get('/', (req, res) => {
     </head>
     <body>
       <div class="container">
-        <h1>Joplin Server Dashboard</h1>
+        <h1>Joplin Memory Server Dashboard</h1>
         <div class="status">
           <h2>Sync Status: <span id="status-text" class="status-offline">Offline</span></h2>
         </div>
@@ -116,6 +131,10 @@ app.get('/', (req, res) => {
             <label>Master Password (Optional, for E2EE)</label>
             <input type="password" id="masterPassword">
           </div>
+          <div class="form-group">
+            <label>Memory Server Address</label>
+            <input type="text" id="memoryServerAddress" placeholder="http://localhost:8000" required>
+          </div>
           <button type="submit">Save & Validate</button>
           <div id="auth-msg" class="messages"></div>
         </form>
@@ -127,6 +146,16 @@ app.get('/', (req, res) => {
           <button id="rotate-btn">Rotate Token</button>
         </div>
         <div id="token-msg" class="messages"></div>
+
+        <h2 style="margin-top: 2rem;">MCP Server Examples</h2>
+        <div id="mcp-examples" style="display: none; background: #f4f4f4; padding: 1rem; border-radius: 4px;">
+          <h3>HTTP API Address</h3>
+          <pre><code id="example-http"></code></pre>
+          <h3>MCP API Address</h3>
+          <pre><code id="example-mcp"></code></pre>
+          <h3>Gemini CLI Configuration</h3>
+          <pre><code id="example-cli"></code></pre>
+        </div>
       </div>
 
       <script>
@@ -144,7 +173,23 @@ app.get('/', (req, res) => {
                }
                document.getElementById('serverUrl').value = data.config.joplinServerUrl || '';
                document.getElementById('username').value = data.config.joplinUsername || '';
+               document.getElementById('memoryServerAddress').value = data.config.memoryServerAddress || '';
                // don't populate password
+               
+               const memAddr = data.config.memoryServerAddress || 'http://localhost:8000';
+               document.getElementById('mcp-examples').style.display = 'block';
+               document.getElementById('example-http').innerText = memAddr;
+               document.getElementById('example-mcp').innerText = memAddr + '/mcp/http/api-key/mcp/sse';
+               document.getElementById('example-cli').innerText = JSON.stringify({
+                 "mcpServers": {
+                   "joplin_memory": {
+                     "url": memAddr + "/mcp/http/api-key/mcp/sse",
+                     "headers": {
+                       "Authorization": "Bearer " + data.config.token
+                     }
+                   }
+                 }
+               }, null, 2);
             }
           } catch(e) {
             const el = document.getElementById('status-text');
@@ -161,6 +206,7 @@ app.get('/', (req, res) => {
           const username = document.getElementById('username').value;
           const password = document.getElementById('password').value;
           const masterPassword = document.getElementById('masterPassword').value;
+          const memoryServerAddress = document.getElementById('memoryServerAddress').value;
           const msgEl = document.getElementById('auth-msg');
           msgEl.innerText = 'Validating...';
           msgEl.className = 'messages';
@@ -169,7 +215,7 @@ app.get('/', (req, res) => {
             const res = await fetch('/auth', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ serverUrl, username, password, masterPassword })
+              body: JSON.stringify({ serverUrl, username, password, masterPassword, memoryServerAddress })
             });
             const data = await res.json();
             if (res.ok) {
@@ -230,7 +276,7 @@ app.get('/status', (req, res) => {
 });
 
 app.post('/auth', async (req, res) => {
-  const { serverUrl, username, password, masterPassword, rotate } = req.body;
+  const { serverUrl, username, password, masterPassword, memoryServerAddress, rotate } = req.body;
   
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
@@ -285,6 +331,7 @@ app.post('/auth', async (req, res) => {
     joplinUsername: username, 
     joplinPassword: password, 
     joplinMasterPassword: masterPassword,
+    memoryServerAddress,
     token 
   };
   

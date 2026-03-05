@@ -6,9 +6,9 @@ from unittest.mock import patch
 import json
 
 # Add src to python path so we can import main and db
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from main import search_notes, get_note, remember, delete_note
+from src.main import search_notes, get_note, remember, delete_note
 
 @pytest.fixture
 def temp_db():
@@ -24,7 +24,7 @@ def temp_db():
 
 @pytest.fixture
 def mock_ollama():
-    with patch('main.get_embedding') as mock_embed:
+    with patch('src.main.get_embedding') as mock_embed:
         # Return a simple mock embedding of 768 zeros
         # We can modify a specific index based on the prompt for testing
         def side_effect(text):
@@ -50,7 +50,7 @@ def test_remember_and_get_note(temp_db, mock_ollama):
     # Get the note
     note = get_note(note_id)
     assert note.get("id") == note_id
-    assert note.get("title") == "Apple Recipe"
+    assert note.get("title") == "[Agent Memory] Apple Recipe"
     assert note.get("content") == "How to make apple pie"
 
 def test_search_notes(temp_db, mock_ollama):

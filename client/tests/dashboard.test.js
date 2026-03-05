@@ -73,6 +73,26 @@ describe('Dashboard Endpoints', () => {
     expect(response.body).toHaveProperty('status');
   });
 
+  test('GET /status uses cached authentication if Joplin Server fails subsequently', async () => {
+    fs.existsSync.mockReturnValue(false); 
+    
+    // First request should succeed and cache the credentials
+    let response = await request(app).get('/status').set('Authorization', authHeader);
+    expect(response.status).toBe(200);
+
+    // Now mock the fetch to throw an error (or return 500)
+    global.fetch.mockImplementationOnce(async (url, options) => {
+      if (url.endsWith('/api/sessions')) {
+        return { ok: false, status: 500, json: async () => ({ error: 'Internal Server Error' }) };
+      }
+      return { ok: true, status: 200 };
+    });
+
+    // Second request should still succeed because of the cache
+    response = await request(app).get('/status').set('Authorization', authHeader);
+    expect(response.status).toBe(200);
+  });
+
   test('POST /auth validates and saves credentials', async () => {
     const response = await request(app)
       .post('/auth')
@@ -80,13 +100,19 @@ describe('Dashboard Endpoints', () => {
       .send({
         serverUrl: 'http://testserver',
         username: 'testuser',
-        password: 'testpassword'
+        password: 'testpassword',
+        memoryServerAddress: 'http://localhost:8000'
       });
 
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('success', true);
     expect(response.body).toHaveProperty('token');
-    expect(fs.writeFileSync).toHaveBeenCalled();
+    
+    // Check that fs.writeFileSync was called with memoryServerAddress
+    const writeCalls = fs.writeFileSync.mock.calls;
+    expect(writeCalls.length).toBeGreaterThan(0);
+    const savedConfig = JSON.parse(writeCalls[writeCalls.length - 1][1]);
+    expect(savedConfig).toHaveProperty('memoryServerAddress', 'http://localhost:8000');
   });
 
   test('POST /auth handles missing credentials', async () => {

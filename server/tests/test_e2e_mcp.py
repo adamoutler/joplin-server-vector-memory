@@ -143,7 +143,7 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
                 )
                 get_data = json.loads(get_res.content[0].text)
                 assert get_data.get("id") == note_id
-                assert get_data.get("title") == "E2E Secret Memory"
+                assert get_data.get("title") == "[Agent Memory] E2E Secret Memory"
                 assert get_data.get("content") == fake_uuid
                 
                 # 4. Call delete_note
