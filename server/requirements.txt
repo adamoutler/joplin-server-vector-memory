@@ -2,3 +2,6 @@ fastmcp
 ollama
 sqlite-vec
 pytest
+uvicorn
+starlette
+httpx

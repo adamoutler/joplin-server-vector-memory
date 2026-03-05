@@ -38,6 +38,7 @@ class JoplinSyncClient extends EventEmitter {
     const { DatabaseDriverNode } = require('@joplin/lib/database-driver-node');
     const driver = new DatabaseDriverNode();
     this.db = new JoplinDatabase(driver);
+    this.db.setLogger(() => ({ debug: () => {}, info: () => {}, warn: () => {}, error: console.error, setLevel: () => {} }));
     await this.db.open({ name: dbPath });
     
     const BaseModel = require('@joplin/lib/BaseModel').default;
@@ -162,7 +163,7 @@ class JoplinSyncClient extends EventEmitter {
       this.vectorDb.serialize(() => {
         this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {
           if (err) return reject(err);
-          const eStr = JSON.stringify(embedding);
+          const eStr = new Float32Array(embedding);
           
           if (row) {
             const rowid = row.rowid;
@@ -219,12 +220,23 @@ class JoplinSyncClient extends EventEmitter {
         if (!note.body) continue;
         
         try {
+          // Truncate from the start to avoid 500 context length errors on Ollama side.
+          // Nomic-embed-text has a strict context limit. 2000 characters is a much safer 
+          // upper bound to ensure we don't blow past the token limit for dense markdown.
+          // ALSO: nomic-embed-text requires the `search_document: ` prefix for documents.
+          // We MUST include the title in the body so the embedding contains contextual meaning.
+          let rawText = `Title: ${note.title}\n\n${note.body}`;
+          if (rawText.length > 2000) {
+              rawText = rawText.substring(0, 2000);
+          }
+          let promptBody = `search_document: ${rawText}`;
+
           const response = await fetch(`${ollamaUrl}/api/embeddings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: model,
-              prompt: note.body
+              prompt: promptBody
             })
           });
           

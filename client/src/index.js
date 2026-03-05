@@ -9,6 +9,37 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const user = process.env.DASHBOARD_USER;
+  const pass = process.env.DASHBOARD_PASSWORD;
+
+  if (user && pass) {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      res.setHeader('WWW-Authenticate', 'Basic');
+      return res.status(401).send('Authentication required.');
+    }
+
+    const match = authHeader.match(/^Basic\s+(.*)$/i);
+    if (!match) {
+      res.setHeader('WWW-Authenticate', 'Basic');
+      return res.status(401).send('Authentication required.');
+    }
+
+    const auth = Buffer.from(match[1], 'base64').toString().split(':');
+    const reqUser = auth[0];
+    const reqPass = auth.slice(1).join(':');
+
+    if (reqUser === user && reqPass === pass) {
+      return next();
+    } else {
+      res.setHeader('WWW-Authenticate', 'Basic');
+      return res.status(401).send('Authentication required.');
+    }
+  }
+  next();
+});
+
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');

@@ -2,6 +2,10 @@ const request = require('supertest');
 const fs = require('fs');
 const path = require('path');
 
+process.env.DASHBOARD_USER = 'admin';
+process.env.DASHBOARD_PASSWORD = 'password123';
+const authHeader = 'Basic ' + Buffer.from('admin:password123').toString('base64');
+
 jest.mock('fs', () => {
   const actualFs = jest.requireActual('fs');
   return {
@@ -40,10 +44,15 @@ describe('Dashboard Endpoints', () => {
     jest.restoreAllMocks();
   });
 
+  test('GET /status returns 401 if unauthenticated', async () => {
+    const response = await request(app).get('/status');
+    expect(response.status).toBe(401);
+  });
+
   test('GET /status returns status ready or offline', async () => {
     fs.existsSync.mockReturnValue(false); 
     
-    const response = await request(app).get('/status');
+    const response = await request(app).get('/status').set('Authorization', authHeader);
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('status');
   });
@@ -58,6 +67,7 @@ describe('Dashboard Endpoints', () => {
 
     const response = await request(app)
       .post('/auth')
+      .set('Authorization', authHeader)
       .send({
         serverUrl: 'http://testserver',
         username: 'testuser',
@@ -73,6 +83,7 @@ describe('Dashboard Endpoints', () => {
   test('POST /auth handles missing credentials', async () => {
     const response = await request(app)
       .post('/auth')
+      .set('Authorization', authHeader)
       .send({
         serverUrl: 'http://testserver'
       });
@@ -87,6 +98,7 @@ describe('Dashboard Endpoints', () => {
 
     const response = await request(app)
       .post('/auth')
+      .set('Authorization', authHeader)
       .send({
         rotate: true
       });

@@ -4,7 +4,8 @@ import json
 import uuid
 import logging
 import os
-from db import get_db_connection
+from src.db import get_db_connection
+from sqlite_vec import serialize_float32
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +42,8 @@ def search_notes(query: str) -> list[dict]:
     Returns the top 5 notes with their ID, Title, and a Blurb.
     """
     try:
-        embedding = get_embedding(query)
+        # nomic-embed-text requires the search_query: prefix
+        embedding = get_embedding(f"search_query: {query}")
         db = get_db_connection()
         cursor = db.cursor()
         
@@ -51,7 +53,7 @@ def search_notes(query: str) -> list[dict]:
             JOIN note_metadata m ON m.rowid = v.rowid
             ORDER BY distance
             LIMIT 5
-        """, (json.dumps(embedding),))
+        """, (serialize_float32(embedding),))
         
         results = cursor.fetchall()
         db.close()
@@ -114,7 +116,7 @@ def remember(title: str, content: str) -> dict:
         # Insert embedding
         cursor.execute(
             "INSERT INTO vec_notes (rowid, embedding) VALUES (?, ?)",
-            (rowid, json.dumps(embedding))
+            (rowid, serialize_float32(embedding))
         )
         
         db.commit()
@@ -160,6 +162,14 @@ def delete_note(note_id: str) -> dict:
         "message": "Note deleted successfully (mocked relay to Joplin)."
     }
 
+# Create the Starlette/ASGI app for uvicorn
+app = mcp.http_app(transport='sse')
+
 if __name__ == "__main__":
-    # Allow running the server
-    mcp.run(transport='stdio')
+    import sys
+    if "--stdio" in sys.argv:
+        mcp.run()
+    else:
+        import uvicorn
+        # Allow running the server locally
+        uvicorn.run("main:app", host="0.0.0.0", port=8000)
