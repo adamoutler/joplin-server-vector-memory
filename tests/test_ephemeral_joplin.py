@@ -4,7 +4,7 @@ import requests
 import pytest
 import os
 
-DOCKER_COMPOSE_FILE = "docker-compose.test.yml"
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "docker-compose.test.yml"))
 
 @pytest.fixture(scope="module", autouse=True)
 def ephemeral_joplin():

@@ -38,7 +38,7 @@ class JoplinSyncClient extends EventEmitter {
     const { DatabaseDriverNode } = require('@joplin/lib/database-driver-node');
     const driver = new DatabaseDriverNode();
     this.db = new JoplinDatabase(driver);
-    this.db.setLogger(() => ({ debug: () => {}, info: () => {}, warn: () => {}, error: console.error, setLevel: () => {} }));
+    this.db.setLogger({ debug: () => {}, info: () => {}, warn: () => {}, error: console.error, setLevel: () => {} });
     await this.db.open({ name: dbPath });
     
     const BaseModel = require('@joplin/lib/BaseModel').default;
@@ -64,6 +64,12 @@ class JoplinSyncClient extends EventEmitter {
     Setting.setConstant('appId', 'net.cozic.joplin-cli');
     Setting.setConstant('appType', 'cli');
     
+    const Logger = require('@joplin/utils/Logger').default;
+    const logger = new Logger();
+    logger.addTarget('console');
+    logger.setLevel(Logger.LEVEL_WARN);
+    Logger.initializeGlobalLogger(logger);
+
     const dummyLogger = {
         debug: () => {},
         info: () => {},

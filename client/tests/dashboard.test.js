@@ -2,8 +2,7 @@ const request = require('supertest');
 const fs = require('fs');
 const path = require('path');
 
-process.env.DASHBOARD_USER = 'admin';
-process.env.DASHBOARD_PASSWORD = 'password123';
+process.env.JOPLIN_SERVER_URL = 'http://testserver';
 const authHeader = 'Basic ' + Buffer.from('admin:password123').toString('base64');
 
 jest.mock('fs', () => {
@@ -34,6 +33,12 @@ describe('Dashboard Endpoints', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    global.fetch = jest.fn((url) => {
+      if (url.endsWith('/api/sessions')) {
+        return Promise.resolve({ ok: true, status: 200 });
+      }
+      return Promise.resolve({ ok: true, status: 200 });
+    });
     // Re-require app to reset state if needed
     jest.isolateModules(() => {
       app = require('../src/index');
@@ -58,13 +63,6 @@ describe('Dashboard Endpoints', () => {
   });
 
   test('POST /auth validates and saves credentials', async () => {
-    global.fetch = jest.fn(() => 
-      Promise.resolve({
-        ok: true,
-        status: 200
-      })
-    );
-
     const response = await request(app)
       .post('/auth')
       .set('Authorization', authHeader)

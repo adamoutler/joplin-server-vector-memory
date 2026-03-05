@@ -9,35 +9,45 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use((req, res, next) => {
-  const user = process.env.DASHBOARD_USER;
-  const pass = process.env.DASHBOARD_PASSWORD;
+app.use(async (req, res, next) => {
+  const joplinUrl = process.env.JOPLIN_SERVER_URL;
+  if (!joplinUrl) {
+    return next();
+  }
 
-  if (user && pass) {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) {
-      res.setHeader('WWW-Authenticate', 'Basic');
-      return res.status(401).send('Authentication required.');
-    }
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic');
+    return res.status(401).send('Authentication required.');
+  }
 
-    const match = authHeader.match(/^Basic\s+(.*)$/i);
-    if (!match) {
-      res.setHeader('WWW-Authenticate', 'Basic');
-      return res.status(401).send('Authentication required.');
-    }
+  const match = authHeader.match(/^Basic\s+(.*)$/i);
+  if (!match) {
+    res.setHeader('WWW-Authenticate', 'Basic');
+    return res.status(401).send('Authentication required.');
+  }
 
-    const auth = Buffer.from(match[1], 'base64').toString().split(':');
-    const reqUser = auth[0];
-    const reqPass = auth.slice(1).join(':');
+  const auth = Buffer.from(match[1], 'base64').toString().split(':');
+  const reqUser = auth[0];
+  const reqPass = auth.slice(1).join(':');
 
-    if (reqUser === user && reqPass === pass) {
+  try {
+    const response = await fetch(`${joplinUrl}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: reqUser, password: reqPass })
+    });
+
+    if (response.ok) {
       return next();
     } else {
       res.setHeader('WWW-Authenticate', 'Basic');
       return res.status(401).send('Authentication required.');
     }
+  } catch (err) {
+    console.error('Joplin Server unreachable:', err);
+    process.exit(1);
   }
-  next();
 });
 
 const PORT = process.env.PORT || 3000;

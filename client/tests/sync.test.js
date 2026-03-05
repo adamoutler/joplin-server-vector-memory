@@ -4,6 +4,18 @@ jest.mock('@joplin/lib/shim-init-node', () => ({
   shimInit: jest.fn(),
 }));
 
+jest.mock('@joplin/utils/Logger', () => {
+  class MockLogger {
+    constructor() {}
+    addTarget() {}
+    setLevel() {}
+    static initializeGlobalLogger() {}
+    static create() { return new MockLogger(); }
+  }
+  MockLogger.LEVEL_WARN = 20;
+  return { default: MockLogger };
+});
+
 jest.mock('@joplin/lib/models/Setting', () => ({
   default: {
     setConstant: jest.fn(),
