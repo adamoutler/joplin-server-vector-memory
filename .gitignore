@@ -1,2 +1,4 @@
 .gemini/settings.json
 credentials
+__pycache__/
+*.pyc
