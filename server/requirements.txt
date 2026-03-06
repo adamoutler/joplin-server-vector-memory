@@ -3,5 +3,5 @@ ollama
 sqlite-vec
 pytest
 uvicorn
-starlette
+fastapi
 httpx
