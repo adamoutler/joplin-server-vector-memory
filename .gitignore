@@ -2,3 +2,4 @@
 credentials
 __pycache__/
 *.pyc
+\n.env
