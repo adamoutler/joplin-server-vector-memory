@@ -21,7 +21,7 @@ app.use(createProxyMiddleware({ pathFilter: '/api', target: BACKEND_URL, changeO
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../../data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 
 // Ensure data dir exists
@@ -335,7 +335,12 @@ app.post('/auth', async (req, res) => {
   if (rotate) {
     const newToken = crypto.randomUUID();
     config.token = newToken;
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    try {
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    } catch (err) {
+      console.error('Failed to write config.json:', err);
+      return res.status(500).json({ error: 'Failed to save new token' });
+    }
     return res.json({ token: newToken });
   }
 
@@ -382,7 +387,11 @@ app.post('/auth', async (req, res) => {
     token 
   };
   
-  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+  } catch (err) {
+    console.error('Failed to write config.json:', err);
+  }
   
   // Re-init sync client in background
   startSync(config);
@@ -441,7 +450,11 @@ if (fs.existsSync(CONFIG_PATH)) {
      joplinMasterPassword: process.env.JOPLIN_MASTER_PASSWORD,
      token: process.env.API_TOKEN || crypto.randomUUID()
    };
-   fs.writeFileSync(CONFIG_PATH, JSON.stringify(initialConfig, null, 2));
+   try {
+     fs.writeFileSync(CONFIG_PATH, JSON.stringify(initialConfig, null, 2));
+   } catch (err) {
+     console.error('Failed to write config.json:', err);
+   }
    setImmediate(() => startSync(initialConfig));
 }
 

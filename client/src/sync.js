@@ -54,7 +54,13 @@ class JoplinSyncClient extends EventEmitter {
       this.vectorDb.serialize(() => {
         this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[768])`, err => err && reject(err));
         this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT)`, err => {
-          if (err) reject(err); else resolve();
+          if (err) return reject(err);
+          this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
+          this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => err && reject(err));
+          this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); END;`, err => err && reject(err));
+          this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => {
+            if (err) reject(err); else resolve();
+          });
         });
       });
     });
@@ -175,9 +181,12 @@ class JoplinSyncClient extends EventEmitter {
             const rowid = row.rowid;
             this.vectorDb.run(`UPDATE note_metadata SET title = ?, content = ? WHERE rowid = ?`, [title, content, rowid], (err) => {
               if (err) return reject(err);
-              this.vectorDb.run(`UPDATE vec_notes SET embedding = ? WHERE rowid = ?`, [eStr, rowid], (err) => {
+              this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid], (err) => {
                 if (err) return reject(err);
-                resolve();
+                this.vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
+                  if (err) return reject(err);
+                  resolve();
+                });
               });
             });
           } else {
@@ -227,13 +236,19 @@ class JoplinSyncClient extends EventEmitter {
         
         try {
           // Truncate from the start to avoid 500 context length errors on Ollama side.
-          // Nomic-embed-text has a strict context limit. 2000 characters is a much safer 
+          // Nomic-embed-text has a strict context limit. 25000 characters is a safer 
           // upper bound to ensure we don't blow past the token limit for dense markdown.
           // ALSO: nomic-embed-text requires the `search_document: ` prefix for documents.
           // We MUST include the title in the body so the embedding contains contextual meaning.
           let rawText = `Title: ${note.title}\n\n${note.body}`;
-          if (rawText.length > 2000) {
-              rawText = rawText.substring(0, 2000);
+          if (rawText.length > 25000) {
+              let truncated = rawText.substring(0, 25000);
+              let lastSpace = Math.max(truncated.lastIndexOf(' '), truncated.lastIndexOf('\n'), truncated.lastIndexOf('\t'));
+              if (lastSpace > 0) {
+                  rawText = truncated.substring(0, lastSpace);
+              } else {
+                  rawText = truncated;
+              }
           }
           let promptBody = `search_document: ${rawText}`;
 
@@ -242,7 +257,10 @@ class JoplinSyncClient extends EventEmitter {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: model,
-              prompt: promptBody
+              prompt: promptBody,
+              options: {
+                num_ctx: 8192
+              }
             })
           });
           

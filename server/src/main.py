@@ -47,27 +47,80 @@ def search_notes(query: str) -> list[dict]:
         db = get_db_connection()
         cursor = db.cursor()
         
+        # 1. Vector Search using CTE MATCH pattern
         cursor.execute("""
-            SELECT m.note_id, m.title, m.content, vec_distance_cosine(v.embedding, ?) as distance
-            FROM vec_notes v
-            JOIN note_metadata m ON m.rowid = v.rowid
-            ORDER BY distance
-            LIMIT 5
+            WITH knn_matches AS (
+                SELECT rowid, distance
+                FROM vec_notes
+                WHERE embedding MATCH ? AND k = 5
+            )
+            SELECT m.rowid, m.note_id, m.title, m.content, k.distance
+            FROM knn_matches k
+            JOIN note_metadata m ON m.rowid = k.rowid
+            ORDER BY k.distance
         """, (serialize_float32(embedding),))
+        vec_results = cursor.fetchall()
+
+        # 2. FTS Search for exact keywords
+        # Sanitize query for FTS phrase search to prevent syntax errors
+        sanitized_query = query.replace('"', '""')
+        fts_query = f'"{sanitized_query}"'
         
-        results = cursor.fetchall()
+        try:
+            cursor.execute("""
+                SELECT m.rowid, m.note_id, m.title, m.content, bm25(notes_fts) as score
+                FROM notes_fts f
+                JOIN note_metadata m ON m.rowid = f.rowid
+                WHERE notes_fts MATCH ?
+                ORDER BY score
+                LIMIT 5
+            """, (fts_query,))
+            fts_results = cursor.fetchall()
+        except Exception as e:
+            logger.warning(f"FTS search failed (likely syntax error in query), proceeding with only vector results: {e}")
+            fts_results = []
+        
         db.close()
         
+        # 3. Reciprocal Rank Fusion (RRF)
+        rrf_scores = {}
+        notes_data = {}
+        
+        for rank, row in enumerate(vec_results):
+            rowid, note_id, title, content, distance = row
+            if rowid not in rrf_scores:
+                rrf_scores[rowid] = 0
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content}
+            rrf_scores[rowid] += 1.0 / (rank + 60)
+            
+        for rank, row in enumerate(fts_results):
+            rowid, note_id, title, content, score = row
+            if rowid not in rrf_scores:
+                rrf_scores[rowid] = 0
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content}
+            rrf_scores[rowid] += 1.0 / (rank + 60)
+            
+        # Sort by RRF score descending
+        sorted_rowids = sorted(rrf_scores.keys(), key=lambda r: rrf_scores[r], reverse=True)
+        top_rowids = sorted_rowids[:5]
+        
         notes = []
-        for row in results:
-            note_id, title, content, distance = row
+        for rowid in top_rowids:
+            data = notes_data[rowid]
+            note_id = data["id"]
+            if isinstance(note_id, bytes):
+                note_id = note_id.hex()
+            elif isinstance(note_id, str):
+                note_id = note_id.replace("-", "")
+
             # Create a simple blurb
-            blurb = content[:100] + "..." if len(content) > 100 else content
+            content = data["content"]
+            blurb = content[:2000] + "..." if len(content) > 2000 else content
             notes.append({
                 "id": note_id,
-                "title": title,
+                "title": data["title"],
                 "blurb": blurb,
-                "distance": distance
+                "distance": rrf_scores[rowid]  # We return RRF score here as 'distance'
             })
         return notes
     except Exception as e:
@@ -102,7 +155,7 @@ def remember(title: str, content: str) -> dict:
     if not title.startswith("[Agent Memory] "):
         title = f"[Agent Memory] {title}"
 
-    note_id = str(uuid.uuid4())
+    note_id = uuid.uuid4().hex
     try:
         embedding = get_embedding(f"{title}\n{content}")
         

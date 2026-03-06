@@ -57,18 +57,27 @@ def test_search_notes(temp_db, mock_ollama):
     # Add a few notes
     remember("Apple Pie", "Delicious apple pie recipe")
     remember("Banana Bread", "Easy banana bread recipe")
-    
+
+    # Add a large note to test blurb truncation
+    large_content = "x" * 2500
+    remember("Large Note", large_content)
+
     # Search for something that will match apple pie better based on mock
     # Our mock makes "test query" vector have vec[0]=1.0
     # "Apple" has vec[1]=1.0
     # "Banana" has vec[2]=1.0
     # Let's adjust mock logic or just test it returns something
     results = search_notes("apple query")
-    assert len(results) == 2
-    
+    assert len(results) == 3
+
     # Results should contain blurb, title, id
     assert "blurb" in results[0]
     assert "id" in results[0]
+
+    # Verify blurb truncation
+    large_note_result = next(r for r in results if r["title"] == "[Agent Memory] Large Note")
+    assert len(large_note_result["blurb"]) == 2003
+    assert large_note_result["blurb"].endswith("...")
     assert "title" in results[0]
 
 def test_delete_note(temp_db, mock_ollama):

@@ -37,4 +37,32 @@ def init_db(db):
         )
     """)
     
+    # Create notes_fts table for full-text search
+    cursor.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+            title,
+            content,
+            content="note_metadata",
+            content_rowid="rowid"
+        )
+    """)
+    
+    # Create triggers to keep notes_fts in sync
+    cursor.execute("""
+        CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN
+            INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+        END;
+    """)
+    cursor.execute("""
+        CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON note_metadata BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content);
+        END;
+    """)
+    cursor.execute("""
+        CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON note_metadata BEGIN
+            INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content);
+            INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content);
+        END;
+    """)
+    
     db.commit()

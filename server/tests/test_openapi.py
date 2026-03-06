@@ -11,25 +11,25 @@ from src.main import app
 client = TestClient(app)
 
 def test_openapi_json_is_served():
-    """Ensure that the OpenAPI schema is available at /internal-openapi.json."""
-    response = client.get("/internal-openapi.json")
+    """Ensure that the OpenAPI schema is available at /openapi.json."""
+    response = client.get("/openapi.json")
     assert response.status_code == 200
     data = response.json()
     assert "openapi" in data
     assert "info" in data
     assert data["info"]["title"] == "Joplin Server Vector Memory API"
 
-def test_fastapi_docs_are_disabled():
-    """Ensure built-in FastAPI documentation endpoints are disabled."""
+def test_fastapi_docs_are_enabled():
+    """Ensure built-in FastAPI documentation endpoints are enabled at /docs."""
     response_docs = client.get("/docs")
-    assert response_docs.status_code == 404
+    assert response_docs.status_code == 200
     
     response_redoc = client.get("/redoc")
     assert response_redoc.status_code == 404
 
 def test_openapi_contains_workflow_links_and_examples():
     """Ensure that the OpenAPI schema contains links and workflow examples."""
-    response = client.get("/internal-openapi.json")
+    response = client.get("/openapi.json")
     assert response.status_code == 200
     data = response.json()
     
