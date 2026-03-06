@@ -5,7 +5,7 @@
       "url": "https://plane.hackedyour.info/mcp/http/api-key/mcp",
       "headers": {
         "Authorization": "Bearer ${PLANE_KEY}",
-        "X-Workspace-slug": "<SLUG>"
+        "X-Workspace-slug": "JOPLI"
       }
     }
   }
