@@ -13,6 +13,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 app.use(createProxyMiddleware({ pathFilter: '/docs', target: BACKEND_URL, changeOrigin: true, pathRewrite: { '^/docs': '/internal-docs' } }));
 app.use(createProxyMiddleware({ pathFilter: '/openapi.json', target: BACKEND_URL, changeOrigin: true, pathRewrite: { '^/openapi.json': '/internal-openapi.json' } }));
+app.use(createProxyMiddleware({ pathFilter: '/internal-openapi.json', target: BACKEND_URL, changeOrigin: true }));
 app.use(createProxyMiddleware({ pathFilter: '/mcp-server', target: BACKEND_URL, changeOrigin: true }));
 app.use(createProxyMiddleware({ pathFilter: '/mcp-server-http', target: BACKEND_URL, changeOrigin: true }));
 app.use(createProxyMiddleware({ pathFilter: '/mcp', target: BACKEND_URL, changeOrigin: true }));
