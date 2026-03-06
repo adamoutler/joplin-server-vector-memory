@@ -3,3 +3,6 @@ credentials
 __pycache__/
 *.pyc
 \n.env
+server/venv/
+client/node_modules/
+data/
