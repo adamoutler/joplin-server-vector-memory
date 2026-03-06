@@ -165,20 +165,57 @@ def delete_note(note_id: str) -> dict:
         "message": "Note deleted successfully (mocked relay to Joplin)."
     }
 
-from starlette.applications import Starlette
-from starlette.routing import Route, Mount
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
-# Create the Starlette/ASGI app for uvicorn
-fastmcp_app = mcp.http_app(transport='sse')
 
-def check_auth(request: Request) -> bool:
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return False
-    token = auth_header.split(" ")[1]
-    
+from fastapi import FastAPI, Request, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from contextlib import asynccontextmanager
+
+class SearchRequest(BaseModel):
+    query: str = Field(..., description="The semantic search query.", examples=["how to cook pasta"])
+
+class SearchResponseItem(BaseModel):
+    id: str = Field(..., description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
+    title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
+    blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
+    distance: float = Field(..., description="Cosine Distance", examples=[0.123])
+
+class GetRequest(BaseModel):
+    note_id: str = Field(..., description="ID of the note to retrieve", examples=["123e4567-e89b-12d3-a456-426614174000"])
+
+class GetResponse(BaseModel):
+    id: Optional[str] = Field(None, description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
+    title: Optional[str] = Field(None, description="Note Title", examples=["Pasta Recipe"])
+    content: Optional[str] = Field(None, description="Note Content", examples=["# Pasta Recipe\n\nBoil water..."])
+    error: Optional[str] = Field(None, description="Error message if any")
+
+class RememberRequest(BaseModel):
+    title: str = Field(..., description="Title of the new note", examples=["New Recipe"])
+    content: str = Field(..., description="Content of the new note", examples=["# New Recipe\n\nIngredients..."])
+
+class RememberResponse(BaseModel):
+    status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
+    id: Optional[str] = Field(None, description="New Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
+    title: Optional[str] = Field(None, description="New Note Title", examples=["New Recipe"])
+    message: Optional[str] = Field(None, description="Success or error message", examples=["Note remembered successfully (mocked relay to Joplin)."])
+    error: Optional[str] = Field(None, description="Error message if any")
+
+class DeleteRequest(BaseModel):
+    note_id: str = Field(..., description="ID of the note to delete", examples=["123e4567-e89b-12d3-a456-426614174000"])
+
+class DeleteResponse(BaseModel):
+    status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
+    id: Optional[str] = Field(None, description="Deleted Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
+    message: Optional[str] = Field(None, description="Success or error message", examples=["Note deleted successfully (mocked relay to Joplin)."])
+    error: Optional[str] = Field(None, description="Error message if any")
+
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     valid_token = None
     try:
@@ -189,71 +226,122 @@ def check_auth(request: Request) -> bool:
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
         
-    if not valid_token:
-        return False
-        
-    return token == valid_token
+    if not valid_token or token != valid_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
 
-async def api_search(request: Request):
-    if not check_auth(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    query = data.get("query")
-    if not query:
-        return JSONResponse({"error": "Missing query parameter"}, status_code=400)
-    results = search_notes(query)
-    return JSONResponse(results)
+# Create the Starlette/ASGI app for uvicorn
+fastmcp_app = mcp.http_app(transport='sse')
+stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/stateless", json_response=True)
 
-async def api_get(request: Request):
-    if not check_auth(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    note_id = data.get("note_id")
-    if not note_id:
-        return JSONResponse({"error": "Missing note_id parameter"}, status_code=400)
-    result = get_note(note_id)
-    return JSONResponse(result)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with fastmcp_app.router.lifespan_context(app):
+        async with stateless_app.router.lifespan_context(app):
+            yield
 
-async def api_remember(request: Request):
-    if not check_auth(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    title = data.get("title")
-    content = data.get("content")
-    if not title or not content:
-        return JSONResponse({"error": "Missing title or content parameter"}, status_code=400)
-    result = remember(title, content)
-    return JSONResponse(result)
+app = FastAPI(
+    title="Joplin Server Vector Memory API",
+    description="API for semantic search and memory management with Joplin",
+    version="1.0.0",
+    docs_url="/internal-docs",
+    openapi_url="/internal-openapi.json",
+    redoc_url=None,
+    lifespan=lifespan
+)
 
-async def api_delete(request: Request):
-    if not check_auth(request):
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-    try:
-        data = await request.json()
-    except Exception:
-        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    note_id = data.get("note_id")
-    if not note_id:
-        return JSONResponse({"error": "Missing note_id parameter"}, status_code=400)
-    result = delete_note(note_id)
-    return JSONResponse(result)
+@app.get("/", summary="Root Endpoint", description="Root endpoint indicating the server is running.")
+async def root():
+    return {"message": "Joplin Server Vector Memory API is running. Access MCP at / or /mcp-server/stateless."}
 
-app = Starlette(routes=[
-    Route("/api/search", api_search, methods=["POST"]),
-    Route("/api/get", api_get, methods=["POST"]),
-    Route("/api/remember", api_remember, methods=["POST"]),
-    Route("/api/delete", api_delete, methods=["POST"]),
-    Mount("/", app=fastmcp_app)
-])
+@app.post(
+    "/api/search",
+    response_model=List[SearchResponseItem],
+    summary="Search Notes",
+    description="Search notes semantically using the provided query.\n\n**Workflow Examples**:\n* **Search -> Get**: Use the `id` from a search result to fetch the full note content via `/api/get`.\n* **Search -> Delete**: Use the `id` from a search result to delete the note via `/api/delete`.",
+    responses={
+        200: {
+            "description": "Successful Response",
+            "links": {
+                "GetNoteById": {
+                    "operationId": "api_get_api_get_post",
+                    "requestBody": {
+                        "note_id": "$response.body#/0/id"
+                    },
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/get`."
+                },
+                "DeleteNoteById": {
+                    "operationId": "api_delete_api_delete_post",
+                    "requestBody": {
+                        "note_id": "$response.body#/0/id"
+                    },
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/delete`."
+                }
+            }
+        }
+    }
+)
+async def api_search(request: SearchRequest, token: str = Depends(verify_token)):
+    results = search_notes(request.query)
+    return results
+
+@app.post(
+    "/api/get",
+    response_model=GetResponse,
+    summary="Get Note",
+    description="Get the full content of a specific note by ID.\n\n**Workflow Examples**:\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content."
+)
+async def api_get(request: GetRequest, token: str = Depends(verify_token)):
+    result = get_note(request.note_id)
+    return result
+
+@app.post(
+    "/api/remember",
+    response_model=RememberResponse,
+    summary="Remember Note",
+    description="Remember a new note by storing its title and content.\n\n**Workflow Examples**:\n* **Remember -> Get**: Use the `id` from the response to fetch the newly created note via `/api/get`.\n* **Remember -> Delete**: Use the `id` from the response to delete the newly created note via `/api/delete`.",
+    responses={
+        200: {
+            "description": "Successful Response",
+            "links": {
+                "GetNoteById": {
+                    "operationId": "api_get_api_get_post",
+                    "requestBody": {
+                        "note_id": "$response.body#/id"
+                    },
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/get`."
+                },
+                "DeleteNoteById": {
+                    "operationId": "api_delete_api_delete_post",
+                    "requestBody": {
+                        "note_id": "$response.body#/id"
+                    },
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/delete`."
+                }
+            }
+        }
+    }
+)
+async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):
+    result = remember(request.title, request.content)
+    return result
+
+@app.post(
+    "/api/delete",
+    response_model=DeleteResponse,
+    summary="Delete Note",
+    description="Delete a note by ID.\n\n**Workflow Examples**:\n* **Search -> Delete**: Use `/api/search` to find notes, then pass the returned `id` here to delete them.\n* **Remember -> Delete**: Use `/api/remember` to create a note, then pass the returned `id` here to clean it up."
+)
+async def api_delete(request: DeleteRequest, token: str = Depends(verify_token)):
+    result = delete_note(request.note_id)
+    return result
+
+app.mount("/mcp-server", stateless_app)
+app.mount("/", fastmcp_app)
 
 if __name__ == "__main__":
     import sys

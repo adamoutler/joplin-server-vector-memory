@@ -7,6 +7,17 @@ const { JoplinSyncClient } = require('./sync');
 
 const app = express();
 app.use(cors());
+
+const { createProxyMiddleware } = require('http-proxy-middleware');
+const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+
+app.use('/docs', createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true, pathRewrite: { '^/docs': '/internal-docs' } }));
+app.use('/openapi.json', createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true, pathRewrite: { '^/openapi.json': '/internal-openapi.json' } }));
+app.use('/mcp-server', createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true }));
+app.use('/mcp-server-http', createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true }));
+app.use('/mcp', createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true }));
+app.use('/api', createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true }));
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
@@ -152,19 +163,27 @@ app.get('/', (req, res) => {
           </div>
           <div class="form-group">
             <label>Memory Server Address</label>
-            <input type="text" id="memoryServerAddress" placeholder="http://localhost:8000" required>
+            <input type="text" id="memoryServerAddress" placeholder="http://localhost:3000" required>
           </div>
           <button type="submit">Save & Validate</button>
           <div id="auth-msg" class="messages"></div>
         </form>
 
         <h2 style="margin-top: 2rem;">Local Access Token</h2>
-        <p>Copy this token into your <code>.gemini/settings.json</code> file.</p>
+        <p>Use this token for your MCP client configuration.</p>
         <div class="token-group">
           <input type="text" id="token" readonly>
           <button id="rotate-btn">Rotate Token</button>
         </div>
         <div id="token-msg" class="messages"></div>
+
+        <h2 style="margin-top: 2rem;">API Documentation</h2>
+        <div style="background: #f4f4f4; padding: 1rem; border-radius: 4px;">
+          <ul>
+            <li><a href="/docs" target="_blank" id="docs-link">Interactive API Docs (Swagger UI)</a></li>
+            <li><a href="/openapi.json" target="_blank" id="openapi-link">OpenAPI Schema</a></li>
+          </ul>
+        </div>
 
         <h2 style="margin-top: 2rem;">MCP Server Examples</h2>
         <div id="mcp-examples" style="display: none; background: #f4f4f4; padding: 1rem; border-radius: 4px;">
@@ -172,7 +191,7 @@ app.get('/', (req, res) => {
           <pre><code id="example-http"></code></pre>
           <h3>MCP API Address</h3>
           <pre><code id="example-mcp"></code></pre>
-          <h3>Gemini CLI Configuration</h3>
+          <h3>MCP Client Configuration Example</h3>
           <pre><code id="example-cli"></code></pre>
         </div>
       </div>
@@ -190,12 +209,21 @@ app.get('/', (req, res) => {
                if (!tokenEl.value) {
                  tokenEl.value = data.config.token;
                }
-               document.getElementById('serverUrl').value = data.config.joplinServerUrl || '';
-               document.getElementById('username').value = data.config.joplinUsername || '';
-               document.getElementById('memoryServerAddress').value = data.config.memoryServerAddress || '';
+               const updateIfInactive = (id, val) => {
+                 const el = document.getElementById(id);
+                 if (document.activeElement !== el && el.value === '') {
+                   el.value = val;
+                 } else if (document.activeElement !== el && el.value !== val) {
+                   el.value = val;
+                 }
+               };
+               
+               updateIfInactive('serverUrl', data.config.joplinServerUrl || '');
+               updateIfInactive('username', data.config.joplinUsername || '');
+               updateIfInactive('memoryServerAddress', data.config.memoryServerAddress || '');
                // don't populate password
                
-               const memAddr = data.config.memoryServerAddress || 'http://localhost:8000';
+               const memAddr = window.location.origin;
                document.getElementById('mcp-examples').style.display = 'block';
                document.getElementById('example-http').innerText = memAddr;
                document.getElementById('example-mcp').innerText = memAddr + '/mcp/http/api-key/mcp/sse';

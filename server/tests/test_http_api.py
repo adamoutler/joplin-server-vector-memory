@@ -101,23 +101,52 @@ def test_bad_requests(client, temp_config_and_db):
     
     # Test invalid JSON
     response = client.post("/api/search", content="not json", headers=headers)
-    assert response.status_code == 400
-    assert response.json() == {"error": "Invalid JSON"}
+    assert response.status_code == 422
     
     # Test missing parameters for each endpoint
     response = client.post("/api/search", json={"wrong_key": "apple"}, headers=headers)
-    assert response.status_code == 400
-    assert response.json() == {"error": "Missing query parameter"}
+    assert response.status_code == 422
     
     response = client.post("/api/get", json={"wrong_key": "123"}, headers=headers)
-    assert response.status_code == 400
-    assert response.json() == {"error": "Missing note_id parameter"}
+    assert response.status_code == 422
     
     response = client.post("/api/remember", json={"title": "T"}, headers=headers)
-    assert response.status_code == 400
-    assert response.json() == {"error": "Missing title or content parameter"}
+    assert response.status_code == 422
     
     response = client.post("/api/delete", json={"wrong_key": "123"}, headers=headers)
-    assert response.status_code == 400
-    assert response.json() == {"error": "Missing note_id parameter"}
+    assert response.status_code == 422
+
+def test_stateless_mcp_endpoint():
+    from src.main import app
+    from fastapi.testclient import TestClient
+    
+    # We must use TestClient in a context manager to trigger lifespan events
+    # which initializes the FastMCP task groups
+    with TestClient(app) as client:
+        # Test that the stateless endpoint accepts standard POST JSON-RPC requests
+        request_data = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "test-client",
+                    "version": "1.0.0"
+                }
+            },
+            "id": 1
+        }
+        
+        # We must provide the correct Accept header for json_response=True in FastMCP stateless
+        headers = {"Accept": "application/json"}
+        
+        response = client.post("/mcp-server/stateless", json=request_data, headers=headers)
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("jsonrpc") == "2.0"
+        assert "result" in data
+        assert data["result"]["serverInfo"]["name"] == "JoplinSemanticSearch"
+
 

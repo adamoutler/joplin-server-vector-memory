@@ -5,9 +5,9 @@ from unittest.mock import patch
 import sys
 
 # Ensure src module can be imported
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from main import get_config
+from src.main import get_config
 
 @pytest.fixture
 def mock_env(tmp_path):

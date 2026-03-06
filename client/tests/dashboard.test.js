@@ -56,6 +56,15 @@ describe('Dashboard Endpoints', () => {
     jest.restoreAllMocks();
   });
 
+  test('GET / returns dashboard HTML with API Documentation links', async () => {
+    fs.existsSync.mockReturnValue(false);
+    const response = await request(app).get('/').set('Authorization', authHeader);
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('href="/docs"');
+    expect(response.text).toContain('href="/openapi.json"');
+    expect(response.text).toContain('const memAddr = window.location.origin;');
+  });
+
   test('GET /status returns 401 if unauthenticated', async () => {
     const response = await request(app).get('/status');
     expect(response.status).toBe(401);

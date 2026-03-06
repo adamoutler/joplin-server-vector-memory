@@ -5,12 +5,10 @@ services:
     build:
       context: ./client
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
     environment:
-      - DASHBOARD_USER=${DASHBOARD_USER}
-      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
       - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
       - JOPLIN_USERNAME=${JOPLIN_USERNAME}
       - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
@@ -27,7 +25,7 @@ services:
       context: ./server
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000
     ports:
-      - "8001:8000"
+      - "${BACKEND_PORT:-8001}:8000"
     volumes:
       - ./data:/app/data
     environment:

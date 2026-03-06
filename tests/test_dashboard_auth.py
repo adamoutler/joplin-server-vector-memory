@@ -14,11 +14,14 @@ def node_server_port():
     return "3006"
 
 @pytest.fixture
-def node_server(node_server_port):
+def node_server(node_server_port, tmp_path):
     client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
     env = os.environ.copy()
     env["JOPLIN_SERVER_URL"] = "http://localhost:22300"
     env["PORT"] = node_server_port
+    env["DATA_DIR"] = str(tmp_path)
+    env.pop("JOPLIN_USERNAME", None)
+    env.pop("JOPLIN_PASSWORD", None)
     
     process = subprocess.Popen(
         ["node", "src/index.js"],
@@ -65,11 +68,14 @@ def test_dashboard_invalid_auth(ephemeral_joplin, node_server):
     resp = requests.get(f"{url}/status", headers=headers)
     assert resp.status_code == 401
 
-def test_dashboard_joplin_unreachable():
+def test_dashboard_joplin_unreachable(tmp_path):
     client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
     env = os.environ.copy()
     env["JOPLIN_SERVER_URL"] = "http://localhost:22301" # Wrong port!
     env["PORT"] = "3007"
+    env["DATA_DIR"] = str(tmp_path)
+    env.pop("JOPLIN_USERNAME", None)
+    env.pop("JOPLIN_PASSWORD", None)
     
     process = subprocess.Popen(
         ["node", "src/index.js"],
