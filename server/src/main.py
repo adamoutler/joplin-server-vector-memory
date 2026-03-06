@@ -248,8 +248,8 @@ app = FastAPI(
     title="Joplin Server Vector Memory API",
     description="API for semantic search and memory management with Joplin",
     version="1.0.0",
-    docs_url="/internal-docs",
-    openapi_url="/internal-openapi.json",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
     redoc_url=None,
     lifespan=lifespan
 )
