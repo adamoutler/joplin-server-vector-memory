@@ -44,23 +44,6 @@ The project will use a Jenkins pipeline for CI/CD:
 - **Build Receipt System**: Reports detailed build logs.
 - **Credential Injection**: Securely handles Joplin Server credentials, Master Password, and tokens.
 
-### The `git p` Protocol
-**MANDATORY**: Never use `git push` directly. Use `git p`.
-- This is a custom alias that runs `git push && ./jenkins/wait-for-receipt.sh`.
-- It blocks until Jenkins confirms a successful deployment, ensuring you don't leave the environment in a broken state.
-- **REMEMBER**: The job's not done till `git p` is run.
-
-> [!CAUTION]
-> **DEPLOYMENT VISIBILITY WARNING**: Because `git p` triggers deployment, **you will lose the response context of the `git p` command itself**.
-> 
-> **MANDATORY WORKFLOW**: 
-> 1. Stage and commit your changes in one turn (`git add ... && git commit -m "..."`).
-> 2. Execute `git p` as a separate, final turn.
-> 3. Before executing `git p`, you MUST explicitly state as your FINAL message to the user: 
-> "When I run `git p` I may lose context of this transaction."
-
----
-
 ## 5. Development & Testing
 
 ### Project Structure
@@ -118,7 +101,6 @@ To preserve the main context window for high-level planning and architectural de
 - Once approved, you delegate the execution of these tickets exclusively to the `quality_control_agent`.
 - You move issues along the Kanban chart as they progress.
 - **Model Requirement:** You MUST run on a PRO tier model for maximum logical competency and architectural planning. (Remind the user if you suspect you are running on a Flash model).
-- **Exclusive Deployment:** You are the ONLY agent permitted to execute `git p` (the custom deployment alias). Subagents are explicitly forbidden from pushing code.
 
 **The Delegation Flow:**
 Before assigning any tickets to the `quality_control_agent`, you MUST execute the following workflow:
