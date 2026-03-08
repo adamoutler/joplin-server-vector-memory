@@ -4,6 +4,12 @@ The **Joplin Server Vector Memory MCP** creates an AI-native semantic search eng
 
 This system bypasses the limitations of the traditional Joplin Web Clipper API by establishing an independent, "headless" sync target dedicated entirely to AI memory and vector retrieval.
 
+## Documentation Index
+
+- [Architecture Overview](ARCHITECTURE.md): Detailed breakdown of the system components and data flow.
+- [Setup Guide](SETUP.md): Step-by-step instructions for installation, configuration, and connecting AI agents.
+- [API Documentation](API.md): Comprehensive reference for the MCP capabilities and REST HTTP API.
+
 ## How It Works
 
 The architecture relies on a hybrid stack to manage synchronization, embedding, and AI interaction efficiently without breaking encryption guarantees.
