@@ -103,7 +103,7 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
         pytest.fail(f"Server failed to start. Stdout: {stdout.decode()} \n Stderr: {stderr.decode()}")
 
     
-    url = f"http://127.0.0.1:{port}/http-api/mcp/sse/sse"
+    url = f"http://127.0.0.1:{port}/http-api/mcp/sse/"
     
     try:
         async with sse_client(url) as (read, write):
@@ -170,3 +170,104 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
         server_process.wait()
         stdout, stderr = server_process.communicate()
         print("Uvicorn stderr:", stderr.decode())
+
+import requests
+
+def test_stateless_http_endpoint(mock_ollama_server, temp_db):
+    port = get_free_port()
+    env = os.environ.copy()
+    env["OLLAMA_URL"] = mock_ollama_server
+    env["SQLITE_DB_PATH"] = temp_db
+    env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    
+    server_process = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", str(port)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    
+    try:
+        ready = False
+        for i in range(20):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    ready = True
+                    break
+            except Exception:
+                time.sleep(0.5)
+        
+        assert ready, "Server failed to start"
+
+        # Valid initialization request
+        init_payload = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0.0"}},
+            "id": 1
+        }
+        
+        res = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless/", json=init_payload, timeout=2)
+        assert res.status_code == 200
+        data = res.json()
+        assert data.get("jsonrpc") == "2.0"
+        assert data.get("id") == 1
+        assert "serverInfo" in data.get("result", {})
+
+        # Negative test (bad JSON)
+        res_bad = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless/", data="invalid_json", headers={"Content-Type": "application/json"}, timeout=2)
+        assert res_bad.status_code == 400 or (res_bad.status_code == 200 and "error" in res_bad.json())
+
+    finally:
+        server_process.terminate()
+        server_process.wait()
+
+def test_streaming_http_endpoint(mock_ollama_server, temp_db):
+    port = get_free_port()
+    env = os.environ.copy()
+    env["OLLAMA_URL"] = mock_ollama_server
+    env["SQLITE_DB_PATH"] = temp_db
+    env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    
+    server_process = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", str(port)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    
+    try:
+        ready = False
+        for i in range(20):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    ready = True
+                    break
+            except Exception:
+                time.sleep(0.5)
+        
+        assert ready, "Server failed to start"
+
+        init_payload = {
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "test", "version": "1.0.0"}},
+            "id": 2
+        }
+        
+        # We need to send application/json but accept both
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+        }
+        
+        res = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stream/", json=init_payload, headers=headers, timeout=5)
+        assert res.status_code == 200
+        # Check if it streamed (transfer-encoding chunked or fastmcp JSON response)
+        content = res.content.decode()
+        assert "jsonrpc" in content
+        assert "id" in content
+
+    finally:
+        server_process.terminate()
+        server_process.wait()

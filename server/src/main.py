@@ -410,14 +410,7 @@ async def api_delete(request: DeleteRequest, token: str = Depends(verify_token))
 
 app.mount("/http-api/mcp/sse", fastmcp_app)
 app.mount("/http-api/mcp/stream", streamable_app)
-
-@app.api_route("/http-api/mcp", methods=["GET", "POST", "OPTIONS"])
-async def handle_mcp_stateless(request: Request):
-    # Proxy the request to stateless_app directly, forcing path to "/" to match its internal routing
-    # This avoids the Starlette Mount 307 redirect when accessed without a trailing slash
-    scope = dict(request.scope)
-    scope["path"] = "/"
-    return await stateless_app(scope, request.receive, request._send)
+app.mount("/http-api/mcp/stateless", stateless_app)
 
 
 class ForceAcceptJSONMiddleware:
@@ -425,13 +418,18 @@ class ForceAcceptJSONMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
-            headers = dict(scope.get("headers", []))
-            accept_key = b"accept"
-            accept_val = headers.get(accept_key, b"").decode("utf-8")
-            if not accept_val or accept_val == "*/*":
-                headers[accept_key] = b"application/json"
-                scope["headers"] = [(k, v) for k, v in headers.items()]
+        if scope["type"] == "http":
+            # Avoid 307 redirects for root endpoints when accessed without trailing slash
+            if scope["path"] in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]:
+                scope["path"] = scope["path"] + "/"
+                
+            if scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
+                headers = dict(scope.get("headers", []))
+                accept_key = b"accept"
+                accept_val = headers.get(accept_key, b"").decode("utf-8")
+                if not accept_val or accept_val == "*/*":
+                    headers[accept_key] = b"application/json"
+                    scope["headers"] = [(k, v) for k, v in headers.items()]
         await self.app(scope, receive, send)
 
 app = ForceAcceptJSONMiddleware(app)
