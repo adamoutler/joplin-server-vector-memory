@@ -34,14 +34,14 @@ def test_openapi_contains_workflow_links_and_examples():
     data = response.json()
     
     # Check for links in Search endpoint
-    search_responses = data["paths"]["/api/search"]["post"]["responses"]
+    search_responses = data["paths"]["/http-api/search"]["post"]["responses"]
     assert "links" in search_responses["200"]
     assert "GetNoteById" in search_responses["200"]["links"]
     assert "DeleteNoteById" in search_responses["200"]["links"]
-    assert search_responses["200"]["links"]["GetNoteById"]["operationId"] == "api_get_api_get_post"
+    assert search_responses["200"]["links"]["GetNoteById"]["operationId"] == "api_get_http_api_get_post"
 
     # Check for links in Remember endpoint
-    remember_responses = data["paths"]["/api/remember"]["post"]["responses"]
+    remember_responses = data["paths"]["/http-api/remember"]["post"]["responses"]
     assert "links" in remember_responses["200"]
     assert "GetNoteById" in remember_responses["200"]["links"]
     assert "DeleteNoteById" in remember_responses["200"]["links"]

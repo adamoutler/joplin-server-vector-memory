@@ -11,6 +11,9 @@ jest.mock('fs', () => {
     ...actualFs,
     existsSync: jest.fn(actualFs.existsSync),
     readFileSync: jest.fn(actualFs.readFileSync),
+    promises: {
+      readFile: jest.fn(async () => '{}')
+    },
     writeFileSync: jest.fn(),
     mkdirSync: jest.fn()
   };
@@ -34,7 +37,7 @@ describe('Dashboard Endpoints', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     fs.existsSync.mockReturnValue(false);
-    fs.readFileSync.mockReturnValue('{}');
+    fs.promises.readFile.mockResolvedValue('{}');
     global.fetch = jest.fn(async (url, options) => {
       if (url.endsWith('/api/sessions')) {
         const body = options?.body ? JSON.parse(options.body) : {};
@@ -56,13 +59,16 @@ describe('Dashboard Endpoints', () => {
     jest.restoreAllMocks();
   });
 
-  test('GET / returns dashboard HTML with API Documentation links', async () => {
+  test('GET / returns dashboard HTML with API Documentation links and MCP examples', async () => {
     fs.existsSync.mockReturnValue(false);
     const response = await request(app).get('/').set('Authorization', authHeader);
     expect(response.status).toBe(200);
     expect(response.text).toContain('href="/docs"');
     expect(response.text).toContain('href="/openapi.json"');
     expect(response.text).toContain('const memAddr = window.location.origin;');
+    expect(response.text).toContain('/http-api/');
+    expect(response.text).toContain('/http-api/mcp');
+    expect(response.text).toContain('/http-api/mcp/sse');
   });
 
   test('GET /status returns 401 if unauthenticated', async () => {
@@ -106,7 +112,7 @@ describe('Dashboard Endpoints', () => {
 
   test('GET /status uses local config to authenticate instantly without calling fetch', async () => {
     fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue(JSON.stringify({
+    fs.promises.readFile.mockResolvedValue(JSON.stringify({
       joplinUsername: 'localadmin',
       joplinPassword: 'localpassword'
     }));
@@ -123,7 +129,7 @@ describe('Dashboard Endpoints', () => {
 
   test('GET /status fails instantly if local config credentials do not match', async () => {
     fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue(JSON.stringify({
+    fs.promises.readFile.mockResolvedValue(JSON.stringify({
       joplinUsername: 'localadmin',
       joplinPassword: 'localpassword'
     }));
@@ -173,7 +179,7 @@ describe('Dashboard Endpoints', () => {
 
   test('POST /auth handles rotate token request', async () => {
     fs.existsSync.mockReturnValue(true);
-    fs.readFileSync.mockReturnValue('{"joplinServerUrl":"test"}');
+    fs.promises.readFile.mockResolvedValue('{"joplinServerUrl":"test"}');
 
     const response = await request(app)
       .post('/auth')
@@ -185,5 +191,12 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('token');
     expect(fs.writeFileSync).toHaveBeenCalled();
+  });
+
+  test('GET /llms.txt returns LLM instructions', async () => {
+    const response = await request(app).get('/llms.txt');
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('For AI Agents');
+    expect(response.text).toContain('Joplin Server Vector Memory');
   });
 });

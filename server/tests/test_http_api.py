@@ -49,11 +49,11 @@ def client():
 
 def test_unauthorized(client, temp_config_and_db):
     # Test without header
-    response = client.post("/api/search", json={"query": "test"})
+    response = client.post("/http-api/search", json={"query": "test"})
     assert response.status_code == 401
     
     # Test with wrong token
-    response = client.post("/api/search", json={"query": "test"}, headers={"Authorization": "Bearer wrong-token"})
+    response = client.post("/http-api/search", json={"query": "test"}, headers={"Authorization": "Bearer wrong-token"})
     assert response.status_code == 401
 
 def test_authorized_flow(client, temp_config_and_db, mock_ollama):
@@ -61,7 +61,7 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     headers = {"Authorization": f"Bearer {token}"}
     
     # 1. Remember
-    response = client.post("/api/remember", json={"title": "Apple Recipe", "content": "How to make apple pie"}, headers=headers)
+    response = client.post("/http-api/remember", json={"title": "Apple Recipe", "content": "How to make apple pie"}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data.get("status") == "success"
@@ -69,7 +69,7 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     assert note_id is not None
     
     # 2. Get
-    response = client.post("/api/get", json={"note_id": note_id}, headers=headers)
+    response = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data.get("id") == note_id
@@ -77,20 +77,20 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     assert data.get("content") == "How to make apple pie"
     
     # 3. Search
-    response = client.post("/api/search", json={"query": "apple"}, headers=headers)
+    response = client.post("/http-api/search", json={"query": "apple"}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data) > 0
     assert data[0].get("id") == note_id
     
     # 4. Delete
-    response = client.post("/api/delete", json={"note_id": note_id}, headers=headers)
+    response = client.post("/http-api/delete", json={"note_id": note_id}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data.get("status") == "success"
     
     # Verify deletion
-    response = client.post("/api/get", json={"note_id": note_id}, headers=headers)
+    response = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert data.get("error") == "Note not found"
@@ -100,30 +100,65 @@ def test_bad_requests(client, temp_config_and_db):
     headers = {"Authorization": f"Bearer {token}"}
     
     # Test invalid JSON
-    response = client.post("/api/search", content="not json", headers=headers)
+    response = client.post("/http-api/search", content="not json", headers=headers)
     assert response.status_code == 422
     
     # Test missing parameters for each endpoint
-    response = client.post("/api/search", json={"wrong_key": "apple"}, headers=headers)
+    response = client.post("/http-api/search", json={"wrong_key": "apple"}, headers=headers)
     assert response.status_code == 422
     
-    response = client.post("/api/get", json={"wrong_key": "123"}, headers=headers)
+    response = client.post("/http-api/get", json={"wrong_key": "123"}, headers=headers)
     assert response.status_code == 422
     
-    response = client.post("/api/remember", json={"title": "T"}, headers=headers)
+    response = client.post("/http-api/remember", json={"title": "T"}, headers=headers)
     assert response.status_code == 422
     
-    response = client.post("/api/delete", json={"wrong_key": "123"}, headers=headers)
+    response = client.post("/http-api/delete", json={"wrong_key": "123"}, headers=headers)
     assert response.status_code == 422
 
-def test_stateless_mcp_endpoint():
-    from src.main import app
-    from fastapi.testclient import TestClient
+def test_stateless_mcp_endpoint(temp_config_and_db):
+    import subprocess
+    import sys
+    import time
+    import socket
+    import requests
     
-    # We must use TestClient in a context manager to trigger lifespan events
-    # which initializes the FastMCP task groups
-    with TestClient(app) as client:
-        # Test that the stateless endpoint accepts standard POST JSON-RPC requests
+    def get_free_port():
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(('', 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
+    port = get_free_port()
+    conf_path, db_path, _ = temp_config_and_db
+    env = os.environ.copy()
+    env["SQLITE_DB_PATH"] = db_path
+    env["CONFIG_PATH"] = conf_path
+    env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    
+    server_process = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", str(port)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
+    
+    try:
+        ready = False
+        for _ in range(20):
+            try:
+                with socket.create_connection(("127.0.0.1", port), timeout=1):
+                    ready = True
+                    break
+            except Exception:
+                time.sleep(0.5)
+        
+        if not ready:
+            server_process.terminate()
+            stdout, stderr = server_process.communicate()
+            pytest.fail(f"Server failed to start. Stdout: {stdout.decode()} \n Stderr: {stderr.decode()}")
+            
         request_data = {
             "jsonrpc": "2.0",
             "method": "initialize",
@@ -138,15 +173,20 @@ def test_stateless_mcp_endpoint():
             "id": 1
         }
         
-        # We must provide the correct Accept header for json_response=True in FastMCP stateless
         headers = {"Accept": "application/json"}
         
-        response = client.post("/mcp-server/stateless", json=request_data, headers=headers)
-        
-        assert response.status_code == 200
+        # Test 1: no trailing slash, no redirect
+        response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp", json=request_data, headers=headers, allow_redirects=False)
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}. Response: {response.text}"
         data = response.json()
         assert data.get("jsonrpc") == "2.0"
         assert "result" in data
         assert data["result"]["serverInfo"]["name"] == "JoplinSemanticSearch"
+        
+        # Test 2: with trailing slash (if it exists, though Starlette app.api_route might strictly match without slash if we didn't add the path:path parameter, but let's test it)
+        # We only explicitly need to ensure that the core mcp endpoint works without throwing 404/307
+    finally:
+        server_process.terminate()
+        server_process.wait()
 
 

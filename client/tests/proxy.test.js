@@ -1,12 +1,28 @@
 const request = require('supertest');
 const express = require('express');
+const fs = require('fs');
+
+jest.mock('fs', () => {
+  const actualFs = jest.requireActual('fs');
+  return {
+    ...actualFs,
+    existsSync: jest.fn(actualFs.existsSync),
+    promises: {
+      readFile: jest.fn(async () => '{}')
+    }
+  };
+});
 
 // We will test the app by mocking http-proxy-middleware
 jest.mock('http-proxy-middleware', () => {
   return {
-    createProxyMiddleware: jest.fn(() => {
+    createProxyMiddleware: jest.fn((options) => {
       return (req, res, next) => {
-        res.status(200).json({ proxied: true, path: req.path });
+        if (req.path.startsWith(options.pathFilter)) {
+          res.status(200).json({ proxied: true, path: req.path });
+        } else {
+          next();
+        }
       };
     })
   };
@@ -39,10 +55,9 @@ describe('Proxy Routes', () => {
 
   const proxyRoutes = [
     '/openapi.json',
-    '/api/some-endpoint',
-    '/mcp-server/sse',
-    '/mcp-server-http/mcp',
-    '/mcp/http/api-key/mcp/sse'
+    '/http-api/some-endpoint',
+    '/http-api/mcp',
+    '/http-api/mcp/sse'
   ];
 
   test.each(proxyRoutes)('should proxy route %s', async (route) => {
@@ -57,5 +72,17 @@ describe('Proxy Routes', () => {
     const response = await request(app).get('/docs/');
     expect(response.status).toBe(200);
     expect(response.body.proxied).toBe(true);
+  });
+
+  test('should enforce auth if JOPLIN_SERVER_URL is in config but missing from env', async () => {
+    // Make fs.existsSync return true
+    fs.existsSync.mockReturnValue(true);
+    // Return a fake config
+    fs.promises.readFile.mockResolvedValue(JSON.stringify({ joplinServerUrl: 'http://test.joplin' }));
+    
+    // Send request without auth header
+    const response = await request(app).get('/status');
+    expect(response.status).toBe(401);
+    expect(response.text).toContain('Authentication required');
   });
 });

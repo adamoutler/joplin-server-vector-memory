@@ -13,10 +13,18 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 app.use(createProxyMiddleware({ pathFilter: '/docs', target: BACKEND_URL, changeOrigin: true }));
 app.use(createProxyMiddleware({ pathFilter: '/openapi.json', target: BACKEND_URL, changeOrigin: true }));
-app.use(createProxyMiddleware({ pathFilter: '/mcp-server', target: BACKEND_URL, changeOrigin: true }));
-app.use(createProxyMiddleware({ pathFilter: '/mcp-server-http', target: BACKEND_URL, changeOrigin: true }));
-app.use(createProxyMiddleware({ pathFilter: '/mcp', target: BACKEND_URL, changeOrigin: true }));
-app.use(createProxyMiddleware({ pathFilter: '/api', target: BACKEND_URL, changeOrigin: true }));
+app.use('/http-api/mcp', (req, res, next) => {
+  if (!req.headers.accept || req.headers.accept === '*/*') {
+    req.headers.accept = 'application/json';
+  }
+  next();
+});
+app.use(createProxyMiddleware({
+  pathFilter: '/http-api',
+  target: BACKEND_URL,
+  changeOrigin: true,
+  pathRewrite: { '^/http-api': '' }
+}));
 
 app.use(express.json());
 
@@ -29,11 +37,88 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+app.get('/llms.txt', (req, res) => {
+  const hostUrl = `${req.protocol}://${req.get('host')}`;
+  res.type('text/plain').send(`# For Humans
+To set up MCP access for your AI Agent:
+
+1. Tell it to "Please go here and set up MCP. Ask me for the backend API port! <link to this page>"
+-or-
+2. Copy and paste the contents of this page and let it know your API token and Backend API Port (usually 8000 or 8001).
+
+---
+
+# For AI Agents: Joplin Server Vector Memory MCP Setup
+
+Joplin Server Vector Memory acts as a secure, local bridge for End-to-End Encrypted Joplin notes. Connect to its **MCP (Model Context Protocol) server** for live access to semantic search, read full notes, and trigger memory creation/deletion.
+
+## 1. Gather Connection Details
+Ask the user for the following if not provided:
+1. **API Token:** Found on the dashboard index (/).
+2. **Backend API Port:** ⚠️ **CRITICAL INSTRUCTION** ⚠️ Do NOT use the port you are currently reading this from (e.g., port 3000). The current port is exclusively for the dashboard UI and proxy. The actual MCP backend runs on a separate port (usually 8000 or 8001). **You must ask the user what the backend API port is before proceeding.**
+
+Construct the **MCP Base URL** using the host from this page but replacing the port with the Backend API Port provided by the user. (e.g. http://localhost:<BACKEND_PORT>).
+
+## 2. Configure MCP Client
+Use the gathered details to configure your connection. 
+
+**Option A: Stateless HTTP (Recommended for CLI agents like Gemini CLI)**
+\`\`\`json
+{
+  "mcpServers": {
+    "joplin_memory": {
+      "url": "http://<HOST>:<BACKEND_PORT>/http-api/mcp",
+      "headers": {
+        "Authorization": "Bearer <API_TOKEN>"
+      }
+    }
+  }
+}
+\`\`\`
+
+**Option B: Streamable SSE (For IDEs like Cursor/Cline)**
+\`\`\`json
+{
+  "mcpServers": {
+    "joplin_memory": {
+      "url": "http://<HOST>:<BACKEND_PORT>/http-api/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer <API_TOKEN>"
+      }
+    }
+  }
+}
+\`\`\`
+
+## 3. Capabilities
+Once connected, you can:
+- \`search_notes\`: Search notes semantically using a query.
+- \`get_note\`: Fetch full note content by ID.
+- \`remember\`: Save a new note into the memory bank.
+- \`delete_note\`: Delete a note by ID.
+`);
+});
+
+
 const authCache = new Map();
 const AUTH_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
 app.use(async (req, res, next) => {
-  const joplinUrl = process.env.JOPLIN_SERVER_URL;
+  let joplinUrl = process.env.JOPLIN_SERVER_URL;
+  let proxyConfig = null;
+
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
+      proxyConfig = JSON.parse(data);
+      if (!joplinUrl && proxyConfig.joplinServerUrl) {
+        joplinUrl = proxyConfig.joplinServerUrl;
+      }
+    } catch(e) {
+      // ignore parse errors
+    }
+  }
+
   if (!joplinUrl) {
     return next();
   }
@@ -65,21 +150,14 @@ app.use(async (req, res, next) => {
   const reqPass = auth.slice(1).join(':');
 
   // Check local config first
-  if (fs.existsSync(CONFIG_PATH)) {
-    try {
-      const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-      if (config.joplinUsername && config.joplinPassword) {
-        if (reqUser === config.joplinUsername && reqPass === config.joplinPassword) {
-          authCache.set(base64Credentials, now);
-          return next();
-        } else {
-          authCache.delete(base64Credentials);
-          res.setHeader('WWW-Authenticate', 'Basic');
-          return res.status(401).send('Authentication required.');
-        }
-      }
-    } catch(e) {
-      // ignore parse errors and fallback
+  if (proxyConfig && proxyConfig.joplinUsername && proxyConfig.joplinPassword) {
+    if (reqUser === proxyConfig.joplinUsername && reqPass === proxyConfig.joplinPassword) {
+      authCache.set(base64Credentials, now);
+      return next();
+    } else {
+      authCache.delete(base64Credentials);
+      res.setHeader('WWW-Authenticate', 'Basic');
+      return res.status(401).send('Authentication required.');
     }
   }
 
@@ -107,213 +185,17 @@ app.use(async (req, res, next) => {
 let syncStatus = 'ready'; // ready, syncing, error
 let syncClient = null;
 
+app.use(express.static(path.join(__dirname, '../public')));
 app.get('/', (req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>Joplin Memory Server Dashboard</title>
-      <style>
-        body { font-family: sans-serif; margin: 2rem; max-width: 600px; background: #f9f9f9; color: #333; }
-        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h1, h2 { color: #0056b3; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
-        button { padding: 0.75rem 1.5rem; background: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
-        button:hover { background: #004494; }
-        .status { margin-bottom: 2rem; padding: 1rem; background: #e9ecef; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
-        .status h2 { margin: 0; font-size: 1.25rem; color: #333; }
-        #status-text { font-weight: bold; text-transform: uppercase; }
-        .status-ready { color: green; }
-        .status-syncing { color: orange; }
-        .status-error { color: red; }
-        .status-offline { color: gray; }
-        .token-group { display: flex; gap: 1rem; align-items: center; }
-        #token { flex-grow: 1; font-family: monospace; background: #f4f4f4; cursor: text; }
-        .messages { margin-top: 1rem; font-weight: bold; }
-        .error { color: red; }
-        .success { color: green; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>Joplin Memory Server Dashboard</h1>
-        <div class="status">
-          <h2>Sync Status: <span id="status-text" class="status-offline">Offline</span></h2>
-        </div>
-        
-        <h2>Configuration</h2>
-        <form id="auth-form">
-          <div class="form-group">
-            <label>Joplin Server URL</label>
-            <input type="text" id="serverUrl" placeholder="https://joplin.yourdomain.com" required>
-          </div>
-          <div class="form-group">
-            <label>Username (Email)</label>
-            <input type="text" id="username" placeholder="user@example.com" required>
-          </div>
-          <div class="form-group">
-            <label>Password</label>
-            <input type="password" id="password" required>
-          </div>
-          <div class="form-group">
-            <label>Master Password (Optional, for E2EE)</label>
-            <input type="password" id="masterPassword">
-          </div>
-          <div class="form-group">
-            <label>Memory Server Address</label>
-            <input type="text" id="memoryServerAddress" placeholder="http://localhost:3000" required>
-          </div>
-          <button type="submit">Save & Validate</button>
-          <div id="auth-msg" class="messages"></div>
-        </form>
-
-        <h2 style="margin-top: 2rem;">Local Access Token</h2>
-        <p>Use this token for your MCP client configuration.</p>
-        <div class="token-group">
-          <input type="text" id="token" readonly>
-          <button id="rotate-btn">Rotate Token</button>
-        </div>
-        <div id="token-msg" class="messages"></div>
-
-        <h2 style="margin-top: 2rem;">API Documentation</h2>
-        <div style="background: #f4f4f4; padding: 1rem; border-radius: 4px;">
-          <ul>
-            <li><a href="/docs" target="_blank" id="docs-link">Interactive API Docs (Swagger UI)</a></li>
-            <li><a href="/openapi.json" target="_blank" id="openapi-link">OpenAPI Schema</a></li>
-          </ul>
-        </div>
-
-        <h2 style="margin-top: 2rem;">MCP Server Examples</h2>
-        <div id="mcp-examples" style="display: none; background: #f4f4f4; padding: 1rem; border-radius: 4px;">
-          <h3>HTTP API Address</h3>
-          <pre><code id="example-http"></code></pre>
-          <h3>MCP API Address</h3>
-          <pre><code id="example-mcp"></code></pre>
-          <h3>MCP Client Configuration Example</h3>
-          <pre><code id="example-cli"></code></pre>
-        </div>
-      </div>
-
-      <script>
-        async function fetchStatus() {
-          try {
-            const res = await fetch('/status');
-            const data = await res.json();
-            const el = document.getElementById('status-text');
-            el.innerText = data.status;
-            el.className = 'status-' + data.status;
-            if (data.config && data.config.token) {
-               const tokenEl = document.getElementById('token');
-               if (!tokenEl.value) {
-                 tokenEl.value = data.config.token;
-               }
-               const updateIfInactive = (id, val) => {
-                 const el = document.getElementById(id);
-                 if (document.activeElement !== el && el.value === '') {
-                   el.value = val;
-                 } else if (document.activeElement !== el && el.value !== val) {
-                   el.value = val;
-                 }
-               };
-               
-               updateIfInactive('serverUrl', data.config.joplinServerUrl || '');
-               updateIfInactive('username', data.config.joplinUsername || '');
-               updateIfInactive('memoryServerAddress', data.config.memoryServerAddress || '');
-               // don't populate password
-               
-               const memAddr = window.location.origin;
-               document.getElementById('mcp-examples').style.display = 'block';
-               document.getElementById('example-http').innerText = memAddr;
-               document.getElementById('example-mcp').innerText = memAddr + '/mcp/http/api-key/mcp/sse';
-               document.getElementById('example-cli').innerText = JSON.stringify({
-                 "mcpServers": {
-                   "joplin_memory": {
-                     "url": memAddr + "/mcp/http/api-key/mcp/sse",
-                     "headers": {
-                       "Authorization": "Bearer " + data.config.token
-                     }
-                   }
-                 }
-               }, null, 2);
-            }
-          } catch(e) {
-            const el = document.getElementById('status-text');
-            el.innerText = 'offline';
-            el.className = 'status-offline';
-          }
-        }
-        setInterval(fetchStatus, 5000);
-        fetchStatus();
-
-        document.getElementById('auth-form').addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const serverUrl = document.getElementById('serverUrl').value;
-          const username = document.getElementById('username').value;
-          const password = document.getElementById('password').value;
-          const masterPassword = document.getElementById('masterPassword').value;
-          const memoryServerAddress = document.getElementById('memoryServerAddress').value;
-          const msgEl = document.getElementById('auth-msg');
-          msgEl.innerText = 'Validating...';
-          msgEl.className = 'messages';
-          
-          try {
-            const res = await fetch('/auth', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ serverUrl, username, password, masterPassword, memoryServerAddress })
-            });
-            const data = await res.json();
-            if (res.ok) {
-              msgEl.innerText = 'Saved successfully!';
-              msgEl.className = 'messages success';
-              document.getElementById('token').value = data.token;
-              fetchStatus(); // refresh status which might be syncing now
-            } else {
-              msgEl.innerText = 'Error: ' + data.error;
-              msgEl.className = 'messages error';
-            }
-          } catch(err) {
-            msgEl.innerText = 'Network error: ' + err.message;
-            msgEl.className = 'messages error';
-          }
-        });
-
-        document.getElementById('rotate-btn').addEventListener('click', async () => {
-          const msgEl = document.getElementById('token-msg');
-          try {
-            const res = await fetch('/auth', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ rotate: true })
-            });
-            const data = await res.json();
-            if (res.ok) {
-              document.getElementById('token').value = data.token;
-              msgEl.innerText = 'Token rotated successfully.';
-              msgEl.className = 'messages success';
-              setTimeout(() => msgEl.innerText = '', 3000);
-            } else {
-              msgEl.innerText = 'Error: ' + data.error;
-              msgEl.className = 'messages error';
-            }
-          } catch(err) {
-            msgEl.innerText = 'Network error: ' + err.message;
-            msgEl.className = 'messages error';
-          }
-        });
-      </script>
-    </body>
-    </html>
-  `);
+  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
-app.get('/status', (req, res) => {
+app.get('/status', async (req, res) => {
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
     try {
-      config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
+      config = JSON.parse(data);
       // omit sensitive data
       delete config.joplinPassword;
       delete config.joplinMasterPassword;
@@ -328,7 +210,8 @@ app.post('/auth', async (req, res) => {
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
     try {
-      config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+      const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
+      config = JSON.parse(data);
     } catch(e) {}
   }
 
@@ -429,18 +312,21 @@ async function startSync(config) {
     syncStatus = 'error';
   }
 }
-
 // Start on boot if config exists
 if (fs.existsSync(CONFIG_PATH)) {
-  try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    if (config.joplinServerUrl && config.joplinUsername && config.joplinPassword) {
-      // Use setImmediate to let the server start first
-      setImmediate(() => startSync(config));
+  fs.promises.readFile(CONFIG_PATH, 'utf8').then(data => {
+    try {
+      const config = JSON.parse(data);
+      if (config.joplinServerUrl && config.joplinUsername && config.joplinPassword) {
+        // Use setImmediate to let the server start first
+        setImmediate(() => startSync(config));
+      }
+    } catch(e) {
+      console.error('Failed to auto-start sync:', e);
     }
-  } catch(e) {
-    console.error('Failed to parse config on boot:', e);
-  }
+  }).catch(e => {
+    console.error('Failed to read config on boot:', e);
+  });
 } else if (process.env.JOPLIN_SERVER_URL && process.env.JOPLIN_USERNAME && process.env.JOPLIN_PASSWORD) {
    // Fallback to env vars for initial config
    const initialConfig = {
@@ -457,6 +343,7 @@ if (fs.existsSync(CONFIG_PATH)) {
    }
    setImmediate(() => startSync(initialConfig));
 }
+
 
 if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => {

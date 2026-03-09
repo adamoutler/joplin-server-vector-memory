@@ -104,3 +104,53 @@ def test_delete_nonexistent_note(temp_db):
 def test_get_nonexistent_note(temp_db):
     result = get_note("nonexistent_id")
     assert result.get("error") == "Note not found"
+
+def test_config_caching():
+    from src.main import get_config, verify_token
+    import src.main as main_module
+    import time
+    import json
+    from fastapi.security import HTTPAuthorizationCredentials
+    
+    # Reset cache for testing
+    main_module._config_cache = {}
+    main_module._config_mtime = 0
+    
+    fd, path = tempfile.mkstemp()
+    with open(path, "w") as f:
+        json.dump({"token": "test-token", "ollamaUrl": "http://test-url", "embeddingModel": "test-model"}, f)
+    
+    os.environ["CONFIG_PATH"] = path
+    
+    # First call, should read from file
+    with patch("builtins.open", side_effect=open) as mock_open:
+        config1 = get_config()
+        assert config1["ollama_url"] == "http://test-url"
+        assert mock_open.call_count >= 1
+        initial_call_count = mock_open.call_count
+        
+        # Second call, should use cache
+        config2 = get_config()
+        assert mock_open.call_count == initial_call_count
+        
+    # Modify the file and its modification time
+    new_time = time.time() + 10
+    with open(path, "w") as f:
+        json.dump({"token": "new-token", "ollamaUrl": "http://new-url", "embeddingModel": "test-model"}, f)
+    os.utime(path, (new_time, new_time))
+            
+    with patch("builtins.open", side_effect=open) as mock_open:
+        # Third call, should reload because mtime changed
+        config3 = get_config()
+        assert config3["ollama_url"] == "http://new-url"
+        assert mock_open.call_count >= 1
+        reload_call_count = mock_open.call_count
+        
+        # Check verify_token uses the same cache
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="new-token")
+        token = verify_token(creds)
+        assert token == "new-token"
+        assert mock_open.call_count == reload_call_count # No new reads
+        
+    os.close(fd)
+    os.remove(path)

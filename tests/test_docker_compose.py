@@ -7,13 +7,10 @@ def test_docker_compose_ports_parameterized():
     with open("docker-compose.yml", "r") as f:
         compose_content = yaml.safe_load(f)
 
-    # Check client service ports
-    client_ports = compose_content.get("services", {}).get("client", {}).get("ports", [])
-    assert any("${FRONTEND_PORT" in port for port in client_ports), "FRONTEND_PORT not parameterized in client service"
-
-    # Check server service ports
-    server_ports = compose_content.get("services", {}).get("server", {}).get("ports", [])
-    assert any("${BACKEND_PORT" in port for port in server_ports), "BACKEND_PORT not parameterized in server service"
+    # Check app service ports
+    app_ports = compose_content.get("services", {}).get("app", {}).get("ports", [])
+    assert any("${FRONTEND_PORT" in port for port in app_ports), "FRONTEND_PORT not parameterized in app service"
+    assert any("${BACKEND_PORT" in port for port in app_ports), "BACKEND_PORT not parameterized in app service"
 
 def test_docker_compose_config_with_env():
     # Test that running docker compose config with specific env vars correctly assigns ports
@@ -31,10 +28,7 @@ def test_docker_compose_config_with_env():
 
     parsed_config = yaml.safe_load(result.stdout)
     
-    # Check client port parsing
-    client_ports = parsed_config.get("services", {}).get("client", {}).get("ports", [])
-    assert any(str(port.get("published", "")) == "3333" for port in client_ports), "FRONTEND_PORT not correctly interpreted by docker compose"
-
-    # Check server port parsing
-    server_ports = parsed_config.get("services", {}).get("server", {}).get("ports", [])
-    assert any(str(port.get("published", "")) == "8888" for port in server_ports), "BACKEND_PORT not correctly interpreted by docker compose"
+    # Check app port parsing
+    app_ports = parsed_config.get("services", {}).get("app", {}).get("ports", [])
+    assert any(str(port.get("published", "")) == "3333" for port in app_ports), "FRONTEND_PORT not correctly interpreted by docker compose"
+    assert any(str(port.get("published", "")) == "8888" for port in app_ports), "BACKEND_PORT not correctly interpreted by docker compose"

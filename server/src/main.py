@@ -4,6 +4,7 @@ import json
 import uuid
 import logging
 import os
+from starlette.datastructures import MutableHeaders
 from src.db import get_db_connection
 from sqlite_vec import serialize_float32
 
@@ -14,15 +15,30 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("JoplinSemanticSearch")
 
-def get_config() -> dict:
-    config = {}
+_config_cache = {}
+_config_mtime = 0
+
+def _load_config_file() -> dict:
+    """
+    Load config.json from disk, caching the result.
+    The cache is invalidated if the file's modification time changes.
+    """
+    global _config_cache, _config_mtime
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     try:
         if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                config = json.load(f)
+            mtime = os.path.getmtime(config_path)
+            # Reload if file is newer than our cached version
+            if mtime > _config_mtime:
+                with open(config_path, "r") as f:
+                    _config_cache = json.load(f)
+                _config_mtime = mtime
     except Exception as e:
         logger.error(f"Error reading config.json: {e}")
+    return _config_cache
+
+def get_config() -> dict:
+    config = _load_config_file()
     
     return {
         "ollama_url": config.get("ollamaUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL", "http://localhost:11434"))),
@@ -269,13 +285,10 @@ security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     valid_token = None
     try:
-        if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                config = json.load(f)
-                valid_token = config.get("token")
+        config = _load_config_file()
+        valid_token = config.get("token")
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
         
@@ -288,14 +301,16 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     return token
 
 # Create the Starlette/ASGI app for uvicorn
-fastmcp_app = mcp.http_app(transport='sse')
-stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/stateless", json_response=True)
+fastmcp_app = mcp.http_app(transport='sse', path="/")
+stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/", json_response=True)
+streamable_app = mcp.http_app(transport='streamable-http', path="/")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with fastmcp_app.router.lifespan_context(app):
         async with stateless_app.router.lifespan_context(app):
-            yield
+            async with streamable_app.router.lifespan_context(app):
+                yield
 
 app = FastAPI(
     title="Joplin Server Vector Memory API",
@@ -312,7 +327,7 @@ async def root():
     return {"message": "Joplin Server Vector Memory API is running. Access MCP at / or /mcp-server/stateless."}
 
 @app.post(
-    "/api/search",
+    "/http-api/search",
     response_model=List[SearchResponseItem],
     summary="Search Notes",
     description="Search notes semantically using the provided query.\n\n**Workflow Examples**:\n* **Search -> Get**: Use the `id` from a search result to fetch the full note content via `/api/get`.\n* **Search -> Delete**: Use the `id` from a search result to delete the note via `/api/delete`.",
@@ -321,18 +336,18 @@ async def root():
             "description": "Successful Response",
             "links": {
                 "GetNoteById": {
-                    "operationId": "api_get_api_get_post",
+                    "operationId": "api_get_http_api_get_post",
                     "requestBody": {
                         "note_id": "$response.body#/0/id"
                     },
-                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/get`."
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/get`."
                 },
                 "DeleteNoteById": {
-                    "operationId": "api_delete_api_delete_post",
+                    "operationId": "api_delete_http_api_delete_post",
                     "requestBody": {
                         "note_id": "$response.body#/0/id"
                     },
-                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/delete`."
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/delete`."
                 }
             }
         }
@@ -343,7 +358,7 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
     return results
 
 @app.post(
-    "/api/get",
+    "/http-api/get",
     response_model=GetResponse,
     summary="Get Note",
     description="Get the full content of a specific note by ID.\n\n**Workflow Examples**:\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content."
@@ -353,7 +368,7 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):
     return result
 
 @app.post(
-    "/api/remember",
+    "/http-api/remember",
     response_model=RememberResponse,
     summary="Remember Note",
     description="Remember a new note by storing its title and content.\n\n**Workflow Examples**:\n* **Remember -> Get**: Use the `id` from the response to fetch the newly created note via `/api/get`.\n* **Remember -> Delete**: Use the `id` from the response to delete the newly created note via `/api/delete`.",
@@ -362,18 +377,18 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):
             "description": "Successful Response",
             "links": {
                 "GetNoteById": {
-                    "operationId": "api_get_api_get_post",
+                    "operationId": "api_get_http_api_get_post",
                     "requestBody": {
                         "note_id": "$response.body#/id"
                     },
-                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/get`."
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/get`."
                 },
                 "DeleteNoteById": {
-                    "operationId": "api_delete_api_delete_post",
+                    "operationId": "api_delete_http_api_delete_post",
                     "requestBody": {
                         "note_id": "$response.body#/id"
                     },
-                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /api/delete`."
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/delete`."
                 }
             }
         }
@@ -384,7 +399,7 @@ async def api_remember(request: RememberRequest, token: str = Depends(verify_tok
     return result
 
 @app.post(
-    "/api/delete",
+    "/http-api/delete",
     response_model=DeleteResponse,
     summary="Delete Note",
     description="Delete a note by ID.\n\n**Workflow Examples**:\n* **Search -> Delete**: Use `/api/search` to find notes, then pass the returned `id` here to delete them.\n* **Remember -> Delete**: Use `/api/remember` to create a note, then pass the returned `id` here to clean it up."
@@ -393,8 +408,33 @@ async def api_delete(request: DeleteRequest, token: str = Depends(verify_token))
     result = delete_note(request.note_id)
     return result
 
-app.mount("/mcp-server", stateless_app)
-app.mount("/", fastmcp_app)
+app.mount("/http-api/mcp/sse", fastmcp_app)
+app.mount("/http-api/mcp/stream", streamable_app)
+
+@app.api_route("/http-api/mcp", methods=["GET", "POST", "OPTIONS"])
+async def handle_mcp_stateless(request: Request):
+    # Proxy the request to stateless_app directly, forcing path to "/" to match its internal routing
+    # This avoids the Starlette Mount 307 redirect when accessed without a trailing slash
+    scope = dict(request.scope)
+    scope["path"] = "/"
+    return await stateless_app(scope, request.receive, request._send)
+
+
+class ForceAcceptJSONMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
+            headers = dict(scope.get("headers", []))
+            accept_key = b"accept"
+            accept_val = headers.get(accept_key, b"").decode("utf-8")
+            if not accept_val or accept_val == "*/*":
+                headers[accept_key] = b"application/json"
+                scope["headers"] = [(k, v) for k, v in headers.items()]
+        await self.app(scope, receive, send)
+
+app = ForceAcceptJSONMiddleware(app)
 
 if __name__ == "__main__":
     import sys

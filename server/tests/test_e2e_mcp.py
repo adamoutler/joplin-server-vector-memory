@@ -73,8 +73,6 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
     env = os.environ.copy()
     env["OLLAMA_URL"] = mock_ollama_server
     env["SQLITE_DB_PATH"] = temp_db
-    env["FASTMCP_MESSAGE_PATH"] = "/mcp/http/api-key/mcp/messages"
-    env["FASTMCP_SSE_PATH"] = "/mcp/http/api-key/mcp/sse"
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     
     server_process = subprocess.Popen(
@@ -91,7 +89,7 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
     ready = False
     for i in range(20):
         try:
-            # We can check the /docs or /mcp/http/api-key/mcp/sse or just root, but fastmcp might not have root.
+            # We can check the /docs or /http-api/mcp/sse/sse or just root, but fastmcp might not have root.
             # Just opening a TCP connection to the port is enough
             with socket.create_connection(("127.0.0.1", port), timeout=1):
                 ready = True
@@ -105,7 +103,7 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
         pytest.fail(f"Server failed to start. Stdout: {stdout.decode()} \n Stderr: {stderr.decode()}")
 
     
-    url = f"http://127.0.0.1:{port}/mcp/http/api-key/mcp/sse"
+    url = f"http://127.0.0.1:{port}/http-api/mcp/sse/sse"
     
     try:
         async with sse_client(url) as (read, write):
@@ -167,6 +165,8 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
                     
                 assert not any(note.get("id") == note_id for note in search_data_2)
     finally:
+        # Clean up
         server_process.terminate()
         server_process.wait()
-
+        stdout, stderr = server_process.communicate()
+        print("Uvicorn stderr:", stderr.decode())

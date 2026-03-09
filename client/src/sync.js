@@ -205,12 +205,13 @@ class JoplinSyncClient extends EventEmitter {
     });
   }
 
-  getConfig() {
+  async getConfig() {
     let config = {};
     const configPath = process.env.CONFIG_PATH || '/app/data/config.json';
     try {
       if (fs.existsSync(configPath)) {
-        config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const data = await fs.promises.readFile(configPath, 'utf8');
+        config = JSON.parse(data);
       }
     } catch (e) {
       console.error('Error reading config.json:', e);
@@ -227,7 +228,7 @@ class JoplinSyncClient extends EventEmitter {
     try {
       const notes = await this.db.selectAll('SELECT id, title, body FROM notes WHERE encryption_applied = 0');
       
-      const config = this.getConfig();
+      const config = await this.getConfig();
       const ollamaUrl = config.ollamaUrl;
       const model = config.embeddingModel;
       

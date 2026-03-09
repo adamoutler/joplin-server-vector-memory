@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Joplin Memory Server Dashboard</title>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; max-width: 600px; background: #f9f9f9; color: #333; }
+    .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    h1, h2 { color: #0056b3; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+    input[type="text"], input[type="password"] { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    button { padding: 0.75rem 1.5rem; background: #0056b3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    button:hover { background: #004494; }
+    .status { margin-bottom: 2rem; padding: 1rem; background: #e9ecef; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+    .status h2 { margin: 0; font-size: 1.25rem; color: #333; }
+    #status-text { font-weight: bold; text-transform: uppercase; }
+    .status-ready { color: green; }
+    .status-syncing { color: orange; }
+    .status-error { color: red; }
+    .status-offline { color: gray; }
+    .token-group { display: flex; gap: 1rem; align-items: center; }
+    #token { flex-grow: 1; font-family: monospace; background: #f4f4f4; cursor: text; }
+    .messages { margin-top: 1rem; font-weight: bold; }
+    .error { color: red; }
+    .success { color: green; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Joplin Memory Server Dashboard</h1>
+    <div class="status">
+      <h2>Sync Status: <span id="status-text" class="status-offline">Offline</span></h2>
+    </div>
+    
+    <h2>Configuration</h2>
+    <form id="auth-form">
+      <div class="form-group">
+        <label>Joplin Server URL</label>
+        <input type="text" id="serverUrl" placeholder="https://joplin.yourdomain.com" required>
+      </div>
+      <div class="form-group">
+        <label>Username (Email)</label>
+        <input type="text" id="username" placeholder="user@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" required>
+      </div>
+      <div class="form-group">
+        <label>Master Password (Optional, for E2EE)</label>
+        <input type="password" id="masterPassword">
+      </div>
+      <div class="form-group">
+        <label>Memory Server Address</label>
+        <input type="text" id="memoryServerAddress" placeholder="http://localhost:3000" required>
+      </div>
+      <button type="submit">Save & Validate</button>
+      <div id="auth-msg" class="messages"></div>
+    </form>
+
+    <h2 style="margin-top: 2rem;">Local Access Token</h2>
+    <p>Use this token for your MCP client configuration.</p>
+    <div class="token-group">
+      <input type="text" id="token" readonly>
+      <button id="rotate-btn">Rotate Token</button>
+    </div>
+    <div id="token-msg" class="messages"></div>
+
+    <h2 style="margin-top: 2rem;">API Documentation</h2>
+    <div style="background: #f4f4f4; padding: 1rem; border-radius: 4px;">
+      <ul>
+        <li><a href="/docs" target="_blank" id="docs-link">Interactive API Docs (Swagger UI)</a></li>
+        <li><a href="/openapi.json" target="_blank" id="openapi-link">OpenAPI Schema</a></li>
+      </ul>
+    </div>
+
+    <h2 style="margin-top: 2rem;">MCP Server Examples</h2>
+    <p>Instructions for LLMs are available at <a href="/llms.txt" target="_blank">/llms.txt</a>.</p>
+    <div id="mcp-examples" style="display: none; background: #f4f4f4; padding: 1rem; border-radius: 4px;">
+      <h3>REST API Base URL</h3>
+      <pre><code id="example-http"></code></pre>
+      <h3>Stateless HTTP MCP (CLI)</h3>
+      <pre><code id="example-mcp-stateless"></code></pre>
+      <h3>Streamable HTTP MCP (Cline, Claude, Windsurf)</h3>
+      <pre><code id="example-mcp-streamable"></code></pre>
+      <h3>Streamable SSE MCP (Web/IDE)</h3>
+      <pre><code id="example-mcp-sse"></code></pre>
+      
+      <h3>Stateless Configuration Example (Gemini CLI)</h3>
+      <pre><code id="example-cli"></code></pre>
+
+      <h3>Streamable HTTP Configuration Example (Cline)</h3>
+      <pre><code id="example-streamable-config"></code></pre>
+
+      <h3>SSE Configuration Example (Cursor)</h3>
+      <pre><code id="example-sse-config"></code></pre>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const memoryInput = document.getElementById('memoryServerAddress');
+      if (!memoryInput.value) {
+        memoryInput.value = window.location.origin;
+      }
+    });
+    async function fetchStatus(isInitialLoad = false) {
+      try {
+        const res = await fetch('/status');
+        const data = await res.json();
+        const el = document.getElementById('status-text');
+        el.innerText = data.status;
+        el.className = 'status-' + data.status;
+        if (data.config && data.config.token) {
+           if (isInitialLoad) {
+             const tokenEl = document.getElementById('token');
+             if (!tokenEl.value) {
+               tokenEl.value = data.config.token;
+             }
+             const setVal = (id, val) => {
+               if (val) document.getElementById(id).value = val;
+             };
+             setVal('serverUrl', data.config.joplinServerUrl);
+             setVal('username', data.config.joplinUsername);
+             setVal('memoryServerAddress', data.config.memoryServerAddress);
+             // don't populate password
+           }
+           
+           const memAddr = window.location.origin;
+           document.getElementById('mcp-examples').style.display = 'block';
+           document.getElementById('example-http').innerText = memAddr + '/http-api/';
+           document.getElementById('example-mcp-stateless').innerText = memAddr + '/http-api/mcp';
+           document.getElementById('example-mcp-streamable').innerText = memAddr + '/http-api/mcp/stream';
+           document.getElementById('example-mcp-sse').innerText = memAddr + '/http-api/mcp/sse';
+           document.getElementById('example-cli').innerText = JSON.stringify({
+             "mcpServers": {
+               "joplin_memory": {
+                 "url": memAddr + "/http-api/mcp",
+                 "headers": {
+                   "Authorization": "Bearer " + data.config.token
+                 }
+               }
+             }
+           }, null, 2);
+           document.getElementById('example-streamable-config').innerText = JSON.stringify({
+             "mcpServers": {
+               "joplin_memory": {
+                 "url": memAddr + "/http-api/mcp/stream",
+                 "headers": {
+                   "Authorization": "Bearer " + data.config.token
+                 }
+               }
+             }
+           }, null, 2);
+           document.getElementById('example-sse-config').innerText = JSON.stringify({
+             "mcpServers": {
+               "joplin_memory": {
+                 "url": memAddr + "/http-api/mcp/sse",
+                 "headers": {
+                   "Authorization": "Bearer " + data.config.token
+                 }
+               }
+             }
+           }, null, 2);
+        }
+      } catch(e) {
+        const el = document.getElementById('status-text');
+        el.innerText = 'offline';
+        el.className = 'status-offline';
+      }
+    }
+    setInterval(() => fetchStatus(false), 5000);
+    fetchStatus(true);
+
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const serverUrl = document.getElementById('serverUrl').value;
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const masterPassword = document.getElementById('masterPassword').value;
+      const memoryServerAddress = document.getElementById('memoryServerAddress').value;
+      const msgEl = document.getElementById('auth-msg');
+      msgEl.innerText = 'Validating...';
+      msgEl.className = 'messages';
+      
+      try {
+        const res = await fetch('/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ serverUrl, username, password, masterPassword, memoryServerAddress })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msgEl.innerText = 'Saved successfully!';
+          msgEl.className = 'messages success';
+          document.getElementById('token').value = data.token;
+          fetchStatus(true); // refresh status which might be syncing now
+        } else {
+          msgEl.innerText = 'Error: ' + data.error;
+          msgEl.className = 'messages error';
+        }
+      } catch(err) {
+        msgEl.innerText = 'Network error: ' + err.message;
+        msgEl.className = 'messages error';
+      }
+    });
+
+    document.getElementById('rotate-btn').addEventListener('click', async () => {
+      const msgEl = document.getElementById('token-msg');
+      try {
+        const res = await fetch('/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rotate: true })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('token').value = data.token;
+          msgEl.innerText = 'Token rotated successfully.';
+          msgEl.className = 'messages success';
+          setTimeout(() => msgEl.innerText = '', 3000);
+        } else {
+          msgEl.innerText = 'Error: ' + data.error;
+          msgEl.className = 'messages error';
+        }
+      } catch(err) {
+        msgEl.innerText = 'Network error: ' + err.message;
+        msgEl.className = 'messages error';
+      }
+    });
+  </script>
+</body>
+</html>

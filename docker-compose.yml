@@ -1,15 +1,15 @@
 version: '3.8'
 
 services:
-  client:
+  app:
     build:
-      context: ./client
+      context: .
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
+      - "${BACKEND_PORT:-8001}:8000"
     volumes:
       - ./data:/app/data
     environment:
-      - BACKEND_URL=http://server:8000
       - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
       - JOPLIN_USERNAME=${JOPLIN_USERNAME}
       - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
@@ -17,24 +17,6 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
-    depends_on:
-      - ollama
-    restart: unless-stopped
-
-  server:
-    build:
-      context: ./server
-    command: uvicorn src.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "${BACKEND_PORT:-8001}:8000"
-    volumes:
-      - ./data:/app/data
-    environment:
-      - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
-      - OLLAMA_URL=http://ollama:11434
-      - EMBEDDING_MODEL=nomic-embed-text
-      - FASTMCP_MESSAGE_PATH=/mcp/http/api-key/mcp/messages
-      - FASTMCP_SSE_PATH=/mcp/http/api-key/mcp/sse
     depends_on:
       - ollama
     restart: unless-stopped
