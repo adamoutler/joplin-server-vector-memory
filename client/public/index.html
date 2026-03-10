@@ -23,6 +23,27 @@
     .messages { margin-top: 1rem; font-weight: bold; }
     .error { color: red; }
     .success { color: green; }
+    
+    /* Advanced RAG Styles */
+    details.advanced-rag { margin-top: 2rem; border: 1px solid #ccc; border-radius: 4px; padding: 0.5rem; background: #fff; }
+    details.advanced-rag summary { font-weight: bold; cursor: pointer; padding: 0.5rem; font-size: 1.1rem; color: #0056b3; }
+    details.advanced-rag fieldset { margin-top: 1rem; border: 1px solid #ddd; border-radius: 4px; padding: 1rem; }
+    details.advanced-rag legend { font-weight: bold; padding: 0 0.5rem; color: #555; }
+    fieldset[data-critical="true"] { border-color: #ffc107; background-color: #fffdf5; }
+    fieldset[data-critical="true"] legend { color: #d39e00; }
+    fieldset[data-critical="true"]::before { content: "⚠️ Critical Setting - Changes may require re-syncing data"; display: block; font-size: 0.85rem; color: #d39e00; margin-bottom: 1rem; font-weight: bold; }
+    .help-text { font-size: 0.85rem; color: #666; margin-top: 0.25rem; display: block; }
+    select { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    
+    /* Modal Styles */
+    dialog { border: none; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 2rem; max-width: 400px; }
+    dialog::backdrop { background: rgba(0,0,0,0.5); }
+    dialog h3 { margin-top: 0; color: #d32f2f; }
+    .dialog-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; }
+    .btn-danger { background: #d32f2f; color: white; }
+    .btn-danger:hover { background: #b71c1c; }
+    .btn-secondary { background: #6c757d; color: white; }
+    .btn-secondary:hover { background: #5a6268; }
   </style>
 </head>
 <body>
@@ -95,7 +116,93 @@
       <h3>SSE Configuration Example (Cursor)</h3>
       <pre><code id="example-sse-config"></code></pre>
     </div>
+
+    <!-- Advanced RAG Configuration Shell -->
+    <details class="advanced-rag">
+      <summary>Advanced RAG Configuration</summary>
+      <form id="advanced-rag-form">
+        
+        <fieldset>
+          <legend>Ollama Configuration</legend>
+          <div class="form-group">
+            <label>Ollama Base URL</label>
+            <input type="text" id="ollamaBaseUrl" placeholder="http://127.0.0.1:11434">
+            <span class="help-text">URL for local or remote Ollama instance.</span>
+          </div>
+          <div class="form-group">
+            <label>Embeddings Model</label>
+            <input type="text" id="ollamaModel" placeholder="nomic-embed-text">
+            <span class="help-text">Model used for generating vector embeddings.</span>
+          </div>
+        </fieldset>
+
+        <fieldset data-critical="true">
+          <legend>Vector Engine</legend>
+          <div class="form-group">
+            <label>Engine Type</label>
+            <select id="vectorEngine">
+              <option value="chroma">ChromaDB (Default)</option>
+              <option value="sqlite">SQLite Vec (Experimental)</option>
+              <option value="pgvector">PGVector</option>
+            </select>
+          </div>
+        </fieldset>
+
+        <fieldset data-critical="true">
+          <legend>Chunking Strategy</legend>
+          <div class="form-group">
+            <label>Chunk Size</label>
+            <input type="number" id="chunkSize" placeholder="1000">
+            <span class="help-text">Target token length per chunk.</span>
+          </div>
+          <div class="form-group">
+            <label>Chunk Overlap</label>
+            <input type="number" id="chunkOverlap" placeholder="200">
+            <span class="help-text">Overlap between chunks to preserve context.</span>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Search Tuning</legend>
+          <div class="form-group">
+            <label>Default Search Top-K</label>
+            <input type="number" id="searchTopK" placeholder="5">
+          </div>
+          <div class="form-group">
+            <label>Hybrid Search Alpha</label>
+            <input type="number" id="hybridAlpha" placeholder="0.5" step="0.1" min="0" max="1">
+            <span class="help-text">0.0 = Keyword only, 1.0 = Vector only.</span>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Sync Behavior</legend>
+          <div class="form-group">
+            <label>Sync Interval (seconds)</label>
+            <input type="number" id="syncInterval" placeholder="300">
+          </div>
+          <div class="form-group">
+            <label>Max Retries</label>
+            <input type="number" id="syncMaxRetries" placeholder="3">
+          </div>
+        </fieldset>
+
+        <div class="form-group" style="margin-top: 1.5rem;">
+          <button type="submit" id="save-advanced-btn">Save Advanced Settings</button>
+        </div>
+      </form>
+    </details>
   </div>
+
+  <dialog id="warning-modal">
+    <h3>⚠️ Critical Changes Detected</h3>
+    <p>You have changed critical RAG settings (Vector Engine or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
+    <p>Are you sure you want to proceed?</p>
+    <div class="dialog-actions">
+      <button class="btn-secondary" id="cancel-warning-btn" type="button">Cancel</button>
+      <button class="btn-danger" id="confirm-warning-btn" type="button">Wipe & Apply</button>
+    </div>
+  </dialog>
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
