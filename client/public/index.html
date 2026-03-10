@@ -187,8 +187,9 @@
           </div>
         </fieldset>
 
-        <div class="form-group" style="margin-top: 1.5rem;">
+        <div class="form-group" style="margin-top: 1.5rem; display: flex; gap: 1rem;">
           <button type="submit" id="save-advanced-btn">Save Advanced Settings</button>
+          <button type="button" id="restore-defaults-btn" class="btn-secondary" style="padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer;">Restore Defaults</button>
         </div>
       </form>
     </details>
@@ -341,12 +342,16 @@
 
     // --- Advanced RAG Settings Logic ---
     let initialState = {};
+    let pendingAction = null; // 'save' or 'reset'
     const advancedRagForm = document.getElementById('advanced-rag-form');
     const warningModal = document.getElementById('warning-modal');
+    const warningTitle = document.querySelector('#warning-modal h3');
+    const warningText = document.querySelector('#warning-modal p');
     const reindexInput = document.getElementById('reindex-confirm-input');
     const confirmBtn = document.getElementById('confirm-warning-btn');
     const cancelBtn = document.getElementById('cancel-warning-btn');
     const saveBtn = document.getElementById('save-advanced-btn');
+    const restoreDefaultsBtn = document.getElementById('restore-defaults-btn');
 
     function getToken() {
       return document.getElementById('token').value;
@@ -415,6 +420,9 @@
       });
 
       if (isCriticalChanged) {
+        pendingAction = 'save';
+        if (warningTitle) warningTitle.innerText = '⚠️ Critical Changes Detected';
+        if (warningText) warningText.innerText = 'You have changed critical RAG settings (Vector Engine or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.';
         warningModal.showModal();
         reindexInput.value = '';
         confirmBtn.disabled = true;
@@ -422,6 +430,17 @@
         saveSettings(currentValues, false);
       }
     });
+
+    if (restoreDefaultsBtn) {
+      restoreDefaultsBtn.addEventListener('click', () => {
+        pendingAction = 'reset';
+        if (warningTitle) warningTitle.innerText = '⚠️ Factory Reset';
+        if (warningText) warningText.innerText = 'Restoring defaults may wipe the vector database and require a full re-sync of all documents. Are you sure you want to proceed?';
+        warningModal.showModal();
+        reindexInput.value = '';
+        confirmBtn.disabled = true;
+      });
+    }
 
     if (reindexInput) {
       reindexInput.addEventListener('input', (e) => {
@@ -435,7 +454,11 @@
 
     confirmBtn.addEventListener('click', () => {
       warningModal.close();
-      saveSettings(getFormValues(), true);
+      if (pendingAction === 'reset') {
+        restoreDefaults();
+      } else {
+        saveSettings(getFormValues(), true);
+      }
     });
 
     async function saveSettings(settings, reindexApproved) {
@@ -487,6 +510,60 @@
         alert('Network error while saving settings: ' + e.message);
         saveBtn.innerText = originalText;
         saveBtn.disabled = false;
+      }
+    }
+
+    async function restoreDefaults() {
+      const token = getToken();
+      if (!token) {
+        alert("Missing authentication token.");
+        return;
+      }
+
+      const originalText = restoreDefaultsBtn.innerText;
+      restoreDefaultsBtn.innerText = 'Restoring...';
+      restoreDefaultsBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/settings/reset', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          initialState = data;
+          
+          const fields = ['ollamaBaseUrl', 'ollamaModel', 'vectorEngine', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
+          fields.forEach(f => {
+            const el = document.getElementById(f);
+            if (el && initialState[f] !== undefined && initialState[f] !== null) {
+              el.value = initialState[f];
+            }
+          });
+          
+          restoreDefaultsBtn.innerText = 'Restored!';
+          restoreDefaultsBtn.style.backgroundColor = 'green';
+          restoreDefaultsBtn.style.color = 'white';
+          setTimeout(() => {
+            restoreDefaultsBtn.innerText = originalText;
+            restoreDefaultsBtn.style.backgroundColor = '';
+            restoreDefaultsBtn.style.color = '';
+            restoreDefaultsBtn.disabled = false;
+          }, 3000);
+        } else {
+          const errData = await res.json();
+          alert('Error restoring defaults: ' + (errData.error || errData.detail || 'Unknown error'));
+          restoreDefaultsBtn.innerText = originalText;
+          restoreDefaultsBtn.disabled = false;
+        }
+      } catch (e) {
+        alert('Network error while restoring defaults: ' + e.message);
+        restoreDefaultsBtn.innerText = originalText;
+        restoreDefaultsBtn.disabled = false;
       }
     }
   </script>
