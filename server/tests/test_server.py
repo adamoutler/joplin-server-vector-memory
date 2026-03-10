@@ -8,7 +8,7 @@ import json
 # Add src to python path so we can import main and db
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.main import search_notes, get_note, remember, request_note_deletion, execute_deletion
+from src.main import search_notes, get_note, remember, request_note_deletion, execute_deletion, update_note
 
 @pytest.fixture
 def temp_db():
@@ -114,6 +114,42 @@ def test_delete_nonexistent_note(temp_db):
 def test_get_nonexistent_note(temp_db):
     result = get_note("nonexistent_id")
     assert result.get("error") == "Note not found"
+
+def test_update_note_success(temp_db, mock_ollama):
+    # Remember a note
+    result = remember("Update Test", "Initial content")
+    assert result.get("status") == "success"
+    note_id = result.get("id")
+    
+    # Get the note and its timestamp
+    note = get_note(note_id)
+    timestamp = note.get("updated_time")
+    assert timestamp is not None
+    
+    # Update the note (append)
+    update_res = update_note(note_id, "Appended content", "append", timestamp, "Test append")
+    assert update_res.get("status") == "success"
+    
+    # Verify the update
+    updated_note = get_note(note_id)
+    assert "Appended content" in updated_note.get("content")
+    assert updated_note.get("updated_time") >= timestamp
+
+def test_update_note_occ_failure(temp_db, mock_ollama):
+    # Remember a note
+    result = remember("OCC Test", "Initial content")
+    note_id = result.get("id")
+    
+    # Get the note to get initial timestamp
+    note = get_note(note_id)
+    initial_timestamp = note.get("updated_time")
+    
+    # Provide a wrong/stale timestamp
+    stale_timestamp = initial_timestamp - 1000
+    
+    # Update should fail
+    update_res = update_note(note_id, "This should fail", "replace", stale_timestamp, "Test OCC")
+    assert update_res.get("error") == "Error: Note has been modified since you last read it. Retrieve the note again before updating."
 
 def test_config_caching():
     from src.main import get_config, verify_token

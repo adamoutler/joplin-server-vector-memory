@@ -26,9 +26,16 @@ def init_db(db):
             rowid INTEGER PRIMARY KEY,
             note_id TEXT UNIQUE,
             title TEXT,
-            content TEXT
+            content TEXT,
+            updated_time INTEGER DEFAULT 0
         )
     """)
+
+    # Migration for updated_time
+    cursor.execute("PRAGMA table_info(note_metadata)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if 'updated_time' not in columns:
+        cursor.execute("ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0")
     
     # Create vec_notes table for sqlite-vec
     cursor.execute("""

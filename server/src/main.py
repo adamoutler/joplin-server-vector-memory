@@ -153,7 +153,7 @@ def get_note(note_id: str) -> dict:
     """
     db = get_db_connection()
     cursor = db.cursor()
-    cursor.execute("SELECT note_id, title, content FROM note_metadata WHERE note_id = ?", (note_id,))
+    cursor.execute("SELECT note_id, title, content, updated_time FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
     db.close()
     
@@ -164,6 +164,7 @@ def get_note(note_id: str) -> dict:
             "id": row[0],
             "title": row[1],
             "content": content,
+            "updated_time": row[3],
             "content_hash": content_hash
         }
     return {"error": "Note not found"}
@@ -185,9 +186,10 @@ def remember(title: str, content: str) -> dict:
         cursor = db.cursor()
         
         # Insert metadata
+        updated_time = int(time.time())
         cursor.execute(
-            "INSERT INTO note_metadata (note_id, title, content) VALUES (?, ?, ?)",
-            (note_id, title, content)
+            "INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)",
+            (note_id, title, content, updated_time)
         )
         rowid = cursor.lastrowid
         
@@ -208,6 +210,64 @@ def remember(title: str, content: str) -> dict:
         }
     except Exception as e:
         logger.error(f"Error in remember: {e}")
+        return {"error": str(e)}
+
+@mcp.tool()
+def update_note(note_id: str, content: str, update_mode: str, last_modified_timestamp: int, summary_of_changes: str) -> dict:
+    """
+    Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
+    update_mode can be 'replace' or 'append'.
+    summary_of_changes is a description of the changes made for record keeping (not currently stored).
+    """
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT title, content, updated_time, rowid FROM note_metadata WHERE note_id = ?", (note_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        db.close()
+        return {"error": "Note not found"}
+        
+    title, current_content, current_time, rowid = row
+    
+    if last_modified_timestamp != current_time:
+        db.close()
+        return {"error": "Error: Note has been modified since you last read it. Retrieve the note again before updating."}
+        
+    if update_mode == 'append':
+        new_content = current_content + "\n" + content
+    elif update_mode == 'replace':
+        new_content = content
+    else:
+        db.close()
+        return {"error": "Invalid update_mode. Must be 'append' or 'replace'."}
+        
+    new_time = int(time.time())
+    
+    try:
+        embedding = get_embedding(f"{title}\n{new_content}")
+        
+        cursor.execute(
+            "UPDATE note_metadata SET content = ?, updated_time = ? WHERE note_id = ?",
+            (new_content, new_time, note_id)
+        )
+        
+        cursor.execute(
+            "UPDATE vec_notes SET embedding = ? WHERE rowid = ?",
+            (serialize_float32(embedding), rowid)
+        )
+        
+        db.commit()
+        db.close()
+        
+        return {
+            "status": "success",
+            "id": note_id
+        }
+    except Exception as e:
+        logger.error(f"Error in update_note: {e}")
+        db.rollback()
+        db.close()
         return {"error": str(e)}
 
 _deletion_tokens = {}
