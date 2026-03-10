@@ -8,7 +8,7 @@ import json
 # Add src to python path so we can import main and db
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.main import search_notes, get_note, remember, delete_note
+from src.main import search_notes, get_note, remember, request_note_deletion, execute_deletion
 
 @pytest.fixture
 def temp_db():
@@ -80,25 +80,35 @@ def test_search_notes(temp_db, mock_ollama):
     assert large_note_result["blurb"].endswith("...")
     assert "title" in results[0]
 
-def test_delete_note(temp_db, mock_ollama):
+def test_delete_note_flow(temp_db, mock_ollama):
     # Add a note
     result = remember("To be deleted", "Delete this content")
     note_id = result.get("id")
     
-    # Verify it exists
+    # Verify it exists and get hash
     note = get_note(note_id)
     assert note.get("id") == note_id
+    content_hash = note.get("content_hash")
     
-    # Delete it
-    del_result = delete_note(note_id)
-    assert del_result.get("status") == "success"
+    # Request deletion
+    req_result = request_note_deletion(note_id, "Test deletion")
+    assert "deletion_token" in req_result
+    token = req_result["deletion_token"]
+    
+    # Execute deletion
+    attestation = {
+        "content_hash": content_hash,
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+    }
+    exec_result = execute_deletion(token, "[Agent Memory] To be deleted", attestation)
+    assert exec_result.get("status") == "success"
     
     # Verify it's gone
     note_after = get_note(note_id)
     assert note_after.get("error") == "Note not found"
 
 def test_delete_nonexistent_note(temp_db):
-    result = delete_note("nonexistent_id")
+    result = request_note_deletion("nonexistent_id", "Test")
     assert result.get("error") == "Note not found"
 
 def test_get_nonexistent_note(temp_db):

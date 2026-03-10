@@ -4,6 +4,9 @@ import json
 import uuid
 import logging
 import os
+import hashlib
+import secrets
+import time
 from starlette.datastructures import MutableHeaders
 from src.db import get_db_connection
 from sqlite_vec import serialize_float32
@@ -155,10 +158,13 @@ def get_note(note_id: str) -> dict:
     db.close()
     
     if row:
+        content = row[2]
+        content_hash = "sha256:" + hashlib.sha256(content.encode('utf-8')).hexdigest()
         return {
             "id": row[0],
             "title": row[1],
-            "content": row[2]
+            "content": content,
+            "content_hash": content_hash
         }
     return {"error": "Note not found"}
 
@@ -204,29 +210,97 @@ def remember(title: str, content: str) -> dict:
         logger.error(f"Error in remember: {e}")
         return {"error": str(e)}
 
+_deletion_tokens = {}
+
 @mcp.tool()
-def delete_note(note_id: str) -> dict:
+def request_note_deletion(note_id: str, reason: str) -> dict:
     """
-    Delete a note by ID.
-    Mocks relaying deletion to Joplin Server.
+    Request the deletion of a note. This is step 1 of 2.
+    Returns a token required for step 2.
     """
     db = get_db_connection()
     cursor = db.cursor()
-    
-    cursor.execute("SELECT rowid FROM note_metadata WHERE note_id = ?", (note_id,))
+    cursor.execute("SELECT title FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
+    db.close()
+    
     if not row:
-        db.close()
         return {"error": "Note not found"}
         
-    rowid = row[0]
+    title = row[0]
+    token = secrets.token_hex(8)
+    expires_at = time.time() + 300 # 5 minutes
     
-    # Delete from both tables
-    cursor.execute("DELETE FROM vec_notes WHERE rowid = ?", (rowid,))
-    cursor.execute("DELETE FROM note_metadata WHERE note_id = ?", (note_id,))
+    _deletion_tokens[token] = {
+        "note_id": note_id,
+        "title": title,
+        "expires_at": expires_at
+    }
     
+    return {
+        "status": "pending",
+        "message": "Deletion requested. To complete deletion, call execute_deletion with this token, the exact note title, and the required safety attestation.",
+        "deletion_token": token,
+        "note_id": note_id,
+        "confirm_title": title,
+        "expires_in_seconds": 300
+    }
+
+@mcp.tool()
+def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation: dict) -> dict:
+    """
+    Execute the deletion of a note. This is step 2 of 2.
+    Requires the token from step 1, the exact note title, and a safety attestation.
+    """
+    if deletion_token not in _deletion_tokens:
+        return {"error": "Invalid or expired deletion token."}
+        
+    token_data = _deletion_tokens[deletion_token]
+    
+    if time.time() > token_data["expires_at"]:
+        del _deletion_tokens[deletion_token]
+        return {"error": "Deletion token expired. Request a new one."}
+        
+    if confirm_title != token_data["title"]:
+        return {"error": "confirm_title does not match the requested note's title."}
+        
+    if not isinstance(safety_attestation, dict) or "content_hash" not in safety_attestation or "confirmation_statement" not in safety_attestation:
+        return {"error": "safety_attestation must contain 'content_hash' and 'confirmation_statement'."}
+        
+    expected_statement = "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+    if safety_attestation["confirmation_statement"] != expected_statement:
+        return {"error": f"Invalid confirmation_statement. Must be exactly: '{expected_statement}'"}
+        
+    note_id = token_data["note_id"]
+    
+    db = get_db_connection()
+    cursor = db.cursor()
+    cursor.execute("SELECT content FROM note_metadata WHERE note_id = ?", (note_id,))
+    row = cursor.fetchone()
+    
+    if not row:
+        db.close()
+        del _deletion_tokens[deletion_token]
+        return {"error": "Note not found during execution."}
+        
+    content = row[0]
+    expected_hash = "sha256:" + hashlib.sha256(content.encode('utf-8')).hexdigest()
+    
+    if safety_attestation["content_hash"] != expected_hash:
+        db.close()
+        return {"error": f"content_hash does not match the note's content. Expected {expected_hash}"}
+        
+    cursor.execute("SELECT rowid FROM note_metadata WHERE note_id = ?", (note_id,))
+    rowid_row = cursor.fetchone()
+    if rowid_row:
+        rowid = rowid_row[0]
+        # Delete from tables
+        cursor.execute("DELETE FROM vec_notes WHERE rowid = ?", (rowid,))
+        cursor.execute("DELETE FROM note_metadata WHERE note_id = ?", (note_id,))    
     db.commit()
     db.close()
+    
+    del _deletion_tokens[deletion_token]
     
     return {
         "status": "success",
@@ -424,8 +498,31 @@ async def api_remember(request: RememberRequest, token: str = Depends(verify_tok
     description="Delete a note by ID.\n\n**Workflow Examples**:\n* **Search -> Delete**: Use `/api/search` to find notes, then pass the returned `id` here to delete them.\n* **Remember -> Delete**: Use `/api/remember` to create a note, then pass the returned `id` here to clean it up."
 )
 async def api_delete(request: DeleteRequest, token: str = Depends(verify_token)):
-    result = delete_note(request.note_id)
-    return result
+    # Provide backward compatibility for HTTP clients by completing the 2-step process internally
+    req_res = request_note_deletion(request.note_id, "HTTP API request")
+    if "error" in req_res:
+        return DeleteResponse(error=req_res["error"])
+        
+    # We need the content hash for the safety attestation
+    note_res = get_note(request.note_id)
+    if "error" in note_res:
+        return DeleteResponse(error=note_res["error"])
+        
+    attestation = {
+        "content_hash": note_res["content_hash"],
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+    }
+    
+    exec_res = execute_deletion(req_res["deletion_token"], req_res["confirm_title"], attestation)
+    
+    if "error" in exec_res:
+        return DeleteResponse(error=exec_res["error"])
+        
+    return DeleteResponse(
+        status=exec_res.get("status"),
+        id=exec_res.get("id"),
+        message=exec_res.get("message")
+    )
 
 @app.get("/api/settings", response_model=Settings)
 async def get_settings(token: str = Depends(verify_token)):

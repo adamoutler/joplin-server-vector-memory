@@ -143,11 +143,73 @@ async def run_e2e_mcp_flow(mock_ollama_server, temp_db):
                 assert get_data.get("id") == note_id
                 assert get_data.get("title") == "[Agent Memory] E2E Secret Memory"
                 assert get_data.get("content") == fake_uuid
+                content_hash = get_data.get("content_hash")
                 
-                # 4. Call delete_note
+                # 4a. Attempt to execute_deletion with made-up token
+                bad_exec_res = await session.call_tool(
+                    "execute_deletion",
+                    arguments={
+                        "deletion_token": "made_up_token",
+                        "confirm_title": "[Agent Memory] E2E Secret Memory",
+                        "safety_attestation": {
+                            "content_hash": content_hash,
+                            "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+                        }
+                    }
+                )
+                bad_exec_data = json.loads(bad_exec_res.content[0].text)
+                assert "error" in bad_exec_data
+                
+                # 4b. Request deletion
+                req_res = await session.call_tool(
+                    "request_note_deletion",
+                    arguments={"note_id": note_id, "reason": "Test deletion"}
+                )
+                req_data = json.loads(req_res.content[0].text)
+                assert req_data.get("status") == "pending"
+                token = req_data.get("deletion_token")
+                
+                # 4c. Attempt execute_deletion with incorrect confirm_title
+                bad_title_res = await session.call_tool(
+                    "execute_deletion",
+                    arguments={
+                        "deletion_token": token,
+                        "confirm_title": "Wrong Title",
+                        "safety_attestation": {
+                            "content_hash": content_hash,
+                            "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+                        }
+                    }
+                )
+                bad_title_data = json.loads(bad_title_res.content[0].text)
+                assert "error" in bad_title_data
+                
+                # 4d. Attempt execute_deletion with incorrect safety_attestation (wrong hash)
+                bad_att_res = await session.call_tool(
+                    "execute_deletion",
+                    arguments={
+                        "deletion_token": token,
+                        "confirm_title": "[Agent Memory] E2E Secret Memory",
+                        "safety_attestation": {
+                            "content_hash": "sha256:wronghash",
+                            "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+                        }
+                    }
+                )
+                bad_att_data = json.loads(bad_att_res.content[0].text)
+                assert "error" in bad_att_data
+                
+                # 4e. Call execute_deletion successfully
                 del_res = await session.call_tool(
-                    "delete_note",
-                    arguments={"note_id": note_id}
+                    "execute_deletion",
+                    arguments={
+                        "deletion_token": token,
+                        "confirm_title": "[Agent Memory] E2E Secret Memory",
+                        "safety_attestation": {
+                            "content_hash": content_hash,
+                            "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+                        }
+                    }
                 )
                 del_data = json.loads(del_res.content[0].text)
                 assert del_data.get("status") == "success"
