@@ -198,9 +198,12 @@
     <h3>⚠️ Critical Changes Detected</h3>
     <p>You have changed critical RAG settings (Vector Engine or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
     <p>Are you sure you want to proceed?</p>
+    <div class="form-group" style="margin-top: 1rem;">
+      <input type="text" id="reindex-confirm-input" placeholder="Type REINDEX to confirm">
+    </div>
     <div class="dialog-actions">
       <button class="btn-secondary" id="cancel-warning-btn" type="button">Cancel</button>
-      <button class="btn-danger" id="confirm-warning-btn" type="button">Wipe & Apply</button>
+      <button class="btn-danger" id="confirm-warning-btn" type="button" disabled>Wipe & Apply</button>
     </div>
   </dialog>
 
@@ -335,6 +338,157 @@
         msgEl.className = 'messages error';
       }
     });
+
+    // --- Advanced RAG Settings Logic ---
+    let initialState = {};
+    const advancedRagForm = document.getElementById('advanced-rag-form');
+    const warningModal = document.getElementById('warning-modal');
+    const reindexInput = document.getElementById('reindex-confirm-input');
+    const confirmBtn = document.getElementById('confirm-warning-btn');
+    const cancelBtn = document.getElementById('cancel-warning-btn');
+    const saveBtn = document.getElementById('save-advanced-btn');
+
+    function getToken() {
+      return document.getElementById('token').value;
+    }
+
+    async function loadAdvancedSettings() {
+      const token = getToken();
+      if (!token) {
+        setTimeout(loadAdvancedSettings, 500);
+        return;
+      }
+      try {
+        const res = await fetch('/api/settings', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          initialState = data;
+          
+          const fields = ['ollamaBaseUrl', 'ollamaModel', 'vectorEngine', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
+          fields.forEach(f => {
+            const el = document.getElementById(f);
+            if (el && data[f] !== undefined && data[f] !== null) {
+              el.value = data[f];
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load advanced settings', e);
+      }
+    }
+
+    loadAdvancedSettings();
+
+    function getFormValues() {
+      return {
+        ollamaBaseUrl: document.getElementById('ollamaBaseUrl').value,
+        ollamaModel: document.getElementById('ollamaModel').value,
+        vectorEngine: document.getElementById('vectorEngine').value,
+        chunkSize: parseInt(document.getElementById('chunkSize').value) || 1000,
+        chunkOverlap: parseInt(document.getElementById('chunkOverlap').value) || 200,
+        searchTopK: parseInt(document.getElementById('searchTopK').value) || 5,
+        hybridAlpha: parseFloat(document.getElementById('hybridAlpha').value) || 0.5,
+        syncInterval: parseInt(document.getElementById('syncInterval').value) || 300,
+        syncMaxRetries: parseInt(document.getElementById('syncMaxRetries').value) || 3
+      };
+    }
+
+    advancedRagForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const currentValues = getFormValues();
+      
+      let isCriticalChanged = false;
+      const criticalFieldsets = advancedRagForm.querySelectorAll('fieldset[data-critical="true"]');
+      criticalFieldsets.forEach(fs => {
+        const inputs = fs.querySelectorAll('input, select');
+        inputs.forEach(input => {
+          if (input.id) {
+            const currentVal = currentValues[input.id];
+            const initialVal = initialState[input.id] !== undefined && initialState[input.id] !== null ? initialState[input.id] : '';
+            if (String(currentVal) !== String(initialVal)) {
+              isCriticalChanged = true;
+            }
+          }
+        });
+      });
+
+      if (isCriticalChanged) {
+        warningModal.showModal();
+        reindexInput.value = '';
+        confirmBtn.disabled = true;
+      } else {
+        saveSettings(currentValues, false);
+      }
+    });
+
+    if (reindexInput) {
+      reindexInput.addEventListener('input', (e) => {
+        confirmBtn.disabled = e.target.value !== 'REINDEX';
+      });
+    }
+
+    cancelBtn.addEventListener('click', () => {
+      warningModal.close();
+    });
+
+    confirmBtn.addEventListener('click', () => {
+      warningModal.close();
+      saveSettings(getFormValues(), true);
+    });
+
+    async function saveSettings(settings, reindexApproved) {
+      const token = getToken();
+      if (!token) {
+        alert("Missing authentication token.");
+        return;
+      }
+
+      const originalText = saveBtn.innerText;
+      saveBtn.innerText = 'Saving...';
+      saveBtn.disabled = true;
+
+      const payload = { ...settings };
+      if (reindexApproved) {
+        payload.reindex_approved = true;
+      }
+
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token
+          },
+          body: JSON.stringify(payload)
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          Object.assign(initialState, payload);
+          
+          saveBtn.innerText = 'Saved Successfully!';
+          saveBtn.style.backgroundColor = 'green';
+          saveBtn.style.color = 'white';
+          setTimeout(() => {
+            saveBtn.innerText = originalText;
+            saveBtn.style.backgroundColor = '';
+            saveBtn.style.color = '';
+            saveBtn.disabled = false;
+          }, 3000);
+        } else {
+          const errData = await res.json();
+          alert('Error saving settings: ' + (errData.error || errData.detail || 'Unknown error'));
+          saveBtn.innerText = originalText;
+          saveBtn.disabled = false;
+        }
+      } catch (e) {
+        alert('Network error while saving settings: ' + e.message);
+        saveBtn.innerText = originalText;
+        saveBtn.disabled = false;
+      }
+    }
   </script>
 </body>
 </html>
