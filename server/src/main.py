@@ -124,7 +124,7 @@ def search_notes(query: str) -> list[dict]:
         top_rowids = sorted_rowids[:5]
         
         notes = []
-        for rowid in top_rowids:
+        for i, rowid in enumerate(top_rowids):
             data = notes_data[rowid]
             note_id = data["id"]
             if isinstance(note_id, bytes):
@@ -135,12 +135,17 @@ def search_notes(query: str) -> list[dict]:
             # Create a simple blurb
             content = data["content"]
             blurb = content[:2000] + "..." if len(content) > 2000 else content
-            notes.append({
+            
+            note_dict = {
                 "id": note_id,
                 "title": data["title"],
                 "blurb": blurb,
                 "distance": rrf_scores[rowid]  # We return RRF score here as 'distance'
-            })
+            }
+            if i == 0:
+                note_dict["full_body"] = content
+                
+            notes.append(note_dict)
         return notes
     except Exception as e:
         logger.error(f"Error in search_notes: {e}")
@@ -404,6 +409,7 @@ class SearchResponseItem(BaseModel):
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
     blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
     distance: float = Field(..., description="Cosine Distance", examples=[0.123])
+    full_body: Optional[str] = Field(None, description="Full content of the note (only included for the top result)", examples=["# Pasta Recipe\n\nBoil water..."])
 
 class GetRequest(BaseModel):
     note_id: str = Field(..., description="ID of the note to retrieve", examples=["123e4567-e89b-12d3-a456-426614174000"])

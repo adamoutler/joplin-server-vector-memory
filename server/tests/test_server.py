@@ -73,12 +73,20 @@ def test_search_notes(temp_db, mock_ollama):
     # Results should contain blurb, title, id
     assert "blurb" in results[0]
     assert "id" in results[0]
+    assert "title" in results[0]
+    
+    # Top result should contain full_body
+    assert "full_body" in results[0]
+    assert results[0]["full_body"] is not None
+    
+    # Second result should NOT contain full_body
+    if len(results) > 1:
+        assert "full_body" not in results[1]
 
     # Verify blurb truncation
     large_note_result = next(r for r in results if r["title"] == "[Agent Memory] Large Note")
     assert len(large_note_result["blurb"]) == 2003
     assert large_note_result["blurb"].endswith("...")
-    assert "title" in results[0]
 
 def test_delete_note_flow(temp_db, mock_ollama):
     # Add a note
