@@ -116,6 +116,64 @@ def test_bad_requests(client, temp_config_and_db):
     response = client.post("/http-api/delete", json={"wrong_key": "123"}, headers=headers)
     assert response.status_code == 422
 
+def test_settings_api(client, temp_config_and_db):
+    conf_path, db_path, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # 1. Get settings
+    response = client.get("/api/settings", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert "ollamaBaseUrl" in data
+    assert "chunkSize" in data
+    
+    # 2. Update settings (non-critical)
+    update_data = data.copy()
+    update_data["searchTopK"] = 10
+    
+    response = client.post("/api/settings", json=update_data, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["searchTopK"] == 10
+    
+    # Check if saved to file
+    with open(conf_path, "r") as f:
+        saved_config = json.load(f)
+    assert saved_config["searchTopK"] == 10
+    # Make sure token was not lost
+    assert saved_config["token"] == token
+    
+    # 3. Update settings (critical, without reindex_approved)
+    # The DB shouldn't be reset
+    update_data["chunkSize"] = 2000
+    update_data["reindex_approved"] = False
+    
+    with patch("src.db.reset_database") as mock_reset:
+        response = client.post("/api/settings", json=update_data, headers=headers)
+        assert response.status_code == 200
+        mock_reset.assert_not_called()
+        
+    # 4. Update settings (critical, with reindex_approved)
+    update_data["chunkSize"] = 3000
+    update_data["reindex_approved"] = True
+    
+    with patch("src.db.reset_database") as mock_reset:
+        response = client.post("/api/settings", json=update_data, headers=headers)
+        assert response.status_code == 200
+        mock_reset.assert_called_once()
+        
+    # 5. Reset settings
+    response = client.post("/api/settings/reset", headers=headers)
+    assert response.status_code == 200
+    reset_data = response.json()
+    # Check default
+    assert reset_data["chunkSize"] == 1000
+    assert reset_data["searchTopK"] == 5
+    
+    with open(conf_path, "r") as f:
+        saved_config = json.load(f)
+    assert saved_config["chunkSize"] == 1000
+    assert saved_config["token"] == token
+
 def test_stateless_mcp_endpoint(temp_config_and_db):
     import subprocess
     import sys
@@ -176,7 +234,7 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
         headers = {"Accept": "application/json"}
         
         # Test 1: no trailing slash, no redirect
-        response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp", json=request_data, headers=headers, allow_redirects=False)
+        response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless/", json=request_data, headers=headers, allow_redirects=False)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}. Response: {response.text}"
         data = response.json()
         assert data.get("jsonrpc") == "2.0"

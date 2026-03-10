@@ -243,6 +243,25 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from contextlib import asynccontextmanager
 
+class Settings(BaseModel):
+    ollamaBaseUrl: str = "http://localhost:11434"
+    ollamaModel: str = "nomic-embed-text"
+    vectorEngine: str = "chroma"
+    chunkSize: int = 1000
+    chunkOverlap: int = 200
+    searchTopK: int = 5
+    hybridAlpha: float = 0.5
+    syncInterval: int = 300
+    syncMaxRetries: int = 3
+    joplinServerUrl: str = ""
+    joplinUsername: str = ""
+    joplinPassword: str = ""
+    joplinMasterPassword: str = ""
+    memoryServerAddress: str = ""
+
+class SettingsUpdate(Settings):
+    reindex_approved: bool = False
+
 class SearchRequest(BaseModel):
     query: str = Field(..., description="The semantic search query.", examples=["how to cook pasta"])
 
@@ -408,6 +427,69 @@ async def api_delete(request: DeleteRequest, token: str = Depends(verify_token))
     result = delete_note(request.note_id)
     return result
 
+@app.get("/api/settings", response_model=Settings)
+async def get_settings(token: str = Depends(verify_token)):
+    config = _load_config_file()
+    # Extract only valid fields for Settings
+    valid_keys = Settings.schema()["properties"].keys() if hasattr(Settings, "schema") else Settings.model_fields.keys()
+    settings_dict = {k: v for k, v in config.items() if k in valid_keys}
+    return Settings(**settings_dict)
+
+@app.post("/api/settings", response_model=Settings)
+async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
+    current_config = _load_config_file()
+    
+    # Handle both Pydantic v1 and v2
+    if hasattr(settings_update, "model_dump"):
+        new_config = settings_update.model_dump(exclude={"reindex_approved"})
+    else:
+        new_config = settings_update.dict(exclude={"reindex_approved"})
+    
+    # Check for critical changes
+    critical_keys = ["vectorEngine", "chunkSize", "chunkOverlap", "ollamaModel"]
+    critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys)
+    
+    if critical_changed and settings_update.reindex_approved:
+        # Trigger DB reset
+        from src.db import reset_database
+        reset_database()
+        
+    merged_config = {**current_config, **new_config}
+        
+    # Save to config.json
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    # Make sure directory exists
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w") as f:
+        json.dump(merged_config, f, indent=2)
+        
+    global _config_mtime
+    _config_mtime = 0 # Invalidate cache
+        
+    return Settings(**new_config)
+    
+@app.post("/api/settings/reset", response_model=Settings)
+async def reset_settings(token: str = Depends(verify_token)):
+    default_settings = Settings()
+    current_config = _load_config_file()
+    
+    if hasattr(default_settings, "model_dump"):
+        default_dict = default_settings.model_dump()
+    else:
+        default_dict = default_settings.dict()
+        
+    merged_config = {**current_config, **default_dict}
+    
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w") as f:
+        json.dump(merged_config, f, indent=2)
+        
+    global _config_mtime
+    _config_mtime = 0 # Invalidate cache
+        
+    return default_settings
+
 app.mount("/http-api/mcp/sse", fastmcp_app)
 app.mount("/http-api/mcp/stream", streamable_app)
 app.mount("/http-api/mcp/stateless", stateless_app)
@@ -419,6 +501,28 @@ class ForceAcceptJSONMiddleware:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
+            original_path = scope["path"]
+            method = scope.get("method", "")
+            
+            # Map exact /http-api/mcp based on method for Gemini CLI compatibility
+            if original_path.startswith("/http-api/mcp"):
+                # If it's explicitly one of the mounted sub-apps, leave it alone
+                if not any(original_path.startswith(p) for p in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]):
+                    # It's a bare /http-api/mcp or a subpath like /http-api/mcp/messages
+                    subpath = original_path[len("/http-api/mcp"):]
+                    if not subpath or subpath == "/":
+                        if method == "GET":
+                            scope["path"] = "/http-api/mcp/sse/"
+                        else:
+                            scope["path"] = "/http-api/mcp/stream/"
+                    else:
+                        if method == "GET":
+                            scope["path"] = f"/http-api/mcp/sse{subpath}"
+                        else:
+                            scope["path"] = f"/http-api/mcp/stream{subpath}"
+            
+            logger.info(f"[MIDDLEWARE] {method} {original_path} -> {scope['path']}")
+
             # Avoid 307 redirects for root endpoints when accessed without trailing slash
             if scope["path"] in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]:
                 scope["path"] = scope["path"] + "/"

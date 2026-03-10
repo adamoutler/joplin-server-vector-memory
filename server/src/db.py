@@ -66,3 +66,10 @@ def init_db(db):
     """)
     
     db.commit()
+
+def reset_database():
+    db_path = os.environ.get("SQLITE_DB_PATH", "joplin_vector.db")
+    if os.path.exists(db_path):
+        os.remove(db_path)
+    # Re-initialize
+    get_db_connection()
