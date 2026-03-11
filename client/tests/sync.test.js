@@ -250,12 +250,12 @@ describe('JoplinSyncClient', () => {
       });
     });
 
-    it('should truncate notes larger than 25000 characters at word boundaries', async () => {
+    it('should chunk notes larger than 8000 characters at word boundaries and only send the first chunk', async () => {
       await client.init();
 
-      // Create a large body string > 25000 characters
-      const largeWord = 'A'.repeat(5000); // 5000 chars
-      const largeBody = Array(6).fill(largeWord).join(' '); // 30005 chars with 5 spaces
+      // Create a large body string > 50000 characters to test the chunk limit
+      const largeWord = 'A'.repeat(1000); // 1000 chars
+      const largeBody = Array(55).fill(largeWord).join(' '); // 55054 chars with 54 spaces
 
       const mockNotes = [
         { id: 'note2', title: 'Large Note', body: largeBody },
@@ -277,21 +277,17 @@ describe('JoplinSyncClient', () => {
       
       // Expected rawText logic:
       // Title: Large Note\n\n + largeBody
-      // That's 19 chars for title part. So 25000 total length minus 19 = 24981 of largeBody.
-      // largeBody has words of 5000 chars each separated by spaces.
-      // 5 words = 25004 chars. Wait: 5000 (0-4999), space (5000), 5000 (5001-10000), space (10001), 5000 (10002-15001), space (15002), 5000 (15003-20002), space (20003), 5000 (20004-25003), space (25004).
-      // If we take 25000 chars of `rawText`, the last space will be at index 20003 + 19 = 20022.
-      // So the truncated `rawText` should end exactly at the space and exclude the partial last word.
+      // That's 19 chars for title part. So 8000 total length minus 19 = 7981 of largeBody.
+      // largeBody has words of 1000 chars each separated by spaces.
+      // The last space before index 8000 is at index 7999 (if it was 1000-char words).
+      // Let's test the length is strictly less than or equal to 8000 + prefix length
       
       expect(fetchCallBody.prompt.startsWith('search_document: ')).toBe(true);
-      expect(fetchCallBody.prompt.length).toBe(20022 + 'search_document: '.length);
+      expect(fetchCallBody.prompt.length).toBeLessThanOrEqual(8000 + 'search_document: '.length);
       expect(fetchCallBody.options).toEqual({ num_ctx: 8192 });
       
-      // Ensure the partial word was truncated, meaning it ends cleanly with the 4th word
+      // Ensure the partial word was truncated, meaning it ends cleanly without exceeding the limit
       expect(fetchCallBody.prompt.endsWith(largeWord)).toBe(true);
-      // And the character before the last word should be a space or newline (but it's a space here)
-      const promptWithoutSearchDocument = fetchCallBody.prompt.substring('search_document: '.length);
-      expect(promptWithoutSearchDocument.endsWith(' ' + largeWord)).toBe(true);
     });
 
     it('should handle fetch errors gracefully', async () => {

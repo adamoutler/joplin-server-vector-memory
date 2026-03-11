@@ -243,18 +243,21 @@ class JoplinSyncClient extends EventEmitter {
         
         try {
           // Truncate from the start to avoid 500 context length errors on Ollama side.
-          // Nomic-embed-text has a strict context limit. 25000 characters is a safer 
-          // upper bound to ensure we don't blow past the token limit for dense markdown.
           // ALSO: nomic-embed-text requires the `search_document: ` prefix for documents.
           // We MUST include the title in the body so the embedding contains contextual meaning.
           let rawText = `Title: ${note.title}\n\n${note.body}`;
-          if (rawText.length > 25000) {
-              let truncated = rawText.substring(0, 25000);
-              let lastSpace = Math.max(truncated.lastIndexOf(' '), truncated.lastIndexOf('\n'), truncated.lastIndexOf('\t'));
+          
+          // Chunking to stay safely under the embedding model's token limit.
+          // Using a strict character chunk limit (e.g., 8000 characters) and 
+          // embedding only the first chunk for now to prevent 500 errors.
+          const CHUNK_LIMIT = 8000;
+          if (rawText.length > CHUNK_LIMIT) {
+              let chunk = rawText.substring(0, CHUNK_LIMIT);
+              let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
               if (lastSpace > 0) {
-                  rawText = truncated.substring(0, lastSpace);
+                  rawText = chunk.substring(0, lastSpace);
               } else {
-                  rawText = truncated;
+                  rawText = chunk;
               }
           }
           let promptBody = `search_document: ${rawText}`;
