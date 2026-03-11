@@ -53,7 +53,7 @@
   <div class="container">
     <h1>Joplin Memory Server Dashboard</h1>
     <div class="status">
-      <h2>Sync Status: <span id="status-text" class="status-offline">Offline</span></h2>
+      <h2>Sync Status: <span id="status-text" class="status-offline">Offline</span> <span id="progress-text" style="font-size: 0.9em; color: #555; margin-left: 10px;"></span></h2>
     </div>
     
     <h2>Configuration</h2>
@@ -228,6 +228,14 @@
         const el = document.getElementById('status-text');
         el.innerText = data.status;
         el.className = 'status-' + data.status;
+        
+        const progressEl = document.getElementById('progress-text');
+        if (data.status === 'syncing' && data.progress && data.progress.percent !== undefined) {
+          progressEl.innerText = `${data.progress.percent}% (${data.progress.current} out of ${data.progress.total} notes)`;
+        } else {
+          progressEl.innerText = '';
+        }
+
         if (data.config && data.config.token) {
            if (isInitialLoad) {
              const tokenEl = document.getElementById('token');

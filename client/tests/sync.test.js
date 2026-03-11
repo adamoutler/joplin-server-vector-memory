@@ -337,5 +337,42 @@ describe('JoplinSyncClient', () => {
       expect(startMock).toHaveBeenCalled();
       expect(completeMock).toHaveBeenCalled();
     });
+
+    it('should emit progress events with correct values', async () => {
+      await client.init();
+
+      const mockNotes = [
+        { id: 'n1', title: 'N1', body: 'body1' },
+        { id: 'n2', title: 'N2', body: 'body2' },
+      ];
+      
+      client.db = {
+        selectAll: jest.fn().mockResolvedValue(mockNotes)
+      };
+
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ embedding: [0.1] })
+      });
+
+      const progressMock = jest.fn();
+      client.on('progress', progressMock);
+
+      await client.generateEmbeddings();
+
+      expect(progressMock).toHaveBeenCalledTimes(2);
+      expect(progressMock).toHaveBeenNthCalledWith(1, {
+        phase: 'embedding',
+        current: 1,
+        total: 2,
+        percent: 50
+      });
+      expect(progressMock).toHaveBeenNthCalledWith(2, {
+        phase: 'embedding',
+        current: 2,
+        total: 2,
+        percent: 100
+      });
+    });
   });
 });

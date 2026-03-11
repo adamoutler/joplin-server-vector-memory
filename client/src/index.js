@@ -11,20 +11,19 @@ app.use(cors());
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
-app.use(createProxyMiddleware({ pathFilter: '/docs', target: BACKEND_URL, changeOrigin: true }));
-app.use(createProxyMiddleware({ pathFilter: '/openapi.json', target: BACKEND_URL, changeOrigin: true }));
-app.use('/http-api/mcp', (req, res, next) => {
-  if (!req.headers.accept || req.headers.accept === '*/*') {
-    req.headers.accept = 'application/json';
+const apiProxy = createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true });
+app.use((req, res, next) => {
+  if (req.path.startsWith('/docs') || req.path.startsWith('/openapi.json') || req.path.startsWith('/http-api')) {
+    // Special handling for MCP accept header
+    if (req.path.startsWith('/http-api/mcp')) {
+      if (!req.headers.accept || req.headers.accept === '*/*') {
+        req.headers.accept = 'application/json';
+      }
+    }
+    return apiProxy(req, res, next);
   }
   next();
 });
-app.use(createProxyMiddleware({
-  pathFilter: '/http-api',
-  target: BACKEND_URL,
-  changeOrigin: true,
-  pathRewrite: { '^/http-api': '' }
-}));
 
 app.use(express.json());
 
@@ -184,6 +183,7 @@ app.use(async (req, res, next) => {
 
 let syncStatus = 'ready'; // ready, syncing, error
 let syncClient = null;
+let syncProgress = null;
 
 app.use(express.static(path.join(__dirname, '../public')));
 app.get('/', (req, res) => {
@@ -201,7 +201,7 @@ app.get('/status', async (req, res) => {
       delete config.joplinMasterPassword;
     } catch(e) {}
   }
-  res.json({ status: syncStatus, config });
+  res.json({ status: syncStatus, config, progress: syncProgress });
 });
 
 app.post('/auth', async (req, res) => {
@@ -294,12 +294,13 @@ async function startSync(config) {
       profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
     });
     
-    syncClient.on('syncStart', () => { syncStatus = 'syncing'; console.log('Sync started...'); });
+    syncClient.on('syncStart', () => { syncStatus = 'syncing'; syncProgress = null; console.log('Sync started...'); });
     syncClient.on('syncComplete', () => { console.log('Sync completed.'); });
     syncClient.on('decryptStart', () => console.log('Decryption started...'));
     syncClient.on('decryptComplete', () => console.log('Decryption completed.'));
     syncClient.on('embeddingStart', () => { console.log('Embedding generation started...'); });
     syncClient.on('embeddingComplete', () => { console.log('Embedding generation completed.'); });
+    syncClient.on('progress', (data) => { syncProgress = data; });
     
     await syncClient.init();
     await syncClient.sync();
@@ -307,9 +308,11 @@ async function startSync(config) {
     await syncClient.generateEmbeddings();
     
     syncStatus = 'ready';
+    syncProgress = null;
   } catch (err) {
     console.error('Sync error:', err);
     syncStatus = 'error';
+    syncProgress = null;
   }
 }
 // Start on boot if config exists

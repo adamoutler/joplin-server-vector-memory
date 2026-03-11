@@ -19,14 +19,18 @@ jest.mock('fs', () => {
   };
 });
 
+const mockHandlers = {};
+const mockOn = jest.fn((event, cb) => {
+  mockHandlers[event] = cb;
+});
 jest.mock('../src/sync', () => {
   return {
     JoplinSyncClient: jest.fn().mockImplementation(() => ({
-      on: jest.fn(),
-      init: jest.fn().mockResolvedValue(),
-      sync: jest.fn().mockResolvedValue(),
-      decrypt: jest.fn().mockResolvedValue(),
-      generateEmbeddings: jest.fn().mockResolvedValue()
+      on: mockOn,
+      init: jest.fn().mockReturnValue(new Promise(() => {})),
+      sync: jest.fn().mockReturnValue(new Promise(() => {})),
+      decrypt: jest.fn().mockReturnValue(new Promise(() => {})),
+      generateEmbeddings: jest.fn().mockReturnValue(new Promise(() => {}))
     }))
   };
 });
@@ -98,6 +102,30 @@ describe('Dashboard Endpoints', () => {
     const response = await request(app).get('/status').set('Authorization', authHeader);
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('status');
+  });
+
+  test('GET /status returns progress object when syncing', async () => {
+    fs.existsSync.mockReturnValue(false);
+    
+    const response = await request(app)
+      .post('/auth')
+      .set('Authorization', authHeader)
+      .send({
+        serverUrl: 'http://testserver',
+        username: 'testuser',
+        password: 'testpassword',
+        memoryServerAddress: 'http://localhost:8000'
+      });
+      
+    // trigger them using the captured mock handlers
+    if (mockHandlers.syncStart) mockHandlers.syncStart();
+    if (mockHandlers.progress) mockHandlers.progress({ phase: 'embedding', current: 5, total: 10, percent: 50 });
+
+    const statusResponse = await request(app).get('/status').set('Authorization', authHeader);
+    expect(statusResponse.status).toBe(200);
+    expect(statusResponse.body).toHaveProperty('status', 'syncing');
+    expect(statusResponse.body).toHaveProperty('progress');
+    expect(statusResponse.body.progress).toEqual({ phase: 'embedding', current: 5, total: 10, percent: 50 });
   });
 
   test('GET /status uses cached authentication if Joplin Server fails subsequently', async () => {

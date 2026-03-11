@@ -139,6 +139,9 @@ class JoplinSyncClient extends EventEmitter {
     this.synchronizer.dispatch = (action) => {
       if (action.type === 'SYNC_STARTED') this.emit('syncStart');
       if (action.type === 'SYNC_COMPLETED') this.emit('syncComplete');
+      if (action.type === 'SYNC_REPORT_UPDATE') {
+        this.emit('progress', { phase: 'download', report: action.report });
+      }
     };
 
     return this.db;
@@ -232,7 +235,10 @@ class JoplinSyncClient extends EventEmitter {
       const ollamaUrl = config.ollamaUrl;
       const model = config.embeddingModel;
       
+      let i = 0;
       for (const note of notes || []) {
+        i++;
+        this.emit('progress', { phase: 'embedding', current: i, total: notes.length, percent: Math.round((i / notes.length) * 100) });
         if (!note.body) continue;
         
         try {
