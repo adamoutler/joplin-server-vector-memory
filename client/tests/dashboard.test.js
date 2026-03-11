@@ -71,6 +71,16 @@ describe('Dashboard Endpoints', () => {
     expect(response.text).toContain('/http-api/mcp/sse');
   });
 
+  test('GET / returns dashboard HTML with copy token button', async () => {
+    fs.existsSync.mockReturnValue(false);
+    const response = await request(app).get('/').set('Authorization', authHeader);
+    expect(response.status).toBe(200);
+    expect(response.text).toContain('id="copy-btn"');
+    expect(response.text).toContain('class="copy-btn"');
+    expect(response.text).toContain('📋');
+    expect(response.text).toContain('navigator.clipboard.writeText');
+  });
+
   test('GET /status returns 401 if unauthenticated', async () => {
     const response = await request(app).get('/status');
     expect(response.status).toBe(401);

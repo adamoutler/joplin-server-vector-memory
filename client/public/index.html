@@ -19,7 +19,10 @@
     .status-error { color: red; }
     .status-offline { color: gray; }
     .token-group { display: flex; gap: 1rem; align-items: center; }
-    #token { flex-grow: 1; font-family: monospace; background: #f4f4f4; cursor: text; }
+    .input-wrapper { position: relative; flex-grow: 1; }
+    #token { width: 100%; padding-right: 40px; box-sizing: border-box; font-family: monospace; background: #f4f4f4; cursor: text; }
+    .copy-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; padding: 5px; font-size: 1.2rem; opacity: 0.7; transition: opacity 0.2s; }
+    .copy-btn:hover { opacity: 1; }
     .messages { margin-top: 1rem; font-weight: bold; }
     .error { color: red; }
     .success { color: green; }
@@ -82,7 +85,10 @@
     <h2 style="margin-top: 2rem;">Local Access Token</h2>
     <p>Use this token for your MCP client configuration.</p>
     <div class="token-group">
-      <input type="text" id="token" readonly>
+      <div class="input-wrapper">
+        <input type="text" id="token" readonly>
+        <button id="copy-btn" class="copy-btn" title="Copy to clipboard">📋</button>
+      </div>
       <button id="rotate-btn">Rotate Token</button>
     </div>
     <div id="token-msg" class="messages"></div>
@@ -337,6 +343,25 @@
       } catch(err) {
         msgEl.innerText = 'Network error: ' + err.message;
         msgEl.className = 'messages error';
+      }
+    });
+
+    document.getElementById('copy-btn').addEventListener('click', async () => {
+      const tokenValue = document.getElementById('token').value;
+      const copyBtn = document.getElementById('copy-btn');
+      const msgEl = document.getElementById('token-msg');
+      if (!tokenValue) return;
+      try {
+        await navigator.clipboard.writeText(tokenValue);
+        const originalText = copyBtn.innerText;
+        copyBtn.innerText = '✅';
+        setTimeout(() => {
+          copyBtn.innerText = originalText;
+        }, 2000);
+      } catch (err) {
+        msgEl.innerText = 'Failed to copy text';
+        msgEl.className = 'messages error';
+        setTimeout(() => msgEl.innerText = '', 2000);
       }
     });
 
