@@ -262,20 +262,45 @@ class JoplinSyncClient extends EventEmitter {
           }
           let promptBody = `search_document: ${rawText}`;
 
-          const response = await fetch(`${ollamaUrl}/api/embeddings`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              model: model,
-              prompt: promptBody,
-              options: {
-                num_ctx: 8192
-              }
-            })
-          });
+          let response;
+          let retries = 0;
+          const maxRetries = 5;
+          let backoff = 1000;
           
-          if (!response.ok) {
-            console.error(`Failed to generate embedding for note ${note.id}: ${response.status} ${response.statusText}`);
+          while (retries < maxRetries) {
+            try {
+              response = await fetch(`${ollamaUrl}/api/embeddings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: model,
+                  prompt: promptBody,
+                  options: {
+                    num_ctx: 8192
+                  }
+                })
+              });
+
+              if (response.ok) {
+                break;
+              }
+
+              console.warn(`Ollama API error (${response.status}) for note ${note.id}. Retrying in ${backoff}ms...`);
+            } catch (err) {
+              console.warn(`Network error (${err.message}) for note ${note.id}. Retrying in ${backoff}ms...`);
+              await new Promise(resolve => setTimeout(resolve, backoff));
+              retries++;
+              backoff *= 2;
+              continue;
+            }
+            await new Promise(resolve => setTimeout(resolve, backoff));
+            retries++;
+            backoff *= 2;
+          }          
+          if (!response || !response.ok) {
+            const status = response ? response.status : 'Unknown';
+            const statusText = response ? response.statusText : 'Unknown';
+            console.error(`Failed to generate embedding for note ${note.id}: ${status} ${statusText}`);
             continue;
           }
           

@@ -303,16 +303,19 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockRejectedValue(new Error('Network error'));
 
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((cb) => { cb(); return 0; });
 
       await client.generateEmbeddings();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Error generating embedding for note note1:',
-        expect.any(Error)
+        'Failed to generate embedding for note note1: Unknown Unknown'
       );
       
+      consoleWarnSpy.mockRestore();
       consoleErrorSpy.mockRestore();
+      setTimeoutSpy.mockRestore();
     });
     
     it('should emit embeddingStart and embeddingComplete', async () => {
@@ -369,6 +372,51 @@ describe('JoplinSyncClient', () => {
         total: 2,
         percent: 100
       });
+    });
+
+    it('should retry on failure using incremental backoff before succeeding', async () => {
+      await client.init();
+
+      const mockNotes = [
+        { id: 'retry_note', title: 'Retry Note', body: 'This note requires retries' },
+      ];
+      
+      client.db = {
+        selectAll: jest.fn().mockResolvedValue(mockNotes)
+      };
+
+      const mockEmbedding = [0.7, 0.8, 0.9];
+      
+      // Mock fetch to fail 2 times then succeed
+      global.fetch
+        .mockRejectedValueOnce(new Error('fetch failed'))
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found'
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ embedding: mockEmbedding })
+        });
+
+      const embeddingGeneratedMock = jest.fn();
+      client.on('noteEmbeddingGenerated', embeddingGeneratedMock);
+
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((cb) => { cb(); return 0; });
+
+      await client.generateEmbeddings();
+
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+      expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
+      expect(embeddingGeneratedMock).toHaveBeenCalledWith({
+        noteId: 'retry_note',
+        embedding: mockEmbedding
+      });
+      
+      consoleWarnSpy.mockRestore();
+      setTimeoutSpy.mockRestore();
     });
   });
 });
