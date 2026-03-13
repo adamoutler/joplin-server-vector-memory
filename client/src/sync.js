@@ -235,6 +235,41 @@ class JoplinSyncClient extends EventEmitter {
       const ollamaUrl = config.ollamaUrl;
       const model = config.embeddingModel;
       
+      console.log(`Checking if Ollama model ${model} is available...`);
+      let modelLoaded = false;
+      let checkRetries = 0;
+      const maxCheckRetries = 60;
+      let checkBackoff = 2000;
+      
+      while (!modelLoaded && checkRetries < maxCheckRetries) {
+        try {
+          const tagsResponse = await fetch(`${ollamaUrl}/api/tags`);
+          if (tagsResponse.ok) {
+            const tagsData = await tagsResponse.json();
+            const models = tagsData.models || [];
+            const modelExists = models.some(m => m.name === model || m.name === `${model}:latest`);
+            if (modelExists) {
+              console.log(`Model ${model} is available.`);
+              modelLoaded = true;
+              break;
+            } else {
+              console.warn(`Model ${model} not found in Ollama yet. It might be downloading. Retrying in ${checkBackoff}ms...`);
+            }
+          } else {
+            console.warn(`Failed to fetch tags from Ollama (${tagsResponse.status}). Retrying in ${checkBackoff}ms...`);
+          }
+        } catch (err) {
+          console.warn(`Network error checking Ollama tags (${err.message}). Retrying in ${checkBackoff}ms...`);
+        }
+        await new Promise(resolve => setTimeout(resolve, checkBackoff));
+        checkRetries++;
+        checkBackoff = Math.min(checkBackoff * 1.5, 10000);
+      }
+      
+      if (!modelLoaded) {
+        console.error(`Timeout waiting for model ${model} to be loaded by Ollama. Embeddings may fail.`);
+      }
+
       let i = 0;
       for (const note of notes || []) {
         i++;
