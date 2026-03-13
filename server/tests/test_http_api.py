@@ -75,15 +75,33 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     assert data.get("id") == note_id
     assert data.get("title") == "[Agent Memory] Apple Recipe"
     assert data.get("content") == "How to make apple pie"
+    updated_time = data.get("updated_time")
     
-    # 3. Search
+    # 3. Update
+    update_req = {
+        "note_id": note_id,
+        "content": " with cinnamon",
+        "update_mode": "append",
+        "last_modified_timestamp": updated_time,
+        "summary_of_changes": "Added cinnamon"
+    }
+    response = client.post("/http-api/update", json=update_req, headers=headers)
+    assert response.status_code == 200
+    assert response.json().get("status") == "success"
+
+    # Verify update
+    response = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
+    assert response.status_code == 200
+    assert response.json().get("content") == "How to make apple pie\n with cinnamon"
+    
+    # 4. Search
     response = client.post("/http-api/search", json={"query": "apple"}, headers=headers)
     assert response.status_code == 200
     data = response.json()
     assert len(data) > 0
     assert data[0].get("id") == note_id
     
-    # 4. Delete
+    # 5. Delete
     response = client.post("/http-api/delete", json={"note_id": note_id}, headers=headers)
     assert response.status_code == 200
     data = response.json()
@@ -111,6 +129,9 @@ def test_bad_requests(client, temp_config_and_db):
     assert response.status_code == 422
     
     response = client.post("/http-api/remember", json={"title": "T"}, headers=headers)
+    assert response.status_code == 422
+    
+    response = client.post("/http-api/update", json={"wrong_key": "123"}, headers=headers)
     assert response.status_code == 422
     
     response = client.post("/http-api/delete", json={"wrong_key": "123"}, headers=headers)

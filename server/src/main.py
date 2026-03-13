@@ -418,6 +418,7 @@ class GetResponse(BaseModel):
     id: Optional[str] = Field(None, description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: Optional[str] = Field(None, description="Note Title", examples=["Pasta Recipe"])
     content: Optional[str] = Field(None, description="Note Content", examples=["# Pasta Recipe\n\nBoil water..."])
+    updated_time: Optional[int] = Field(None, description="Last updated timestamp", examples=[1628000000])
     error: Optional[str] = Field(None, description="Error message if any")
 
 class RememberRequest(BaseModel):
@@ -438,6 +439,18 @@ class DeleteResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
     id: Optional[str] = Field(None, description="Deleted Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     message: Optional[str] = Field(None, description="Success or error message", examples=["Note deleted successfully (mocked relay to Joplin)."])
+    error: Optional[str] = Field(None, description="Error message if any")
+
+class UpdateRequest(BaseModel):
+    note_id: str = Field(..., description="ID of the note to update")
+    content: str = Field(..., description="New content to append or replace")
+    update_mode: str = Field(..., description="Mode of update: 'replace' or 'append'")
+    last_modified_timestamp: int = Field(..., description="Timestamp for Optimistic Concurrency Control")
+    summary_of_changes: str = Field(..., description="Summary of changes")
+
+class UpdateResponse(BaseModel):
+    status: Optional[str] = Field(None, description="Status of the operation")
+    id: Optional[str] = Field(None, description="Updated Note ID")
     error: Optional[str] = Field(None, description="Error message if any")
 
 security = HTTPBearer()
@@ -589,6 +602,22 @@ async def api_delete(request: DeleteRequest, token: str = Depends(verify_token))
         id=exec_res.get("id"),
         message=exec_res.get("message")
     )
+
+@app.post(
+    "/http-api/update",
+    response_model=UpdateResponse,
+    summary="Update Note",
+    description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
+)
+async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):
+    result = update_note(
+        note_id=request.note_id,
+        content=request.content,
+        update_mode=request.update_mode,
+        last_modified_timestamp=request.last_modified_timestamp,
+        summary_of_changes=request.summary_of_changes
+    )
+    return result
 
 @app.get("/api/settings", response_model=Settings)
 async def get_settings(token: str = Depends(verify_token)):
