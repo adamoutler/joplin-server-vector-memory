@@ -280,7 +280,7 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
         headers = {"Accept": "application/json"}
         
         # Test 1: no trailing slash, no redirect
-        response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless/", json=request_data, headers=headers, allow_redirects=False)
+        response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless", json=request_data, headers=headers, allow_redirects=False)
         assert response.status_code == 200, f"Expected 200, got {response.status_code}. Response: {response.text}"
         data = response.json()
         assert data.get("jsonrpc") == "2.0"

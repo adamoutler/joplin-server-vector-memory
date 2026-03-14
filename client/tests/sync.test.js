@@ -201,7 +201,19 @@ describe('JoplinSyncClient', () => {
 
     beforeEach(() => {
       originalFetch = global.fetch;
-      global.fetch = jest.fn();
+      global.fetch = jest.fn().mockImplementation((url, options) => {
+        if (url && url.includes('/api/tags')) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({ models: [{ name: 'nomic-embed-text' }] })
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ embedding: [0.1] })
+        });
+      });
     });
 
     afterEach(() => {
@@ -220,9 +232,14 @@ describe('JoplinSyncClient', () => {
       };
 
       const mockEmbedding = [0.1, 0.2, 0.3];
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ embedding: mockEmbedding })
+      global.fetch.mockImplementation((url, options) => {
+        if (url && url.includes('/api/tags')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ embedding: mockEmbedding })
+        });
       });
 
       const embeddingGeneratedMock = jest.fn();
@@ -266,14 +283,19 @@ describe('JoplinSyncClient', () => {
       };
 
       const mockEmbedding = [0.4, 0.5, 0.6];
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ embedding: mockEmbedding })
+      global.fetch.mockImplementation((url, options) => {
+        if (url && url.includes('/api/tags')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ embedding: mockEmbedding })
+        });
       });
 
       await client.generateEmbeddings();
 
-      const fetchCallBody = JSON.parse(global.fetch.mock.calls[0][1].body);
+      const fetchCallBody = JSON.parse(global.fetch.mock.calls[1][1].body);
       
       // Expected rawText logic:
       // Title: Large Note\n\n + largeBody
@@ -301,7 +323,12 @@ describe('JoplinSyncClient', () => {
         selectAll: jest.fn().mockResolvedValue(mockNotes)
       };
 
-      global.fetch.mockRejectedValue(new Error('Network error'));
+      global.fetch.mockImplementation((url) => {
+        if (url && url.includes('/api/tags')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+        }
+        return Promise.reject(new Error('Network error'));
+      });
 
       const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
@@ -349,9 +376,14 @@ describe('JoplinSyncClient', () => {
         selectAll: jest.fn().mockResolvedValue(mockNotes)
       };
 
-      global.fetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ embedding: [0.1] })
+      global.fetch.mockImplementation((url, options) => {
+        if (url && url.includes('/api/tags')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ embedding: [0.1] })
+        });
       });
 
       const progressMock = jest.fn();
@@ -387,18 +419,20 @@ describe('JoplinSyncClient', () => {
 
       const mockEmbedding = [0.7, 0.8, 0.9];
       
-      // Mock fetch to fail 2 times then succeed
-      global.fetch
-        .mockRejectedValueOnce(new Error('fetch failed'))
-        .mockResolvedValueOnce({
-          ok: false,
-          status: 404,
-          statusText: 'Not Found'
-        })
-        .mockResolvedValueOnce({
+      // Mock fetch to fail 2 times then succeed for embeddings
+      let embedAttempts = 0;
+      global.fetch.mockImplementation((url, options) => {
+        if (url && url.includes('/api/tags')) {
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+        }
+        embedAttempts++;
+        if (embedAttempts === 1) return Promise.reject(new Error('fetch failed'));
+        if (embedAttempts === 2) return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
+        return Promise.resolve({
           ok: true,
           json: async () => ({ embedding: mockEmbedding })
         });
+      });
 
       const embeddingGeneratedMock = jest.fn();
       client.on('noteEmbeddingGenerated', embeddingGeneratedMock);
@@ -408,7 +442,7 @@ describe('JoplinSyncClient', () => {
 
       await client.generateEmbeddings();
 
-      expect(global.fetch).toHaveBeenCalledTimes(3);
+      expect(global.fetch).toHaveBeenCalledTimes(4);
       expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
       expect(embeddingGeneratedMock).toHaveBeenCalledWith({
         noteId: 'retry_note',
