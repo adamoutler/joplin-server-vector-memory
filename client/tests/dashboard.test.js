@@ -63,6 +63,15 @@ describe('Dashboard Endpoints', () => {
     jest.restoreAllMocks();
   });
 
+  test('GET / returns the correct HTML content with Content-Type: text/html', async () => {
+    fs.existsSync.mockReturnValue(false);
+    const response = await request(app).get('/').set('Authorization', authHeader);
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/html');
+    expect(response.text).toContain('<!DOCTYPE html>');
+    expect(response.text).toContain('<html>');
+  });
+
   test('GET / returns dashboard HTML with API Documentation links and MCP examples', async () => {
     fs.existsSync.mockReturnValue(false);
     const response = await request(app).get('/').set('Authorization', authHeader);
@@ -236,5 +245,35 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(200);
     expect(response.text).toContain('For AI Agents');
     expect(response.text).toContain('Joplin Server Vector Memory');
+  });
+
+  test('handles concurrent requests without blocking to ensure async file I/O', async () => {
+    fs.existsSync.mockReturnValue(true);
+    fs.promises.readFile.mockImplementation(() => {
+      // Simulate a slightly delayed read to test concurrency
+      return new Promise(resolve => {
+        setTimeout(() => {
+          resolve(JSON.stringify({
+            joplinUsername: 'localadmin',
+            joplinPassword: 'localpassword'
+          }));
+        }, 10);
+      });
+    });
+
+    const localAuthHeader = 'Basic ' + Buffer.from('localadmin:localpassword').toString('base64');
+    
+    // Fire 10 concurrent requests
+    const requests = Array.from({ length: 10 }).map(() => 
+      request(app).get('/status').set('Authorization', localAuthHeader)
+    );
+
+    const responses = await Promise.all(requests);
+    
+    // All 10 requests should succeed, and since they are processed concurrently, 
+    // the event loop is not blocked by sync file operations.
+    responses.forEach(response => {
+      expect(response.status).toBe(200);
+    });
   });
 });

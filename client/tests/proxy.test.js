@@ -6,7 +6,7 @@ jest.mock('fs', () => {
   const actualFs = jest.requireActual('fs');
   return {
     ...actualFs,
-    existsSync: jest.fn(actualFs.existsSync),
+    existsSync: jest.fn(() => false),
     promises: {
       readFile: jest.fn(async () => '{}')
     }
@@ -18,11 +18,7 @@ jest.mock('http-proxy-middleware', () => {
   return {
     createProxyMiddleware: jest.fn((options) => {
       return (req, res, next) => {
-        if (req.path.startsWith(options.pathFilter)) {
-          res.status(200).json({ proxied: true, path: req.path });
-        } else {
-          next();
-        }
+        res.status(200).json({ proxied: true, path: req.path });
       };
     })
   };
@@ -75,6 +71,9 @@ describe('Proxy Routes', () => {
   });
 
   test('should enforce auth if JOPLIN_SERVER_URL is in config but missing from env', async () => {
+    const originalEnv = process.env.JOPLIN_SERVER_URL;
+    delete process.env.JOPLIN_SERVER_URL;
+    
     // Make fs.existsSync return true
     fs.existsSync.mockReturnValue(true);
     // Return a fake config
@@ -84,5 +83,9 @@ describe('Proxy Routes', () => {
     const response = await request(app).get('/status');
     expect(response.status).toBe(401);
     expect(response.text).toContain('Authentication required');
+    
+    if (originalEnv !== undefined) {
+      process.env.JOPLIN_SERVER_URL = originalEnv;
+    }
   });
 });
