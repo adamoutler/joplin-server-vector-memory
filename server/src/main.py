@@ -472,10 +472,17 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         )
     return token
 
+import fastmcp
+
+# Configure FastMCP global settings for absolute paths (to avoid 404s when mounted at root)
+fastmcp.settings.sse_path = "/http-api/mcp/sse"
+fastmcp.settings.message_path = "/http-api/mcp/sse/messages"
+fastmcp.settings.streamable_http_path = "/http-api/mcp/stream"
+
 # Create the Starlette/ASGI app for uvicorn
-fastmcp_app = mcp.http_app(transport='sse', path="/")
-stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/", json_response=True)
-streamable_app = mcp.http_app(transport='streamable-http', path="/")
+fastmcp_app = mcp.http_app(transport='sse')
+stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/http-api/mcp/stateless", json_response=True)
+streamable_app = mcp.http_app(transport='streamable-http')
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -682,10 +689,13 @@ async def reset_settings(token: str = Depends(verify_token)):
         
     return default_settings
 
-app.mount("/http-api/mcp/sse", fastmcp_app)
-app.mount("/http-api/mcp/stream", streamable_app)
-app.mount("/http-api/mcp/stateless", stateless_app)
-
+# Actually, let's just append the routes directly
+for route in fastmcp_app.routes:
+    app.routes.append(route)
+for route in streamable_app.routes:
+    app.routes.append(route)
+for route in stateless_app.routes:
+    app.routes.append(route)
 
 class ForceAcceptJSONMiddleware:
     def __init__(self, app):
@@ -704,9 +714,9 @@ class ForceAcceptJSONMiddleware:
                     subpath = original_path[len("/http-api/mcp"):]
                     if not subpath or subpath == "/":
                         if method == "GET":
-                            scope["path"] = "/http-api/mcp/sse/"
+                            scope["path"] = "/http-api/mcp/sse"
                         else:
-                            scope["path"] = "/http-api/mcp/stream/"
+                            scope["path"] = "/http-api/mcp/stream"
                     else:
                         if method == "GET":
                             scope["path"] = f"/http-api/mcp/sse{subpath}"
@@ -714,17 +724,16 @@ class ForceAcceptJSONMiddleware:
                             scope["path"] = f"/http-api/mcp/stream{subpath}"
             
             logger.info(f"[MIDDLEWARE] {method} {original_path} -> {scope['path']}")
-
-            # Avoid 307 redirects for root endpoints when accessed without trailing slash
-            if scope["path"] in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]:
-                scope["path"] = scope["path"] + "/"
                 
             if scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
                 headers = dict(scope.get("headers", []))
                 accept_key = b"accept"
                 accept_val = headers.get(accept_key, b"").decode("utf-8")
                 if not accept_val or accept_val == "*/*":
-                    headers[accept_key] = b"application/json"
+                    if "stream" in scope["path"]:
+                        headers[accept_key] = b"application/json, text/event-stream"
+                    else:
+                        headers[accept_key] = b"application/json"
                     scope["headers"] = [(k, v) for k, v in headers.items()]
         await self.app(scope, receive, send)
 
