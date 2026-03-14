@@ -6,7 +6,7 @@ services:
       context: .
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
-      - "${BACKEND_PORT:-8001}:8000"
+      - "8000:8000"
     volumes:
       - ./data:/app/data
     environment:
