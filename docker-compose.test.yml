@@ -8,7 +8,7 @@ services:
       - "3001:3000"
       - "8002:8000"
     volumes:
-      - ./data:/app/data
+      - test_data:/app/data
     environment:
       - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
       - JOPLIN_USERNAME=${JOPLIN_USERNAME}
@@ -63,3 +63,4 @@ services:
 volumes:
   ollama_data:
   joplin_data:
+  test_data:

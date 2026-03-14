@@ -1,0 +1,6 @@
+data/
+server/venv/
+client/node_modules/
+__pycache__/
+.pytest_cache/
+.git/
