@@ -56,6 +56,31 @@ def test_unauthorized(client, temp_config_and_db):
     response = client.post("/http-api/search", json={"query": "test"}, headers={"Authorization": "Bearer wrong-token"})
     assert response.status_code == 401
 
+def test_negative_friction_search(client, temp_config_and_db, mock_ollama):
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    # Insert multiple notes so we get multiple results
+    client.post("/http-api/remember", json={"title": "Apple Recipe 1", "content": "How to make apple pie 1. " * 100}, headers=headers)
+    client.post("/http-api/remember", json={"title": "Apple Recipe 2", "content": "How to make apple pie 2. " * 100}, headers=headers)
+    client.post("/http-api/remember", json={"title": "Apple Recipe 3", "content": "How to make apple pie 3. " * 100}, headers=headers)
+    
+    # Search for apple to get multiple results
+    response = client.post("/http-api/search", json={"query": "apple"}, headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) >= 3
+    
+    # The top ranked result (index 0) should have full_body
+    assert "full_body" in data[0]
+    assert data[0]["full_body"] is not None
+    assert "blurb" in data[0]
+    
+    # The other results should NOT have full_body
+    for i in range(1, len(data)):
+        assert "full_body" not in data[i] or data[i]["full_body"] is None
+        assert "blurb" in data[i]
+
 def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     _, _, token = temp_config_and_db
     headers = {"Authorization": f"Bearer {token}"}
