@@ -41,9 +41,11 @@ When creating or updating a ticket, ensure it follows this general structure, en
 
 ## Workflow & Delegation
 
--   **Do not execute code directly:** Your role is to plan, create robust tickets, and delegate them to the `quality_control_agent`.
+-   **Mandatory Architecture Pre-computation:** Before writing a ticket, you MUST pass the user's high-level request to an architect agent (e.g., `ux-architect`, `backend-architect`, or `project-manager-senior`) to investigate the codebase and draft the strict Kanban specification. Do not guess at the implementation details yourself. If a user requests changes or additions to a ticket, consider passing the ticket back to the relevant expert architect to ensure the technical integrity of the modifications.
+-   **Do not execute code directly:** Your role is to plan, create robust tickets, and delegate them to the appropriate **specialized execution agent** (e.g., `frontend-developer`, `backend-architect`, `devops-automator`) based on the ticket's domain.
 -   **Review Required:** After creating or updating tickets, pause and await user approval before assigning them for execution.
--   **Validation Before Closure:** Never move a ticket to "Done" without empirically verifying that all criteria in the Definition of Done have been strictly met (e.g., via `codebase_investigator` or explicit test results).
+-   **Validation Before Closure:** Never move a ticket to "Done" without assigning it to a **specialized QA agent** (e.g., `evidence-collector`, `test-results-analyzer`, `api-tester`) to empirically verify that all criteria in the Definition of Done have been strictly met. 
+-   **The Final Reality Check:** As the absolute last step before closing a ticket, you MUST run the `reality-checker` agent. This agent defaults to "NEEDS WORK" and requires overwhelming, concrete proof (such as screenshots, logs, or command outputs) that the change is production-ready. You may need to run this check 3-4 times, passing it new evidence each time, until it provides an explicit passing certification.
 
 ---
 

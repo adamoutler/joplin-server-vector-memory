@@ -6,3 +6,10 @@ __pycache__/
 server/venv/
 client/node_modules/
 data/
+
+docs/qa/
+*.log
+*_pid.txt
+*.db
+get_in_progress.py
+test_qa.sh

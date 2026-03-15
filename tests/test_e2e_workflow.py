@@ -162,7 +162,8 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
             
             found_note_id = search_data[0].get("id")
             assert found_note_id == created_note_id, f"Found note ID {found_note_id} doesn't match created note ID {created_note_id}"
-            assert secret_uuid in search_data[0].get("blurb", ""), "Secret UUID not found in the search result blurb"
+            assert "full_body" in search_data[0], "full_body should be present in the first result"
+            assert secret_uuid in search_data[0].get("full_body", ""), "Secret UUID not found in the full_body of the top search result"
             
             # Read the note via get_note
             get_res = await session.call_tool(

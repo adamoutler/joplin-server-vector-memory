@@ -18,10 +18,15 @@ async function main() {
   // Create a folder
   let folder = await Folder.save({ title: "E2E Test Folder" });
   
-  // Create a note
+  // Generate random padding text
+  const generateRandomWord = () => Math.random().toString(36).substring(2, 8);
+  const randomTextChunk = Array.from({ length: 5000 }, generateRandomWord).join(" ");
+  const randomTextChunk2 = Array.from({ length: 5000 }, generateRandomWord).join(" ");
+
+  // Create a note with large random text to test token size limits
   let note = await Note.save({
-    title: "E2E Secret Note",
-    body: `the secret number is ${secretStr}`,
+    title: "E2E Secret Note with Large Token Size",
+    body: `${randomTextChunk}\n\nthe secret number is ${secretStr}\n\n${randomTextChunk2}`,
     parent_id: folder.id
   });
   
