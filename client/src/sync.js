@@ -53,7 +53,7 @@ class JoplinSyncClient extends EventEmitter {
     await new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
         this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[768])`, err => err && reject(err));
-        this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT)`, err => {
+        this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, updated_time INTEGER DEFAULT 0)`, err => {
           if (err) return reject(err);
           this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
           this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => err && reject(err));
@@ -66,6 +66,7 @@ class JoplinSyncClient extends EventEmitter {
     });
 
     Setting.setConstant('profileDir', this.profileDir);
+    Setting.setConstant('resourceDir', path.join(this.profileDir, 'resources'));
     Setting.setConstant('env', 'prod');
     Setting.setConstant('appId', 'net.cozic.joplin-cli');
     Setting.setConstant('appType', 'cli');
@@ -129,6 +130,9 @@ class JoplinSyncClient extends EventEmitter {
     await Setting.setValue('sync.9.userContentPath', this.serverUrl);
     await Setting.setValue('sync.9.username', this.username);
     await Setting.setValue('sync.9.password', this.password);
+    
+    // Ensure resources are downloaded locally
+    await Setting.setValue('sync.resourceDownloadMode', 'always');
 
     // Initialize sync target
     const syncTargetId = Setting.value('sync.target');
@@ -173,7 +177,7 @@ class JoplinSyncClient extends EventEmitter {
     this.emit('decryptComplete');
   }
 
-  upsertVector(noteId, title, content, embedding) {
+  upsertVector(noteId, title, content, embedding, updatedTime) {
     return new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
         this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {
@@ -182,7 +186,7 @@ class JoplinSyncClient extends EventEmitter {
           
           if (row) {
             const rowid = row.rowid;
-            this.vectorDb.run(`UPDATE note_metadata SET title = ?, content = ? WHERE rowid = ?`, [title, content, rowid], (err) => {
+            this.vectorDb.run(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [title, content, updatedTime, rowid], (err) => {
               if (err) return reject(err);
               this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid], (err) => {
                 if (err) return reject(err);
@@ -194,7 +198,7 @@ class JoplinSyncClient extends EventEmitter {
             });
           } else {
             const vectorDb = this.vectorDb;
-            vectorDb.run(`INSERT INTO note_metadata (note_id, title, content) VALUES (?, ?, ?)`, [noteId, title, content], function(err) {
+            vectorDb.run(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [noteId, title, content, updatedTime], function(err) {
               if (err) return reject(err);
               const rowid = this.lastID;
               vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
@@ -229,62 +233,65 @@ class JoplinSyncClient extends EventEmitter {
     this.emit('embeddingStart');
     
     try {
-      const notes = await this.db.selectAll('SELECT id, title, body FROM notes WHERE encryption_applied = 0');
+      // 1. Fetch current decrypted notes from Joplin DB
+      const notes = await this.db.selectAll('SELECT id, title, body, updated_time FROM notes WHERE encryption_applied = 0');
       
-      const config = await this.getConfig();
-      const ollamaUrl = config.ollamaUrl;
-      const model = config.embeddingModel;
+      // 2. Fetch existing metadata from Vector DB
+      const vectorMeta = await new Promise((resolve, reject) => {
+        this.vectorDb.all(`SELECT note_id, updated_time FROM note_metadata`, (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        });
+      });
       
-      console.log(`Checking if Ollama model ${model} is available...`);
-      let modelLoaded = false;
-      let checkRetries = 0;
-      const maxCheckRetries = 60;
-      let checkBackoff = 2000;
+      const vectorIdToTime = new Map();
+      vectorMeta.forEach(row => vectorIdToTime.set(row.note_id, row.updated_time || 0));
       
-      while (!modelLoaded && checkRetries < maxCheckRetries) {
-        try {
-          const tagsResponse = await fetch(`${ollamaUrl}/api/tags`);
-          if (tagsResponse.ok) {
-            const tagsData = await tagsResponse.json();
-            const models = tagsData.models || [];
-            const modelExists = models.some(m => m.name === model || m.name === `${model}:latest`);
-            if (modelExists) {
-              console.log(`Model ${model} is available.`);
-              modelLoaded = true;
-              break;
-            } else {
-              console.warn(`Model ${model} not found in Ollama yet. It might be downloading. Retrying in ${checkBackoff}ms...`);
-            }
-          } else {
-            console.warn(`Failed to fetch tags from Ollama (${tagsResponse.status}). Retrying in ${checkBackoff}ms...`);
-          }
-        } catch (err) {
-          console.warn(`Network error checking Ollama tags (${err.message}). Retrying in ${checkBackoff}ms...`);
+      const currentNoteIds = new Set(notes.map(n => n.id));
+      
+      // 3. Delete removed notes
+      for (const vId of vectorIdToTime.keys()) {
+        if (!currentNoteIds.has(vId)) {
+          console.log(`Note ${vId} was deleted, removing from vector DB...`);
+          await new Promise((resolve, reject) => {
+            this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [vId], (err, row) => {
+              if (err || !row) return resolve();
+              this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], () => {
+                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], resolve);
+              });
+            });
+          });
         }
-        await new Promise(resolve => setTimeout(resolve, checkBackoff));
-        checkRetries++;
-        checkBackoff = Math.min(checkBackoff * 1.5, 10000);
       }
       
-      if (!modelLoaded) {
-        console.error(`Timeout waiting for model ${model} to be loaded by Ollama. Embeddings may fail.`);
+      // 4. Filter notes that need updating
+      const notesToProcess = notes.filter(n => {
+        const vTime = vectorIdToTime.get(n.id);
+        return vTime === undefined || n.updated_time > vTime;
+      });
+      
+      if (notesToProcess.length === 0) {
+        console.log('No changed notes to embed.');
+        this.emit('embeddingComplete');
+        return;
       }
-
+      
+      console.log(`Found ${notesToProcess.length} new or updated notes to embed.`);
+      
+      // Instead of polling Ollama directly, we just call our Python server.
+      // The Python server will handle whether it uses local SentenceTransformers or an external Ollama server.
+      const internalApiUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
+      
       let i = 0;
-      for (const note of notes || []) {
+      for (const note of notesToProcess) {
         i++;
-        this.emit('progress', { phase: 'embedding', current: i, total: notes.length, percent: Math.round((i / notes.length) * 100) });
+        this.emit('progress', { phase: 'embedding', current: i, total: notesToProcess.length, percent: Math.round((i / notesToProcess.length) * 100) });
         if (!note.body) continue;
         
         try {
-          // Truncate from the start to avoid 500 context length errors on Ollama side.
-          // ALSO: nomic-embed-text requires the `search_document: ` prefix for documents.
-          // We MUST include the title in the body so the embedding contains contextual meaning.
+          // Truncate from the start to avoid 500 context length errors on Ollama side if applicable.
           let rawText = `Title: ${note.title}\n\n${note.body}`;
           
-          // Chunking to stay safely under the embedding model's token limit.
-          // Using a strict character chunk limit (e.g., 8000 characters) and 
-          // embedding only the first chunk for now to prevent 500 errors.
           const CHUNK_LIMIT = 8000;
           if (rawText.length > CHUNK_LIMIT) {
               let chunk = rawText.substring(0, CHUNK_LIMIT);
@@ -304,15 +311,11 @@ class JoplinSyncClient extends EventEmitter {
           
           while (retries < maxRetries) {
             try {
-              response = await fetch(`${ollamaUrl}/api/embeddings`, {
+              response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  model: model,
-                  prompt: promptBody,
-                  options: {
-                    num_ctx: 8192
-                  }
+                  text: promptBody
                 })
               });
 
@@ -320,7 +323,7 @@ class JoplinSyncClient extends EventEmitter {
                 break;
               }
 
-              console.warn(`Ollama API error (${response.status}) for note ${note.id}. Retrying in ${backoff}ms...`);
+              console.warn(`Internal embed API error (${response.status}) for note ${note.id}. Retrying in ${backoff}ms...`);
             } catch (err) {
               console.warn(`Network error (${err.message}) for note ${note.id}. Retrying in ${backoff}ms...`);
               await new Promise(resolve => setTimeout(resolve, backoff));
@@ -341,7 +344,7 @@ class JoplinSyncClient extends EventEmitter {
           
           const data = await response.json();
           
-          await this.upsertVector(note.id, note.title, note.body, data.embedding);
+          await this.upsertVector(note.id, note.title, note.body, data.embedding, note.updated_time);
           
           this.emit('noteEmbeddingGenerated', {
             noteId: note.id,

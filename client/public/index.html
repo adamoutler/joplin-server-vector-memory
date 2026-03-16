@@ -143,18 +143,6 @@
         </fieldset>
 
         <fieldset data-critical="true">
-          <legend>Vector Engine</legend>
-          <div class="form-group">
-            <label>Engine Type</label>
-            <select id="vectorEngine">
-              <option value="chroma">ChromaDB (Default)</option>
-              <option value="sqlite">SQLite Vec (Experimental)</option>
-              <option value="pgvector">PGVector</option>
-            </select>
-          </div>
-        </fieldset>
-
-        <fieldset data-critical="true">
           <legend>Chunking Strategy</legend>
           <div class="form-group">
             <label>Chunk Size</label>
@@ -203,7 +191,7 @@
 
   <dialog id="warning-modal">
     <h3>⚠️ Critical Changes Detected</h3>
-    <p>You have changed critical RAG settings (Vector Engine or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
+    <p>You have changed critical RAG settings (Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
     <p>Are you sure you want to proceed?</p>
     <div class="form-group" style="margin-top: 1rem;">
       <input type="text" id="reindex-confirm-input" placeholder="Type REINDEX to confirm">
@@ -404,7 +392,7 @@
           const data = await res.json();
           initialState = data;
           
-          const fields = ['ollamaBaseUrl', 'ollamaModel', 'vectorEngine', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
+          const fields = ['ollamaBaseUrl', 'ollamaModel', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
           fields.forEach(f => {
             const el = document.getElementById(f);
             if (el && data[f] !== undefined && data[f] !== null) {
@@ -423,7 +411,6 @@
       return {
         ollamaBaseUrl: document.getElementById('ollamaBaseUrl').value,
         ollamaModel: document.getElementById('ollamaModel').value,
-        vectorEngine: document.getElementById('vectorEngine').value,
         chunkSize: parseInt(document.getElementById('chunkSize').value) || 1000,
         chunkOverlap: parseInt(document.getElementById('chunkOverlap').value) || 200,
         searchTopK: parseInt(document.getElementById('searchTopK').value) || 5,
@@ -455,7 +442,7 @@
       if (isCriticalChanged) {
         pendingAction = 'save';
         if (warningTitle) warningTitle.innerText = '⚠️ Critical Changes Detected';
-        if (warningText) warningText.innerText = 'You have changed critical RAG settings (Vector Engine or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.';
+        if (warningText) warningText.innerText = 'You have changed critical RAG settings (Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.';
         warningModal.showModal();
         reindexInput.value = '';
         confirmBtn.disabled = true;
@@ -570,7 +557,7 @@
           const data = await res.json();
           initialState = data;
           
-          const fields = ['ollamaBaseUrl', 'ollamaModel', 'vectorEngine', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
+          const fields = ['ollamaBaseUrl', 'ollamaModel', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
           fields.forEach(f => {
             const el = document.getElementById(f);
             if (el && initialState[f] !== undefined && initialState[f] !== null) {

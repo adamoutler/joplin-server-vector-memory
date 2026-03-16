@@ -37,15 +37,14 @@ def test_openapi_contains_workflow_links_and_examples():
     search_responses = data["paths"]["/http-api/search"]["post"]["responses"]
     assert "links" in search_responses["200"]
     assert "GetNoteById" in search_responses["200"]["links"]
-    assert "DeleteNoteById" in search_responses["200"]["links"]
+    assert "RequestDeletionById" in search_responses["200"]["links"]
     assert search_responses["200"]["links"]["GetNoteById"]["operationId"] == "api_get_http_api_get_post"
 
     # Check for links in Remember endpoint
     remember_responses = data["paths"]["/http-api/remember"]["post"]["responses"]
     assert "links" in remember_responses["200"]
     assert "GetNoteById" in remember_responses["200"]["links"]
-    assert "DeleteNoteById" in remember_responses["200"]["links"]
-    
+    assert "RequestDeletionById" in remember_responses["200"]["links"]    
     # Check for examples in Pydantic models
     schemas = data["components"]["schemas"]
     assert "SearchRequest" in schemas

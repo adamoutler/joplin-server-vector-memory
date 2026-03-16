@@ -13,7 +13,7 @@ const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
 const apiProxy = createProxyMiddleware({ target: BACKEND_URL, changeOrigin: true });
 app.use((req, res, next) => {
-  if (req.path.startsWith('/docs') || req.path.startsWith('/openapi.json') || req.path.startsWith('/http-api')) {
+  if (req.path.startsWith('/docs') || req.path.startsWith('/openapi.json') || req.path.startsWith('/http-api') || req.path.startsWith('/api/')) {
     // Special handling for MCP accept header
     if (req.path.startsWith('/http-api/mcp')) {
       if (!req.headers.accept || req.headers.accept === '*/*') {
@@ -122,16 +122,21 @@ app.use(async (req, res, next) => {
     return next();
   }
 
+  const send401 = () => {
+    if (req.path === '/' || req.path === '/index.html') {
+      res.setHeader('WWW-Authenticate', 'Basic realm="Joplin Sync Client"');
+    }
+    return res.status(401).send('Authentication required.');
+  };
+
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic');
-    return res.status(401).send('Authentication required.');
+    return send401();
   }
 
   const match = authHeader.match(/^Basic\s+(.*)$/i);
   if (!match) {
-    res.setHeader('WWW-Authenticate', 'Basic');
-    return res.status(401).send('Authentication required.');
+    return send401();
   }
 
   const base64Credentials = match[1];
@@ -155,8 +160,7 @@ app.use(async (req, res, next) => {
       return next();
     } else {
       authCache.delete(base64Credentials);
-      res.setHeader('WWW-Authenticate', 'Basic');
-      return res.status(401).send('Authentication required.');
+      return send401();
     }
   }
 
@@ -172,8 +176,7 @@ app.use(async (req, res, next) => {
       return next();
     } else {
       authCache.delete(base64Credentials);
-      res.setHeader('WWW-Authenticate', 'Basic');
-      return res.status(401).send('Authentication required.');
+      return send401();
     }
   } catch (err) {
     console.error('Joplin Server unreachable:', err);
@@ -184,6 +187,90 @@ app.use(async (req, res, next) => {
 let syncStatus = 'ready'; // ready, syncing, error
 let syncClient = null;
 let syncProgress = null;
+
+app.get('/node-api/resources/:id', async (req, res) => {
+  if (!syncClient || !syncClient.db) {
+    return res.status(503).json({ error: 'Sync client not initialized' });
+  }
+  const Resource = require('@joplin/lib/models/Resource').default;
+  try {
+    const resource = await Resource.load(req.params.id);
+    if (!resource) {
+      return res.status(404).json({ error: 'Resource not found' });
+    }
+    const fullPath = Resource.fullPath(resource);
+    if (!fs.existsSync(fullPath)) {
+      // If not downloaded yet, we could trigger a download or just return 404
+      return res.status(404).json({ error: 'Resource file not downloaded yet' });
+    }
+    res.type(resource.mime || 'application/octet-stream');
+    res.sendFile(fullPath);
+  } catch (err) {
+    console.error('Error fetching resource:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/node-api/notes/:id/resources', async (req, res) => {
+  if (!syncClient || !syncClient.db) {
+    return res.status(503).json({ error: 'Sync client not initialized' });
+  }
+  try {
+    const resources = await syncClient.db.selectAll(
+      `SELECT r.id, r.title, r.mime, r.file_extension 
+       FROM resources r 
+       JOIN note_resources nr ON r.id = nr.resource_id 
+       WHERE nr.note_id = ?`, 
+      [req.params.id]
+    );
+    res.json(resources);
+  } catch (err) {
+    console.error('Error fetching note resources:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/node-api/resources', async (req, res) => {
+  if (!syncClient || !syncClient.db) {
+    return res.status(503).json({ error: 'Sync client not initialized' });
+  }
+  const { filename, base64_data, mime_type } = req.body;
+  if (!filename || !base64_data) {
+    return res.status(400).json({ error: 'filename and base64_data are required' });
+  }
+  
+  const Resource = require('@joplin/lib/models/Resource').default;
+  const mimeUtils = require('@joplin/lib/mime-utils.js');
+  try {
+    const fileBuffer = Buffer.from(base64_data, 'base64');
+    const resourceProps = {
+      title: filename,
+      mime: mime_type || mimeUtils.fromFilename(filename) || 'application/octet-stream',
+      file_extension: path.extname(filename).slice(1)
+    };
+    
+    // Create the resource record in the local DB
+    const newResource = await Resource.save(resourceProps, { isNew: true });
+    
+    // Write the actual binary file to the resources directory
+    const fullPath = Resource.fullPath(newResource);
+    const resourceDir = path.dirname(fullPath);
+    if (!fs.existsSync(resourceDir)) {
+      fs.mkdirSync(resourceDir, { recursive: true });
+    }
+    await fs.promises.writeFile(fullPath, fileBuffer);
+    
+    // Trigger sync to push to server
+    if (syncClient.synchronizer) {
+      syncClient.synchronizer.start().catch(e => console.error('Sync failed after resource upload:', e));
+    }
+    
+    res.json({ id: newResource.id, status: 'success' });
+  } catch (err) {
+    console.error('Error uploading resource:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.use(express.static(path.join(__dirname, '../public')));
 app.get('/', (req, res) => {
@@ -282,27 +369,32 @@ app.post('/auth', async (req, res) => {
   res.json({ success: true, token });
 });
 
-async function startSync(config) {
+let syncIntervalId = null;
+
+async function runSyncCycle(config) {
   if (syncStatus === 'syncing') return;
   syncStatus = 'syncing';
   try {
-    syncClient = new JoplinSyncClient({
-      serverUrl: config.joplinServerUrl,
-      username: config.joplinUsername,
-      password: config.joplinPassword,
-      masterPassword: config.joplinMasterPassword,
-      profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
-    });
+    if (!syncClient) {
+      syncClient = new JoplinSyncClient({
+        serverUrl: config.joplinServerUrl,
+        username: config.joplinUsername,
+        password: config.joplinPassword,
+        masterPassword: config.joplinMasterPassword,
+        profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
+      });
+      
+      syncClient.on('syncStart', () => { syncStatus = 'syncing'; syncProgress = null; console.log('Sync started...'); });
+      syncClient.on('syncComplete', () => { console.log('Sync completed.'); });
+      syncClient.on('decryptStart', () => console.log('Decryption started...'));
+      syncClient.on('decryptComplete', () => console.log('Decryption completed.'));
+      syncClient.on('embeddingStart', () => { console.log('Embedding generation started...'); });
+      syncClient.on('embeddingComplete', () => { console.log('Embedding generation completed.'); });
+      syncClient.on('progress', (data) => { syncProgress = data; });
+      
+      await syncClient.init();
+    }
     
-    syncClient.on('syncStart', () => { syncStatus = 'syncing'; syncProgress = null; console.log('Sync started...'); });
-    syncClient.on('syncComplete', () => { console.log('Sync completed.'); });
-    syncClient.on('decryptStart', () => console.log('Decryption started...'));
-    syncClient.on('decryptComplete', () => console.log('Decryption completed.'));
-    syncClient.on('embeddingStart', () => { console.log('Embedding generation started...'); });
-    syncClient.on('embeddingComplete', () => { console.log('Embedding generation completed.'); });
-    syncClient.on('progress', (data) => { syncProgress = data; });
-    
-    await syncClient.init();
     await syncClient.sync();
     await syncClient.decrypt();
     await syncClient.generateEmbeddings();
@@ -314,6 +406,20 @@ async function startSync(config) {
     syncStatus = 'error';
     syncProgress = null;
   }
+}
+
+async function startSync(config) {
+  // Clear any existing interval
+  if (syncIntervalId) {
+    clearInterval(syncIntervalId);
+  }
+  
+  // Run immediately
+  await runSyncCycle(config);
+  
+  // Poll every 60 seconds
+  const pollInterval = parseInt(process.env.SYNC_INTERVAL_MS) || 60000;
+  syncIntervalId = setInterval(() => runSyncCycle(config), pollInterval);
 }
 // Start on boot if config exists
 if (fs.existsSync(CONFIG_PATH)) {

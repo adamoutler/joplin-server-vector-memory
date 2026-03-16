@@ -126,9 +126,35 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     assert len(data) > 0
     assert data[0].get("id") == note_id
     
-    # 5. Delete
-    response = client.post("/http-api/delete", json={"note_id": note_id}, headers=headers)
+    # 5. Delete (2-step friction process)
+    # Step 1: Request Deletion
+    response = client.post("/http-api/request-deletion", json={"note_id": note_id, "reason": "Test cleanup"}, headers=headers)
     assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") == "pending"
+    deletion_token = data.get("deletion_token")
+    confirm_title = data.get("confirm_title")
+
+    # Step 2: Execute Deletion
+    # First get the note to calculate its content hash (simulating client behavior)
+    response = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
+    assert response.status_code == 200
+    content_hash = response.json().get("content_hash")
+
+    attestation = {
+        "content_hash": content_hash,
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+    }
+
+    response = client.post("/http-api/execute-deletion", json={
+        "deletion_token": deletion_token,
+        "confirm_title": confirm_title,
+        "safety_attestation": attestation
+    }, headers=headers)
+    if response.status_code != 200:
+        print("EXECUTE DELETION ERROR:", response.json())
+    assert response.status_code == 200
+    assert response.json().get("status") == "success"
     data = response.json()
     assert data.get("status") == "success"
     
@@ -159,7 +185,10 @@ def test_bad_requests(client, temp_config_and_db):
     response = client.post("/http-api/update", json={"wrong_key": "123"}, headers=headers)
     assert response.status_code == 422
     
-    response = client.post("/http-api/delete", json={"wrong_key": "123"}, headers=headers)
+    response = client.post("/http-api/request-deletion", json={"wrong_key": "123"}, headers=headers)
+    assert response.status_code == 422
+    
+    response = client.post("/http-api/execute-deletion", json={"wrong_key": "123"}, headers=headers)
     assert response.status_code == 422
 
 def test_settings_api(client, temp_config_and_db):

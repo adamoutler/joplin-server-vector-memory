@@ -85,13 +85,30 @@ In addition to MCP, a RESTful JSON API is exposed under `/http-api`.
   ```
 - **Response**: Success status with new note ID.
 
-### Delete Note
+### Request Deletion
 
-- **Endpoint**: `POST /http-api/delete`
+- **Endpoint**: `POST /http-api/request-deletion`
 - **Body Request**:
   ```json
   {
-    "note_id": "123e4567-e89b-12d3-a456-426614174000"
+    "note_id": "123e4567-e89b-12d3-a456-426614174000",
+    "reason": "Note no longer needed"
+  }
+  ```
+- **Response**: Returns a `deletion_token` and `confirm_title` needed for the next step.
+
+### Execute Deletion
+
+- **Endpoint**: `POST /http-api/execute-deletion`
+- **Body Request**:
+  ```json
+  {
+    "deletion_token": "token_from_request_deletion",
+    "confirm_title": "Exact Note Title",
+    "safety_attestation": {
+      "content_hash": "sha256:...",
+      "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+    }
   }
   ```
 - **Response**: Success status confirming deletion.

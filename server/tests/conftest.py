@@ -16,9 +16,9 @@ def ephemeral_joplin():
     env.pop("JOPLIN_MASTER_PASSWORD", None)
 
     # Down first just in case
-    subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
     # Spin up
-    subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
     
     # Wait for the server to be ready
     max_retries = 30
@@ -34,8 +34,8 @@ def ephemeral_joplin():
         time.sleep(1)
         
     if not ready:
-        subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
-        subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
         raise RuntimeError("Joplin server did not start in time")
     
     # Provide admin credentials to the test environment
@@ -47,4 +47,4 @@ def ephemeral_joplin():
         yield
     finally:
         # Tear down
-        subprocess.run(["docker", "compose", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=True)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=True)
