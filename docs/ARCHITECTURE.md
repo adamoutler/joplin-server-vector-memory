@@ -1,5 +1,69 @@
 # Architecture Overview
 
+```mermaid
+flowchart TB
+ subgraph Web3000["Port 3000 Service"]
+    direction LR
+        P3000(("Port: 3000"))
+        Auth["Basic Auth Middleware"]
+        UI["Web Dashboard UI<br>&nbsp;/status"]
+        Proxy["API Proxy Middleware"]
+  end
+ subgraph NodeJS["Node.js Sync Client & Proxy"]
+    direction TB
+        Web3000
+        SyncEngine["Background Sync Engine"]
+        NodeAPI["Internal Node APIs<br>&nbsp;/node-api/*"]
+  end
+ subgraph Python["Python FastMCP Server"]
+    direction TB
+        P8000(("Port: 8000"))
+        MCP_HTTP["MCP HTTP API<br>&nbsp;/http-api/mcp"]
+        MCP_SSE["MCP SSE API<br>&nbsp;/http-api/mcp/sse"]
+        Docs["FastAPI Docs<br>&nbsp;/docs, /openapi.json"]
+  end
+ subgraph Services["Application Services"]
+    direction LR
+        NodeJS
+        Python
+  end
+
+ subgraph Container["Docker Container"]
+    direction TB
+        Services
+        Storage
+         subgraph Storage["Local Storage"]
+            direction TB
+            SQLite[("📦 SQLite + sqlite-vec<br>&nbsp;/app/data")]
+         end
+  end
+    P3000 --> Auth
+    Auth --> UI & Proxy
+    P8000 --> MCP_HTTP & MCP_SSE & Docs
+    Python -- Mutates Notes/Resources<br>(Bypasses Auth) --> NodeAPI
+    SyncEngine -- Fetches Encrypted Blobs --> JoplinServer[("☁️ Joplin Server")]
+    SyncEngine -- Generates Embeddings --> Ollama[("🧠 Ollama<br>Embedding Model")]
+    AIAgent(("🤖 AI Agent / LLM")) -- Direct API Access<br>(Recommended) --> Python
+    Proxy -- "Routes /api/*, /docs, /http-api/*" --> Python
+    Web3000 -. Internal Only .-> NodeAPI
+    Python -- Reads/Searches<br>Vectors &amp; Content --> Storage
+    SyncEngine -- Writes Decrypted Data<br>&amp; Vectors --> Storage
+    AIAgent -- Proxied API Access<br>(Discouraged Fallback) --> Web3000
+    AIAgent -- "Reads /llms.txt" --> Web3000
+    User(("🧑‍💻 User / Admin")) -- Web Browser Access<br>(Config &amp; Status) --> Web3000
+
+     P3000:::port
+     P8000:::port
+     SQLite:::storage
+     User:::external
+     JoplinServer:::external
+     Ollama:::external
+     AIAgent:::external
+    classDef external fill:#f9f9f9,stroke:#333,stroke-width:2px,color:#000
+    classDef port fill:#ff9900,stroke:#c0392b,stroke-width:2px,color:#fff
+    classDef storage fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff
+```
+
 Joplin Server Vector Memory MCP is an AI-native semantic search engine designed to interface between an End-to-End Encrypted (E2EE) Joplin Server ecosystem and an AI client via the Model Context Protocol (MCP).
 
 ## Core Components
