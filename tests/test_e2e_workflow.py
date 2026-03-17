@@ -27,7 +27,7 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 # Let's just redefine a session-scoped ephemeral_joplin here if it doesn't conflict, 
 # or just run it via import.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'tests')))
-from conftest import ephemeral_joplin
+
 
 class MockOllamaHandler(BaseHTTPRequestHandler):
     def do_POST(self):
