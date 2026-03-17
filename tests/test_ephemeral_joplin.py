@@ -29,12 +29,12 @@ def ephemeral_joplin():
         # Tear down
         subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], check=True)
 
-def test_joplin_is_running():
+def test_joplin_is_running(ephemeral_joplin):
     resp = requests.get("http://localhost:22300/api/ping")
     assert resp.status_code == 200
     assert resp.json().get("status") == "ok"
 
-def test_admin_login():
+def test_admin_login(ephemeral_joplin):
     resp = requests.post("http://localhost:22300/api/sessions", json={
         "email": "admin@localhost",
         "password": "admin"
