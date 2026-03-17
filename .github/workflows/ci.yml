@@ -48,9 +48,12 @@ jobs:
         run: flake8 .
 
   test-node:
-    name: Node.js Tests
+    name: Node.js Tests (${{ matrix.node-version }})
     needs: lint
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ['20', '22']
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -58,7 +61,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
           cache-dependency-path: './client/package-lock.json'
 
@@ -77,13 +80,16 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: node-test-results
+          name: node-test-results-${{ matrix.node-version }}
           path: client/test-results/jest-junit.xml
 
   test-python:
-    name: Python Tests
+    name: Python Tests (${{ matrix.python-version }})
     needs: lint
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -91,7 +97,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
           cache: 'pip'
           cache-dependency-path: './server/requirements.txt'
 
@@ -111,7 +117,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-test-results
+          name: python-test-results-${{ matrix.python-version }}
           path: server/test-results/pytest-junit.xml
 
   publish-test-results:
@@ -119,6 +125,9 @@ jobs:
     needs: [test-node, test-python]
     runs-on: ubuntu-latest
     if: always()
+    permissions:
+      checks: write
+      pull-requests: write
     steps:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
