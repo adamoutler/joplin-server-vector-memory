@@ -64,6 +64,27 @@ def ephemeral_joplin():
         subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
                        "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
         raise RuntimeError("Joplin server did not start in time")
+        
+    # Wait for the app container to be ready
+    app_ready = False
+    for i in range(max_retries):
+        try:
+            resp = requests.get("http://localhost:8002/http-api/mcp/stateless", timeout=2)
+            # Just getting a response (even 405 Method Not Allowed) means it's up
+            app_ready = True
+            break
+        except requests.exceptions.ConnectionError:
+            pass
+        except requests.exceptions.ReadTimeout:
+            pass
+        time.sleep(1)
+        
+    if not app_ready:
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file",
+                       "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
+                       "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
+        raise RuntimeError("App container did not start in time")
 
     # Provide admin credentials to the test environment
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
