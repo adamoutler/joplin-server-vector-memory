@@ -42,7 +42,7 @@ def setup_ui_server():
     
     subprocess.run(["docker", "compose", "-p", "joplin-test-ui", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
 
-def test_ui_create_api_key(setup_ui_server):
+def test_ui_create_api_key(setup_ui_server, assert_snapshot):
     base_url = setup_ui_server
     
     with sync_playwright() as p:
@@ -57,6 +57,9 @@ def test_ui_create_api_key(setup_ui_server):
         # Verify we are on the setup page
         expect(page.locator("text=Joplin Memory Server Dashboard").first).to_be_visible()
         
+        # Take a visual baseline of the initial dashboard
+        assert_snapshot(page.screenshot(), name="dashboard-initial.png")
+        
         # We can just test API key creation right here in the setup mode
         # Wait for the API keys section to load
         page.wait_for_selector("#new-key-annotation", state="attached", timeout=10000)
@@ -70,6 +73,9 @@ def test_ui_create_api_key(setup_ui_server):
         # Wait for success message
         success_msg = page.locator("#keys-msg")
         expect(success_msg).to_have_text("Key created successfully.", timeout=5000)
+        
+        # Take a visual baseline after key creation
+        assert_snapshot(page.locator("#api-keys-list").screenshot(), name="dashboard-with-key.png")
         
         # Verify the key appears in the list
         expect(page.locator("#api-keys-list div:has-text('Test Playwright Key')").first).to_be_visible()

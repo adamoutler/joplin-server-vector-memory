@@ -26,7 +26,7 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
-    entrypoint: [ "/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait" ]
+    entrypoint: [ "/bin/sh", "-c", "ollama serve & (timeout 60s /bin/sh -c 'until curl -s http://localhost:11434/api/tags; do sleep 2; done' && ollama pull nomic-embed-text) & wait" ]
     restart: unless-stopped
 
   db:

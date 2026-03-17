@@ -110,8 +110,29 @@ jobs:
           python -m playwright install chromium
 
       - name: Run Pytest
-        working-directory: ./server
-        run: pytest --junitxml=test-results/pytest-junit.xml
+        working-directory: ./
+        run: |
+          python -m pytest server/tests/ tests/ --junitxml=server/test-results/pytest-junit.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+
+      - name: Extract Docker Logs on Failure
+        if: failure()
+        run: |
+          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-test-env-logs.txt || true
+          docker compose -p joplin-test-ui -f docker-compose.auth.yml logs > joplin-test-ui-logs.txt || true
+
+      - name: Upload Docker Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs-${{ matrix.python-version }}
+          path: ./*-logs.txt
+
+      - name: Upload Playwright Artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts-${{ matrix.python-version }}
+          path: ./test-results/
 
       - name: Upload Test Results
         if: always()
