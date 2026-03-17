@@ -5,7 +5,7 @@ import requests
 import os
 import json
 
-DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.auth.yml'))
 
 @pytest.fixture(scope="module")
 def setup_container():
@@ -25,12 +25,12 @@ def setup_container():
     ready = False
     for _ in range(30):
         try:
-            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"))
+            resp = requests.get("http://localhost:3002/", auth=("setup", "1-mcp-server"))
             if resp.status_code == 200:
                 ready = True
                 break
-        except requests.exceptions.ConnectionError:
-            pass
+        except Exception as e:
+            print(f"Connection attempt failed: {e}")
         time.sleep(1)
 
     if not ready:
@@ -42,18 +42,18 @@ def setup_container():
     ready = False
     for _ in range(60):
         try:
-            resp = requests.get("http://localhost:22300/api/ping")
+            resp = requests.get("http://localhost:22301/api/ping")
             if resp.status_code == 200:
                 ready = True
                 break
-        except requests.exceptions.ConnectionError:
-            pass
+        except Exception as e:
+            print(f"Connection attempt failed: {e}")
         time.sleep(1)
         
     if not ready:
         pytest.fail("Joplin container did not start in time")
         
-    yield "http://localhost:3001"
+    yield "http://localhost:3002"
     
     subprocess.run(["docker", "compose", "-p", "joplin-test-auth", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
 

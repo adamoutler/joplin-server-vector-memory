@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "3002:3000"
+      - "8003:8000"
+    volumes:
+      - test_data:/app/data
+    environment:
+      - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
+      - JOPLIN_USERNAME=${JOPLIN_USERNAME}
+      - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
+      - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
+      - OLLAMA_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
+    depends_on:
+      - ollama
+      - joplin
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    entrypoint: [ "/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait" ]
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+        - POSTGRES_PASSWORD=joplin
+        - POSTGRES_USER=joplin
+        - POSTGRES_DB=joplin
+    volumes:
+        - joplin_data:/var/lib/postgresql/data
+
+  joplin:
+    image: joplin/server:latest
+    depends_on:
+        - db
+    ports:
+        - "22301:22300"
+    restart: unless-stopped
+    environment:
+        - APP_PORT=22300
+        - APP_BASE_URL=http://localhost:22301
+        - DB_CLIENT=pg
+        - POSTGRES_PASSWORD=joplin
+        - POSTGRES_DATABASE=joplin
+        - POSTGRES_USER=joplin
+        - POSTGRES_PORT=5432
+        - POSTGRES_HOST=db
+
+volumes:
+  ollama_data:
+  joplin_data:
+  test_data:
