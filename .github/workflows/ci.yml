@@ -109,10 +109,28 @@ jobs:
           pip install pytest pytest-cov
           python -m playwright install chromium
 
-      - name: Run Pytest
+      - name: Run Pytest (Core API & Server)
         working-directory: ./
         run: |
-          python -m pytest server/tests/ tests/ --junitxml=server/test-results/pytest-junit.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+          python -m pytest server/tests/ tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py --junitxml=server/test-results/pytest-core.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+
+      - name: Teardown Core Env
+        if: always()
+        run: docker compose -p joplin-test-env -f docker-compose.test.yml down -v || true
+
+      - name: Run Pytest (Auth Flow)
+        working-directory: ./
+        run: |
+          python -m pytest tests/test_auth_flow.py tests/test_dashboard_auth.py --junitxml=server/test-results/pytest-auth.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+
+      - name: Teardown Auth Env
+        if: always()
+        run: docker compose -p joplin-test-auth -f docker-compose.auth.yml down -v || true
+
+      - name: Run Pytest (UI Visual)
+        working-directory: ./
+        run: |
+          python -m pytest tests/test_ui_api_key.py --junitxml=server/test-results/pytest-ui.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Extract Docker Logs on Failure
         if: failure()
