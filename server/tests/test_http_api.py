@@ -322,4 +322,31 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
         server_process.terminate()
         server_process.wait()
 
+def test_expired_token(client):
+    fd_conf, conf_path = tempfile.mkstemp()
+    config_data = {
+        "api_keys": [
+            {"key": "expired-token", "annotation": "test1", "expires_at": "2020-01-01T00:00:00Z"},
+            {"key": "valid-token", "annotation": "test2", "expires_at": "2099-01-01T00:00:00Z"}
+        ]
+    }
+    with open(conf_path, "w") as f:
+        json.dump(config_data, f)
+    os.environ["CONFIG_PATH"] = conf_path
+
+    # Need to clear cache in main so it re-reads
+    import src.main as main_module
+    main_module._config_cache = {}
+    main_module._config_mtime = 0
+
+    response = client.post("/http-api/search", json={"query": "test"}, headers={"Authorization": "Bearer expired-token"})
+    assert response.status_code == 401
+
+    response2 = client.post("/http-api/search", json={"query": "test"}, headers={"Authorization": "Bearer valid-token"})
+    # It might fail with 500 or something if DB not mocked perfectly, but it should NOT be 401
+    assert response2.status_code != 401
+
+    os.close(fd_conf)
+    os.remove(conf_path)
+
 

@@ -620,24 +620,33 @@ class UpdateResponse(BaseModel):
 security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    import datetime
     token = credentials.credentials
     is_valid = False
     try:
         config = _load_config_file()
         api_keys = config.get("api_keys", [])
-        
-        current_time = time.time() * 1000
+
+        current_time = datetime.datetime.now(datetime.timezone.utc)
         for key_obj in api_keys:
             if key_obj.get("key") == token:
                 expires_at = key_obj.get("expires_at")
-                if expires_at is None or expires_at > current_time:
+                if expires_at is None:
                     is_valid = True
                     break
+                try:
+                    expires_date = datetime.datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+                    if expires_date.tzinfo is None:
+                        expires_date = expires_date.replace(tzinfo=datetime.timezone.utc)
+                    if expires_date > current_time:
+                        is_valid = True
+                        break
+                except Exception as parse_err:
+                    logger.error(f"Error parsing token expiration: {parse_err}")
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
-        
-    if not is_valid:
-        raise HTTPException(
+
+    if not is_valid:        raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
