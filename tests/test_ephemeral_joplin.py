@@ -16,26 +16,8 @@ def ephemeral_joplin():
 
     # Down first just in case
     subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env)
-    # Spin up
-    subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "up", "-d"], env=env, check=True)
-    
-    # Wait for the server to be ready
-    max_retries = 60
-    ready = False
-    for i in range(max_retries):
-        try:
-            resp = requests.get("http://localhost:22300/api/ping")
-            if resp.status_code == 200:
-                ready = True
-                break
-        except requests.exceptions.ConnectionError:
-            pass
-        time.sleep(1)
-        
-    if not ready:
-        subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "logs"])
-        subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
-        raise RuntimeError("Joplin server did not start in time")
+    # Spin up and wait for healthchecks
+    subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--wait"], env=env, check=True)
         
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
     os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"

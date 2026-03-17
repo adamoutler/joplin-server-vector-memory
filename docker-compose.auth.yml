@@ -74,7 +74,7 @@ services:
         - POSTGRES_PORT=5432
         - POSTGRES_HOST=db
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:22300/api/ping"]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:22300/api/ping', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 5s
       timeout: 3s
       retries: 20
