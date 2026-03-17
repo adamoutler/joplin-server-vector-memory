@@ -8,3 +8,5 @@ httpx
 requests
 sentence-transformers
 torch
+pytest-playwright
+playwright

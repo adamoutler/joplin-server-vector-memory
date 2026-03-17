@@ -1,3 +1,0 @@
-[submodule "gemini-webui"]
-	path = gemini-webui
-	url = ssh://git@192.168.1.100:2223/aoutler/gemini-webui.git

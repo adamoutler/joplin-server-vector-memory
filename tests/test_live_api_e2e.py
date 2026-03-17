@@ -4,18 +4,70 @@ import time
 import os
 import uuid
 import sys
+import subprocess
 
-# Import the ephemeral_joplin fixture
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'tests')))
-from conftest import ephemeral_joplin
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+
+@pytest.fixture(scope="module")
+def setup_live_container():
+    # Down first
+    subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
+    
+    # Run container WITHOUT env vars to ensure setup mode
+    env = os.environ.copy()
+    env.pop("JOPLIN_SERVER_URL", None)
+    env.pop("JOPLIN_USERNAME", None)
+    env.pop("JOPLIN_PASSWORD", None)
+    env.pop("JOPLIN_MASTER_PASSWORD", None)
+    
+    # Provide admin credentials for Joplin container initialization
+    env["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
+    env["JOPLIN_ADMIN_PASSWORD"] = "admin"
+    env["JOPLIN_BASE_URL"] = "http://localhost:22300"
+
+    subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
+    
+    # Wait for the app container to be ready in setup mode
+    ready = False
+    for _ in range(30):
+        try:
+            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"))
+            if resp.status_code == 200:
+                ready = True
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+    if not ready:
+        subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "-f", DOCKER_COMPOSE_FILE, "logs", "app"])
+        subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
+        pytest.fail("App container did not start in time")
+        
+    yield
+    
+    subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
 
 @pytest.mark.enable_socket
-def test_api_server_live_endpoints(ephemeral_joplin):
-    # ephemeral_joplin starts docker-compose.test.yml which exposes:
+def test_api_server_live_endpoints(setup_live_container):
+    # setup_live_container starts docker-compose.test.yml which exposes:
     # app proxy on 3001
     # app backend on 8002
     PROXY_URL = "http://localhost:3001"
     BACKEND_URL = "http://localhost:8002"
+
+    # Wait for the backend and proxy to be fully responsive
+    max_retries = 30
+    for i in range(max_retries):
+        try:
+            r1 = requests.get(f"{BACKEND_URL}/docs")
+            r2 = requests.get(f"{PROXY_URL}/docs")
+            r3 = requests.get(f"{PROXY_URL}/")
+            if r1.status_code == 200 and r2.status_code == 200 and r3.status_code in [200, 401]:
+                break
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(1)
 
     # Verify that the ports are responding properly
     docs_8000 = requests.get(f"{BACKEND_URL}/docs")
@@ -51,9 +103,15 @@ def test_api_server_live_endpoints(ephemeral_joplin):
             pass
         time.sleep(1)
 
-    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("admin@localhost", "admin"))
-    assert auth_resp.status_code == 200, f"Failed to authenticate: {auth_resp.text}"
-    token = auth_resp.json().get("token")
+    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"))
+    assert auth_resp.status_code == 200, f"Failed to authenticate setup: {auth_resp.text}"
+    
+    # Wait for the config to be written and system locked
+    time.sleep(2)
+    
+    key_resp = requests.post(f"{PROXY_URL}/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", "admin"))
+    assert key_resp.status_code == 200, f"Failed to create key: {key_resp.text}"
+    token = key_resp.json().get("key", {}).get("key")
     assert token, "Token should be returned"
 
     headers = {"Authorization": f"Bearer {token}"}

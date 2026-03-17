@@ -417,7 +417,7 @@
                 try {
                   await fetch('/auth/keys/delete', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + window.currentApiKey },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key: k.key })
                   });
                   fetchStatus(false);
@@ -454,7 +454,7 @@
       try {
         const res = await fetch('/auth/keys/create', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + window.currentApiKey },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ annotation, expires_at })
         });
         const data = await res.json();
@@ -719,9 +719,7 @@
       try {
         const res = await fetch('/auth/wipe', {
           method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + token
-          }
+          // browser basic auth will be sent automatically
         });
 
         if (res.ok) {
