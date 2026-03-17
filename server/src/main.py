@@ -621,14 +621,22 @@ security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    valid_token = None
+    is_valid = False
     try:
         config = _load_config_file()
-        valid_token = config.get("token")
+        api_keys = config.get("api_keys", [])
+        
+        current_time = time.time() * 1000
+        for key_obj in api_keys:
+            if key_obj.get("key") == token:
+                expires_at = key_obj.get("expires_at")
+                if expires_at is None or expires_at > current_time:
+                    is_valid = True
+                    break
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
         
-    if not valid_token or token != valid_token:
+    if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",

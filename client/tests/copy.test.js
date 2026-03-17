@@ -21,23 +21,34 @@ describe('Frontend token copy functionality', () => {
     
     window.fetch = jest.fn().mockResolvedValue({
       ok: true,
-      json: async () => ({ status: 'ready', config: { token: 'initial-token' } })
+      json: async () => ({ 
+        syncState: { status: 'ready' },
+        config: { 
+          api_keys: [{ key: 'test-token-123', annotation: 'Test Key', id: '123' }]
+        }
+      })
     });
+    
+    // Call fetchStatus again now that fetch is mocked
+    window.fetchStatus(true);
   });
 
   test('Clicking copy button copies token and gives visual feedback', async () => {
-    document.dispatchEvent(new window.Event('DOMContentLoaded'));
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Wait for the initial fetchStatus to run
+    await new Promise(resolve => setTimeout(resolve, 100));
 
-    const tokenInput = document.getElementById('token');
-    const copyBtn = document.getElementById('copy-btn');
+    // The API keys list should be populated
+    const listEl = document.getElementById('api-keys-list');
+    const items = listEl.querySelectorAll('div');
+    expect(items.length).toBe(1);
+
+    const copyBtn = items[0].querySelectorAll('button')[0]; // First button is Copy
     
-    tokenInput.value = 'test-token-123';
     copyBtn.click();
     
     await new Promise(resolve => setTimeout(resolve, 10));
 
     expect(window.navigator.clipboard.writeText).toHaveBeenCalledWith('test-token-123');
-    expect(copyBtn.innerText).toBe('✅');
+    expect(copyBtn.innerText).toBe('Copied!');
   });
 });

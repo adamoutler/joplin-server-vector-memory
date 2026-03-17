@@ -84,13 +84,12 @@ describe('Dashboard Endpoints', () => {
     expect(response.text).toContain('/http-api/mcp/sse');
   });
 
-  test('GET / returns dashboard HTML with copy token button', async () => {
+  test('GET / returns dashboard HTML with API Keys section', async () => {
     fs.existsSync.mockReturnValue(false);
     const response = await request(app).get('/').set('Authorization', authHeader);
     expect(response.status).toBe(200);
-    expect(response.text).toContain('id="copy-btn"');
-    expect(response.text).toContain('class="copy-btn"');
-    expect(response.text).toContain('📋');
+    expect(response.text).toContain('id="api-keys-list"');
+    expect(response.text).toContain('id="create-key-form"');
     expect(response.text).toContain('navigator.clipboard.writeText');
   });
 
@@ -229,19 +228,37 @@ describe('Dashboard Endpoints', () => {
     expect(response.body).toHaveProperty('error', 'Missing credentials');
   });
 
-  test('POST /auth handles rotate token request', async () => {
+  test('POST /auth/keys/create creates a new API key', async () => {
     fs.existsSync.mockReturnValue(true);
-    fs.promises.readFile.mockResolvedValue('{"joplinServerUrl":"test"}');
+    fs.readFileSync.mockReturnValue('{"joplinServerUrl":"test"}');
 
     const response = await request(app)
-      .post('/auth')
+      .post('/auth/keys/create')
       .set('Authorization', authHeader)
       .send({
-        rotate: true
+        annotation: 'Test Key'
       });
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('token');
+    expect(response.body).toHaveProperty('success', true);
+    expect(response.body).toHaveProperty('key');
+    expect(response.body.key.key).toMatch(/^JMS_/);
+    expect(fs.writeFileSync).toHaveBeenCalled();
+  });
+
+  test('POST /auth/keys/delete removes an API key', async () => {
+    fs.existsSync.mockReturnValue(true);
+    fs.readFileSync.mockReturnValue('{"joplinServerUrl":"test", "api_keys": [{"key": "JMS_TEST", "annotation": "test"}]}');
+
+    const response = await request(app)
+      .post('/auth/keys/delete')
+      .set('Authorization', authHeader)
+      .send({
+        key: 'JMS_TEST'
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toHaveProperty('success', true);
     expect(fs.writeFileSync).toHaveBeenCalled();
   });
 

@@ -437,18 +437,6 @@ app.post('/auth', async (req, res) => {
     } catch(e) {}
   }
 
-  if (rotate) {
-    const newToken = crypto.randomUUID();
-    config.token = newToken;
-    try {
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
-    } catch (err) {
-      console.error('Failed to write config.json:', err);
-      return res.status(500).json({ error: 'Failed to save new token' });
-    }
-    return res.json({ token: newToken });
-  }
-
   if (!serverUrl || !username || !password) {
     return res.status(400).json({ error: 'Missing credentials' });
   }
@@ -485,7 +473,14 @@ app.post('/auth', async (req, res) => {
     return res.status(400).json({ error: 'Failed to validate server: ' + err.message });
   }
 
-  const token = config.token || crypto.randomUUID();
+  if (!config.api_keys || config.api_keys.length === 0) {
+    config.api_keys = [{
+      key: 'JMS_' + crypto.randomBytes(32).toString('hex'),
+      annotation: 'Default Key',
+      expires_at: null
+    }];
+  }
+
   const isMarriage = !config.joplinUsername;
 
   globalCredentials.password = password;
@@ -495,11 +490,11 @@ app.post('/auth', async (req, res) => {
     ...config, 
     joplinServerUrl: serverUrl, 
     joplinUsername: username, 
-    memoryServerAddress,
-    token 
+    memoryServerAddress
   };
   delete config.joplinPassword;
   delete config.joplinMasterPassword;
+  delete config.token;
   
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
@@ -519,7 +514,66 @@ app.post('/auth', async (req, res) => {
   // Re-init sync client in background
   startSync(config);
 
-  res.json({ success: true, token });
+  res.json({ success: true });
+});
+
+app.get('/auth/keys', (req, res) => {
+  let config = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    } catch(e) {}
+  }
+  res.json({ api_keys: config.api_keys || [] });
+});
+
+app.post('/auth/keys/create', (req, res) => {
+  const { annotation, expires_at } = req.body;
+  let config = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    } catch(e) {}
+  }
+  
+  const newKey = 'JMS_' + crypto.randomBytes(32).toString('hex');
+  const keyObj = {
+    key: newKey,
+    annotation: annotation || 'Unnamed Key',
+    expires_at: expires_at || null
+  };
+  
+  if (!config.api_keys) config.api_keys = [];
+  config.api_keys.push(keyObj);
+  
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    res.json({ success: true, key: keyObj });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save new key' });
+  }
+});
+
+app.post('/auth/keys/delete', (req, res) => {
+  const { key } = req.body;
+  let config = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    } catch(e) {}
+  }
+  
+  if (config.api_keys) {
+    config.api_keys = config.api_keys.filter(k => k.key !== key);
+    try {
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to delete key' });
+    }
+  } else {
+    res.json({ success: true });
+  }
 });
 
 app.post('/auth/wipe', async (req, res) => {

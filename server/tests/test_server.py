@@ -190,7 +190,7 @@ def test_config_caching():
     # Modify the file and its modification time
     new_time = time.time() + 10
     with open(path, "w") as f:
-        json.dump({"token": "new-token", "ollamaUrl": "http://new-url", "embeddingModel": "test-model"}, f)
+        json.dump({"api_keys": [{"key": "new-token"}], "ollamaUrl": "http://new-url", "embeddingModel": "test-model"}, f)
     os.utime(path, (new_time, new_time))
             
     with patch("builtins.open", side_effect=open) as mock_open:

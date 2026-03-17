@@ -83,16 +83,21 @@
       <div id="auth-msg" class="messages"></div>
     </form>
 
-    <h2 style="margin-top: 2rem;">Local Access Token</h2>
-    <p>Use this token for your MCP client configuration.</p>
-    <div class="token-group">
-      <div class="input-wrapper">
-        <input type="text" id="token" readonly>
-        <button id="copy-btn" class="copy-btn" title="Copy to clipboard">📋</button>
+    <h2 style="margin-top: 2rem;">API Keys</h2>
+    <p>Use these keys for your MCP client configuration. They are Bearer tokens.</p>
+    <div id="api-keys-list" style="margin-bottom: 1rem;"></div>
+    <div id="keys-msg" class="messages"></div>
+    <form id="create-key-form" style="display: flex; gap: 1rem; align-items: flex-end;">
+      <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
+        <label>Annotation</label>
+        <input type="text" id="new-key-annotation" placeholder="e.g. Gemini CLI" required>
       </div>
-      <button id="rotate-btn">Rotate Token</button>
-    </div>
-    <div id="token-msg" class="messages"></div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label>Expiration (Days, optional)</label>
+        <input type="number" id="new-key-expiration" placeholder="Never" min="1">
+      </div>
+      <button type="submit">Create Key</button>
+    </form>
 
     <h2 style="margin-top: 2rem;">API Documentation</h2>
     <div style="background: #f4f4f4; padding: 1rem; border-radius: 4px;">
@@ -256,28 +261,26 @@
           embedProgEl.innerText = '';
         }
 
-        if (data.config && data.config.token) {
+        if (data.config && data.config.api_keys && data.config.api_keys.length > 0) {
+           const firstKey = data.config.api_keys[0].key;
+           window.currentApiKey = firstKey;
+           
            if (isInitialLoad) {
-             const tokenEl = document.getElementById('token');
-             if (!tokenEl.value) {
-               tokenEl.value = data.config.token;
-             }
              const setVal = (id, val) => {
                if (val) document.getElementById(id).value = val;
              };
              setVal('serverUrl', data.config.joplinServerUrl);
              setVal('username', data.config.joplinUsername);
              setVal('memoryServerAddress', data.config.memoryServerAddress);
-             // don't populate password
              
              if (data.hasCredentials) {
                  document.getElementById('auth-msg').innerText = '✅ Sync Unlocked via Browser Auth. If you use a separate E2EE Master Password, you must still enter it below.';
                  document.getElementById('auth-msg').className = 'messages success';
-                 
-                 // Collapse the form details by default since it's unlocked
                  document.querySelector('details').removeAttribute('open');
              }
            }
+           
+           renderApiKeys(data.config.api_keys);
            
            const memAddr = window.location.origin;
            document.getElementById('mcp-examples').style.display = 'block';
@@ -290,7 +293,7 @@
                "joplin_memory": {
                  "url": memAddr + "/http-api/mcp",
                  "headers": {
-                   "Authorization": "Bearer " + data.config.token
+                   "Authorization": "Bearer " + firstKey
                  }
                }
              }
@@ -300,7 +303,7 @@
                "joplin_memory": {
                  "url": memAddr + "/http-api/mcp/stream",
                  "headers": {
-                   "Authorization": "Bearer " + data.config.token
+                   "Authorization": "Bearer " + firstKey
                  }
                }
              }
@@ -310,7 +313,7 @@
                "joplin_memory": {
                  "url": memAddr + "/http-api/mcp/sse",
                  "headers": {
-                   "Authorization": "Bearer " + data.config.token
+                   "Authorization": "Bearer " + firstKey
                  }
                }
              }
@@ -358,7 +361,6 @@
           }
           msgEl.innerText = 'Saved successfully!';
           msgEl.className = 'messages success';
-          document.getElementById('token').value = data.token;
           fetchStatus(true); // refresh status which might be syncing now
         } else {
           msgEl.innerText = 'Error: ' + data.error;
@@ -370,20 +372,99 @@
       }
     });
 
-    document.getElementById('rotate-btn').addEventListener('click', async () => {
-      const msgEl = document.getElementById('token-msg');
+    function renderApiKeys(keys) {
+      const listEl = document.getElementById('api-keys-list');
+      listEl.innerHTML = '';
+      if (!keys || keys.length === 0) {
+        listEl.innerHTML = '<em>No API keys found.</em>';
+        return;
+      }
+      keys.forEach((k) => {
+        const item = document.createElement('div');
+        item.style.display = 'flex';
+        item.style.alignItems = 'center';
+        item.style.gap = '0.5rem';
+        item.style.marginBottom = '0.5rem';
+        
+        const label = document.createElement('span');
+        label.innerText = k.annotation + (k.expires_at ? ` (Expires: ${new Date(k.expires_at).toLocaleDateString()})` : ' (Never expires)');
+        label.style.minWidth = '200px';
+        
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = k.key;
+        input.readOnly = true;
+        input.style.flexGrow = '1';
+        input.style.fontFamily = 'monospace';
+        
+        const copyBtn = document.createElement('button');
+        copyBtn.innerText = 'Copy';
+        copyBtn.onclick = async () => {
+          await navigator.clipboard.writeText(k.key);
+          copyBtn.innerText = 'Copied!';
+          setTimeout(() => copyBtn.innerText = 'Copy', 2000);
+        };
+        
+        const delBtn = document.createElement('button');
+        delBtn.innerText = 'Delete';
+        delBtn.style.backgroundColor = '#d32f2f';
+        if (keys.length === 1) {
+            delBtn.disabled = true;
+            delBtn.title = "Cannot delete the last key.";
+        } else {
+            delBtn.onclick = async () => {
+              if (confirm('Delete this API key?')) {
+                try {
+                  await fetch('/auth/keys/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + window.currentApiKey },
+                    body: JSON.stringify({ key: k.key })
+                  });
+                  fetchStatus(false);
+                } catch(e) {
+                  alert('Error deleting key: ' + e.message);
+                }
+              }
+            };
+        }
+        
+        item.appendChild(label);
+        item.appendChild(input);
+        item.appendChild(copyBtn);
+        item.appendChild(delBtn);
+        listEl.appendChild(item);
+      });
+    }
+
+    document.getElementById('create-key-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const annotation = document.getElementById('new-key-annotation').value;
+      const days = parseInt(document.getElementById('new-key-expiration').value);
+      let expires_at = null;
+      if (days && !isNaN(days)) {
+         const d = new Date();
+         d.setDate(d.getDate() + days);
+         expires_at = d.toISOString();
+      }
+      
+      const msgEl = document.getElementById('keys-msg');
+      msgEl.innerText = 'Creating key...';
+      msgEl.className = 'messages';
+      
       try {
-        const res = await fetch('/auth', {
+        const res = await fetch('/auth/keys/create', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rotate: true })
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + window.currentApiKey },
+          body: JSON.stringify({ annotation, expires_at })
         });
         const data = await res.json();
         if (res.ok) {
-          document.getElementById('token').value = data.token;
-          msgEl.innerText = 'Token rotated successfully.';
+          msgEl.innerText = 'Key created successfully.';
           msgEl.className = 'messages success';
+          document.getElementById('new-key-annotation').value = '';
+          document.getElementById('new-key-expiration').value = '';
           setTimeout(() => msgEl.innerText = '', 3000);
+          fetchStatus(false);
         } else {
           msgEl.innerText = 'Error: ' + data.error;
           msgEl.className = 'messages error';
@@ -391,25 +472,6 @@
       } catch(err) {
         msgEl.innerText = 'Network error: ' + err.message;
         msgEl.className = 'messages error';
-      }
-    });
-
-    document.getElementById('copy-btn').addEventListener('click', async () => {
-      const tokenValue = document.getElementById('token').value;
-      const copyBtn = document.getElementById('copy-btn');
-      const msgEl = document.getElementById('token-msg');
-      if (!tokenValue) return;
-      try {
-        await navigator.clipboard.writeText(tokenValue);
-        const originalText = copyBtn.innerText;
-        copyBtn.innerText = '✅';
-        setTimeout(() => {
-          copyBtn.innerText = originalText;
-        }, 2000);
-      } catch (err) {
-        msgEl.innerText = 'Failed to copy text';
-        msgEl.className = 'messages error';
-        setTimeout(() => msgEl.innerText = '', 2000);
       }
     });
 
@@ -427,7 +489,7 @@
     const restoreDefaultsBtn = document.getElementById('restore-defaults-btn');
 
     function getToken() {
-      return document.getElementById('token').value;
+      return window.currentApiKey;
     }
 
     async function loadAdvancedSettings() {

@@ -16,7 +16,7 @@ def temp_config_and_db():
     os.environ["SQLITE_DB_PATH"] = db_path
 
     fd_conf, conf_path = tempfile.mkstemp()
-    config_data = {"token": "test-secret-token"}
+    config_data = {"api_keys": [{"key": "test-secret-token", "annotation": "test", "expires_at": None}]}
     with open(conf_path, "w") as f:
         json.dump(config_data, f)
     os.environ["CONFIG_PATH"] = conf_path
@@ -215,7 +215,7 @@ def test_settings_api(client, temp_config_and_db):
         saved_config = json.load(f)
     assert saved_config["searchTopK"] == 10
     # Make sure token was not lost
-    assert saved_config["token"] == token
+    assert saved_config["api_keys"][0]["key"] == token
     
     # 3. Update settings (critical, without reindex_approved)
     # The DB shouldn't be reset
@@ -247,7 +247,7 @@ def test_settings_api(client, temp_config_and_db):
     with open(conf_path, "r") as f:
         saved_config = json.load(f)
     assert saved_config["chunkSize"] == 1000
-    assert saved_config["token"] == token
+    assert saved_config["api_keys"][0]["key"] == token
 
 def test_stateless_mcp_endpoint(temp_config_and_db):
     import subprocess
