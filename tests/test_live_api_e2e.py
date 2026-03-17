@@ -10,7 +10,7 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 
 @pytest.fixture(scope="module")
 def setup_live_container():
-    # Down first
+    print("\\n[setup_live_container] Tearing down any existing containers...", file=sys.stderr)
     subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
     
     # Run container WITHOUT env vars to ensure setup mode
@@ -25,7 +25,9 @@ def setup_live_container():
     env["JOPLIN_ADMIN_PASSWORD"] = "admin"
     env["JOPLIN_BASE_URL"] = "http://localhost:22300"
 
+    print("[setup_live_container] Starting joplin-live-e2e cluster...", file=sys.stderr)
     subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
+    print("[setup_live_container] joplin-live-e2e cluster started.", file=sys.stderr)
     
     # Wait for the app container to be ready in setup mode
     ready = False

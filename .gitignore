@@ -8,6 +8,7 @@ client/node_modules/
 data/
 
 docs/qa/
+!docs/qa/snapshots/
 *.log
 *_pid.txt
 *.db

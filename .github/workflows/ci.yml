@@ -112,21 +112,26 @@ jobs:
       - name: Run Pytest (Unit Tests)
         working-directory: ./
         run: |
-          python -m pytest server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_extreme_friction_deletion.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
+          python -m pytest --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_extreme_friction_deletion.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
 
       - name: Run Pytest (Core API & Server E2E)
         working-directory: ./
         run: |
-          python -m pytest server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py --junitxml=server/test-results/pytest-core.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+          python -m pytest --timeout=600 server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py --junitxml=server/test-results/pytest-core.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Teardown Core Env
         if: always()
         run: docker compose -p joplin-test-env -f docker-compose.test.yml down -v || true
 
+      - name: Run Pytest (Live API E2E)
+        working-directory: ./
+        run: |
+          python -m pytest --timeout=600 tests/test_live_api_e2e.py --junitxml=server/test-results/pytest-live.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+
       - name: Run Pytest (Auth Flow)
         working-directory: ./
         run: |
-          python -m pytest tests/test_auth_flow.py tests/test_dashboard_auth.py --junitxml=server/test-results/pytest-auth.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+          python -m pytest --timeout=600 tests/test_auth_flow.py tests/test_dashboard_auth.py --junitxml=server/test-results/pytest-auth.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Teardown Auth Env
         if: always()
@@ -135,7 +140,7 @@ jobs:
       - name: Run Pytest (UI Visual)
         working-directory: ./
         run: |
-          python -m pytest tests/test_ui_api_key.py --junitxml=server/test-results/pytest-ui.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+          python -m pytest --timeout=600 tests/test_ui_api_key.py --junitxml=server/test-results/pytest-ui.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Extract Docker Logs on Failure
         if: failure()
@@ -162,7 +167,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: python-test-results-${{ matrix.python-version }}
-          path: server/test-results/pytest-junit.xml
+          path: server/test-results/*.xml
 
   publish-test-results:
     name: Publish Test Results

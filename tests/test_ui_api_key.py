@@ -58,7 +58,7 @@ def test_ui_create_api_key(setup_ui_server, assert_snapshot):
         expect(success_msg).to_have_text("Key created successfully.", timeout=5000)
         
         # Take a visual baseline after key creation
-        assert_snapshot(page.locator("#api-keys-list").screenshot(), name="dashboard-with-key.png")
+        assert_snapshot(page.locator("#api-keys-list").screenshot(mask=[page.locator("#api-keys-list input")]), name="dashboard-with-key.png")
         
         # Verify the key appears in the list
         expect(page.locator("#api-keys-list div:has-text('Test Playwright Key')").first).to_be_visible()
