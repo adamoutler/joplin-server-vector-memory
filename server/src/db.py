@@ -37,10 +37,24 @@ def init_db(db):
     if 'updated_time' not in columns:
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0")
     
+    # Determine vector dimension
+    ollama_url = os.environ.get("OLLAMA_URL", "")
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    try:
+        import json
+        if os.path.exists(config_path):
+            with open(config_path, "r") as f:
+                config = json.load(f)
+                ollama_url = config.get("ollamaUrl", config.get("OLLAMA_URL", ollama_url))
+    except:
+        pass
+
+    dim = 768 if ollama_url and ollama_url.strip() else 384
+
     # Create vec_notes table for sqlite-vec
-    cursor.execute("""
+    cursor.execute(f"""
         CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(
-            embedding float[768]
+            embedding float[{dim}]
         )
     """)
     

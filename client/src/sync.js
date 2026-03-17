@@ -155,7 +155,12 @@ class JoplinSyncClient extends EventEmitter {
     if (!this.synchronizer) {
       throw new Error('Synchronizer not initialized');
     }
-    await this.synchronizer.start();
+    try {
+      await this.synchronizer.start();
+    } catch (err) {
+      this.emit('syncError', err);
+      throw err;
+    }
   }
 
   async decrypt() {
@@ -356,7 +361,8 @@ class JoplinSyncClient extends EventEmitter {
       }
       this.emit('embeddingComplete');
     } catch (err) {
-      console.error('Error fetching notes from DB:', err);
+      console.error('Error in generateEmbeddings:', err);
+      this.emit('embeddingError', err);
       throw err;
     }
   }

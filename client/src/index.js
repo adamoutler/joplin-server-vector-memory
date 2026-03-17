@@ -102,7 +102,17 @@ Once connected, you can:
 const authCache = new Map();
 const AUTH_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
 
+let globalCredentials = {
+  password: null,
+  masterPassword: null
+};
+
 app.use(async (req, res, next) => {
+  // Allow internal API calls from the Python MCP server without basic auth
+  if (req.path.startsWith('/node-api/')) {
+    return next();
+  }
+
   let joplinUrl = process.env.JOPLIN_SERVER_URL;
   let proxyConfig = null;
 
@@ -153,11 +163,51 @@ app.use(async (req, res, next) => {
   const reqUser = auth[0];
   const reqPass = auth.slice(1).join(':');
 
-  // Check local config first
-  if (proxyConfig && proxyConfig.joplinUsername && proxyConfig.joplinPassword) {
-    if (reqUser === proxyConfig.joplinUsername && reqPass === proxyConfig.joplinPassword) {
+  // Enforce username lock: if we have a configured username, reject any other username immediately
+  if (proxyConfig && proxyConfig.joplinUsername && reqUser !== proxyConfig.joplinUsername) {
+      authCache.delete(base64Credentials);
+      return send401();
+  }
+
+  const onAuthSuccess = () => {
       authCache.set(base64Credentials, now);
+      globalCredentials.password = reqPass;
+
+      // If we don't have the username locked in config yet, save it now.
+      if (!proxyConfig || !proxyConfig.joplinUsername) {
+          proxyConfig = proxyConfig || {};
+          proxyConfig.joplinUsername = reqUser;
+          // Ensure we don't lose existing settings
+          const newConfig = { ...proxyConfig };
+          try {
+              fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2));
+              console.log(`Locked system to authenticated username: ${reqUser}`);
+          } catch (e) {
+              console.error('Failed to lock username to config.json:', e);
+          }
+      }
+      
+      // Auto-unlock: If we have a proxy config but sync isn't running or errored, try to start it
+      if (proxyConfig && proxyConfig.joplinServerUrl && proxyConfig.joplinUsername) {
+        if (!isProcessing && (!syncState || syncState.status === 'ready' || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
+             // Only auto-start if it seems like we need to (e.g. boot up state)
+             // We use a small timeout to avoid blocking the auth request itself
+             setTimeout(() => {
+                 if (!isProcessing && (!syncState || syncState.status === 'ready' || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
+                     console.log("Auto-unlocking sync using intercepted Basic Auth credentials...");
+                     startSync(proxyConfig);
+                 }
+             }, 1000);
+        }
+      }
       return next();
+  };
+
+  // Check local config first
+  const currentPass = globalCredentials.password || process.env.JOPLIN_PASSWORD || proxyConfig?.joplinPassword;
+  if (proxyConfig && proxyConfig.joplinUsername && currentPass) {
+    if (reqUser === proxyConfig.joplinUsername && reqPass === currentPass) {
+      return onAuthSuccess();
     } else {
       authCache.delete(base64Credentials);
       return send401();
@@ -172,8 +222,7 @@ app.use(async (req, res, next) => {
     });
 
     if (response.ok) {
-      authCache.set(base64Credentials, now);
-      return next();
+      return onAuthSuccess();
     } else {
       authCache.delete(base64Credentials);
       return send401();
@@ -184,9 +233,10 @@ app.use(async (req, res, next) => {
   }
 });
 
-let syncStatus = 'ready'; // ready, syncing, error
+let isProcessing = false;
+let syncState = { status: 'ready', progress: null, error: null };
+let embeddingState = { status: 'ready', progress: null, error: null };
 let syncClient = null;
-let syncProgress = null;
 
 app.get('/node-api/resources/:id', async (req, res) => {
   if (!syncClient || !syncClient.db) {
@@ -272,6 +322,92 @@ app.post('/node-api/resources', async (req, res) => {
   }
 });
 
+app.post('/node-api/notes', async (req, res) => {
+  if (!syncClient || !syncClient.db) {
+    return res.status(503).json({ error: 'Sync client not initialized' });
+  }
+  const { title, body, folder: folderName = 'Agent Memory' } = req.body;
+  if (!title || !body) {
+    return res.status(400).json({ error: 'title and body are required' });
+  }
+  const Note = require('@joplin/lib/models/Note').default;
+  const Folder = require('@joplin/lib/models/Folder').default;
+  
+  try {
+    let folder = await Folder.loadByField('title', folderName);
+    if (!folder) {
+        folder = await Folder.save({ title: folderName }, { isNew: true });
+    }
+
+    const noteProps = {
+      title: title,
+      body: body,
+      parent_id: folder.id
+    };
+    
+    const newNote = await Note.save(noteProps, { isNew: true });
+    
+    if (syncClient.synchronizer) {
+      syncClient.synchronizer.start().catch(e => console.error('Sync failed after note creation:', e));
+    }
+    
+    res.json({ id: newNote.id, status: 'success' });
+  } catch (err) {
+    console.error('Error creating note:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/node-api/notes/:id', async (req, res) => {
+  if (!syncClient || !syncClient.db) {
+    return res.status(503).json({ error: 'Sync client not initialized' });
+  }
+  const { title, body } = req.body;
+  const Note = require('@joplin/lib/models/Note').default;
+  
+  try {
+    const existing = await Note.load(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Note not found' });
+    
+    const noteProps = {
+      id: req.params.id,
+      title: title || existing.title,
+      body: body !== undefined ? body : existing.body,
+    };
+    
+    await Note.save(noteProps);
+    
+    if (syncClient.synchronizer) {
+      syncClient.synchronizer.start().catch(e => console.error('Sync failed after note update:', e));
+    }
+    
+    res.json({ status: 'success' });
+  } catch (err) {
+    console.error('Error updating note:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/node-api/notes/:id', async (req, res) => {
+  if (!syncClient || !syncClient.db) {
+    return res.status(503).json({ error: 'Sync client not initialized' });
+  }
+  const Note = require('@joplin/lib/models/Note').default;
+  
+  try {
+    await Note.delete(req.params.id);
+    
+    if (syncClient.synchronizer) {
+      syncClient.synchronizer.start().catch(e => console.error('Sync failed after note deletion:', e));
+    }
+    
+    res.json({ status: 'success' });
+  } catch (err) {
+    console.error('Error deleting note:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/index.html'));
@@ -288,7 +424,7 @@ app.get('/status', async (req, res) => {
       delete config.joplinMasterPassword;
     } catch(e) {}
   }
-  res.json({ status: syncStatus, config, progress: syncProgress });
+  res.json({ syncState, embeddingState, config });
 });
 
 app.post('/auth', async (req, res) => {
@@ -316,6 +452,10 @@ app.post('/auth', async (req, res) => {
 
   if (!serverUrl || !username || !password) {
     return res.status(400).json({ error: 'Missing credentials' });
+  }
+
+  if (config.joplinUsername && config.joplinUsername !== username) {
+      return res.status(403).json({ error: 'System is already locked to a different username.' });
   }
 
   // Ping or SSL validation
@@ -369,11 +509,52 @@ app.post('/auth', async (req, res) => {
   res.json({ success: true, token });
 });
 
+app.post('/auth/wipe', async (req, res) => {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      fs.unlinkSync(CONFIG_PATH);
+    }
+    
+    // Stop the background sync loop
+    if (syncIntervalId) {
+      clearInterval(syncIntervalId);
+      syncIntervalId = null;
+    }
+    
+    // Nuke the database and profile
+    const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
+    if (fs.existsSync(profileDir)) {
+      fs.rmSync(profileDir, { recursive: true, force: true });
+    }
+    
+    const dbPath = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'vector_memory.sqlite');
+    if (fs.existsSync(dbPath)) {
+      fs.unlinkSync(dbPath);
+    }
+
+    // Reset memory state
+    syncClient = null;
+    isProcessing = false;
+    syncState = { status: 'ready', progress: null, error: null };
+    embeddingState = { status: 'ready', progress: null, error: null };
+    globalCredentials = { password: null, masterPassword: null };
+    authCache.clear();
+
+    res.json({ success: true, message: 'System completely reset.' });
+    
+    // Force exit to ensure clean slate (Docker will restart it)
+    setTimeout(() => process.exit(0), 500);
+  } catch (err) {
+    console.error('Failed to wipe system:', err);
+    res.status(500).json({ error: 'Failed to wipe system: ' + err.message });
+  }
+});
+
 let syncIntervalId = null;
 
 async function runSyncCycle(config) {
-  if (syncStatus === 'syncing') return;
-  syncStatus = 'syncing';
+  if (isProcessing) return;
+  isProcessing = true;
   try {
     if (!syncClient) {
       syncClient = new JoplinSyncClient({
@@ -384,13 +565,24 @@ async function runSyncCycle(config) {
         profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
       });
       
-      syncClient.on('syncStart', () => { syncStatus = 'syncing'; syncProgress = null; console.log('Sync started...'); });
-      syncClient.on('syncComplete', () => { console.log('Sync completed.'); });
+      syncClient.on('syncStart', () => { syncState.status = 'syncing'; syncState.progress = null; syncState.error = null; console.log('Sync started...'); });
+      syncClient.on('syncComplete', () => { syncState.status = 'ready'; console.log('Sync completed.'); });
+      syncClient.on('syncError', (err) => { syncState.status = 'error'; syncState.error = err.message; console.error('Sync error:', err); });
+
       syncClient.on('decryptStart', () => console.log('Decryption started...'));
       syncClient.on('decryptComplete', () => console.log('Decryption completed.'));
-      syncClient.on('embeddingStart', () => { console.log('Embedding generation started...'); });
-      syncClient.on('embeddingComplete', () => { console.log('Embedding generation completed.'); });
-      syncClient.on('progress', (data) => { syncProgress = data; });
+      
+      syncClient.on('embeddingStart', () => { embeddingState.status = 'embedding'; embeddingState.progress = null; embeddingState.error = null; console.log('Embedding generation started...'); });
+      syncClient.on('embeddingComplete', () => { embeddingState.status = 'ready'; console.log('Embedding generation completed.'); });
+      syncClient.on('embeddingError', (err) => { embeddingState.status = 'error'; embeddingState.error = err.message; console.error('Embedding error:', err); });
+
+      syncClient.on('progress', (data) => { 
+        if (data.phase === 'download') {
+          syncState.progress = data.report;
+        } else if (data.phase === 'embedding') {
+          embeddingState.progress = data;
+        }
+      });
       
       await syncClient.init();
     }
@@ -399,12 +591,20 @@ async function runSyncCycle(config) {
     await syncClient.decrypt();
     await syncClient.generateEmbeddings();
     
-    syncStatus = 'ready';
-    syncProgress = null;
   } catch (err) {
-    console.error('Sync error:', err);
-    syncStatus = 'error';
-    syncProgress = null;
+    console.error('Cycle top-level error:', err);
+    if (syncState.status === 'syncing') {
+      syncState.status = 'error';
+      syncState.error = err.message;
+    } else if (embeddingState.status === 'embedding') {
+      embeddingState.status = 'error';
+      embeddingState.error = err.message;
+    } else {
+      syncState.status = 'error';
+      syncState.error = 'Initialization or cycle failed: ' + err.message;
+    }
+  } finally {
+    isProcessing = false;
   }
 }
 

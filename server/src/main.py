@@ -287,35 +287,44 @@ def get_note(note_id: str) -> dict:
     return {"error": "Note not found"}
 
 @mcp.tool()
-def remember(title: str, content: str) -> dict:
+def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
     """
     Remember a new note by storing its title and content.
-    Mocks relaying to Joplin Server by directly inserting into local SQLite.
+    Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
+
+    folder: Optional, discouraged, folder to save the note in. Defaults to "Agent Memory".
     
     ATTACHING FILES: If you need to attach a file, script, or image to this note, 
     you must FIRST call the `upload_resource` tool. That tool will return an ID.
     You must then embed that ID into the `content` of this note using standard 
     Joplin markdown syntax: `[link text](:/THE_RETURNED_ID)` or `![image](:/THE_RETURNED_ID)`.
     """
-    if not title.startswith("[Agent Memory] "):
+    if not title.startswith("[Agent Memory] ") and folder == "Agent Memory":
         title = f"[Agent Memory] {title}"
 
-    note_id = uuid.uuid4().hex
     try:
+        # 1. Relay to Joplin via Node Proxy
+        res = _call_node_proxy("POST", "/node-api/notes", json_data={"title": title, "body": content, "folder": folder})
+        if res.status_code != 200:
+            return {"error": f"Failed to create note in Joplin: {res.text}"}
+            
+        note_id = res.json().get("id")
+        if not note_id:
+            return {"error": "Failed to get note ID from Joplin."}
+            
+        # 2. Update local SQLite for instant searchability
         embedding = get_embedding(f"{title}\n{content}")
         
         db = get_db_connection()
         cursor = db.cursor()
         
-        # Insert metadata
-        updated_time = int(time.time())
+        updated_time = int(time.time() * 1000) # Joplin uses ms typically, but we should match what sync.js uses
         cursor.execute(
             "INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)",
             (note_id, title, content, updated_time)
         )
         rowid = cursor.lastrowid
         
-        # Insert embedding
         cursor.execute(
             "INSERT INTO vec_notes (rowid, embedding) VALUES (?, ?)",
             (rowid, serialize_float32(embedding))
@@ -328,7 +337,7 @@ def remember(title: str, content: str) -> dict:
             "status": "success",
             "id": note_id,
             "title": title,
-            "message": "Note remembered successfully (mocked relay to Joplin)."
+            "message": "Note remembered successfully and synced to Joplin."
         }
     except Exception as e:
         logger.error(f"Error in remember: {e}")
@@ -471,23 +480,36 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     if safety_attestation["content_hash"] != expected_hash:
         db.close()
         return {"error": f"content_hash does not match the note's content. Expected {expected_hash}"}
-        
-    cursor.execute("SELECT rowid FROM note_metadata WHERE note_id = ?", (note_id,))
-    rowid_row = cursor.fetchone()
-    if rowid_row:
-        rowid = rowid_row[0]
-        # Delete from tables
-        cursor.execute("DELETE FROM vec_notes WHERE rowid = ?", (rowid,))
-        cursor.execute("DELETE FROM note_metadata WHERE note_id = ?", (note_id,))    
-    db.commit()
-    db.close()
+
+    try:
+        # 1. Relay to Joplin via Node Proxy
+        res = _call_node_proxy("DELETE", f"/node-api/notes/{note_id}")
+        if res.status_code != 200:
+            db.close()
+            return {"error": f"Failed to delete note in Joplin: {res.text}"}
+
+        # 2. Update local SQLite
+        cursor.execute("SELECT rowid FROM note_metadata WHERE note_id = ?", (note_id,))
+        rowid_row = cursor.fetchone()
+        if rowid_row:
+            rowid = rowid_row[0]
+            # Delete from tables
+            cursor.execute("DELETE FROM vec_notes WHERE rowid = ?", (rowid,))
+            cursor.execute("DELETE FROM note_metadata WHERE note_id = ?", (note_id,))    
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        db.close()
+        return {"error": f"Error deleting note: {str(e)}"}
+    finally:
+        db.close()
     
     del _deletion_tokens[deletion_token]
     
     return {
         "status": "success",
         "id": note_id,
-        "message": "Note deleted successfully (mocked relay to Joplin)."
+        "message": "Note deleted successfully and synced to Joplin."
     }
 
 
@@ -544,12 +566,13 @@ class GetResponse(BaseModel):
 class RememberRequest(BaseModel):
     title: str = Field(..., description="Title of the new note", examples=["New Recipe"])
     content: str = Field(..., description="Content of the new note", examples=["# New Recipe\n\nIngredients..."])
+    folder: str = Field("Agent Memory", description="Optional folder name to save the note in", examples=["Agent Memory"])
 
 class RememberResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
     id: Optional[str] = Field(None, description="New Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: Optional[str] = Field(None, description="New Note Title", examples=["New Recipe"])
-    message: Optional[str] = Field(None, description="Success or error message", examples=["Note remembered successfully (mocked relay to Joplin)."])
+    message: Optional[str] = Field(None, description="Success or error message", examples=["Note remembered successfully and synced to Joplin."])
     error: Optional[str] = Field(None, description="Error message if any")
 
 class RequestDeletionRequest(BaseModel):
@@ -577,7 +600,7 @@ class ExecuteDeletionRequest(BaseModel):
 class ExecuteDeletionResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
     id: Optional[str] = Field(None, description="Deleted Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
-    message: Optional[str] = Field(None, description="Success or error message", examples=["Note deleted successfully (mocked relay to Joplin)."])
+    message: Optional[str] = Field(None, description="Success or error message", examples=["Note deleted successfully and synced to Joplin."])
     error: Optional[str] = Field(None, description="Error message if any")
 
 class UpdateRequest(BaseModel):
@@ -728,7 +751,7 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):
     }
 )
 async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):
-    result = remember(request.title, request.content)
+    result = remember(request.title, request.content, request.folder)
     return result
 
 @app.post(
@@ -789,7 +812,7 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
         new_config = settings_update.dict(exclude={"reindex_approved"})
     
     # Check for critical changes
-    critical_keys = ["chunkSize", "chunkOverlap", "ollamaModel"]
+    critical_keys = ["chunkSize", "chunkOverlap", "ollamaModel", "ollamaBaseUrl"]
     critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys)
     
     if critical_changed and settings_update.reindex_approved:
@@ -860,12 +883,12 @@ class ForceAcceptJSONMiddleware:
                         if method == "GET":
                             scope["path"] = "/http-api/mcp/sse"
                         else:
-                            scope["path"] = "/http-api/mcp/stream"
+                            scope["path"] = "/http-api/mcp/stateless"
                     else:
                         if method == "GET":
                             scope["path"] = f"/http-api/mcp/sse{subpath}"
                         else:
-                            scope["path"] = f"/http-api/mcp/stream{subpath}"
+                            scope["path"] = f"/http-api/mcp/sse{subpath}"
             
             logger.info(f"[MIDDLEWARE] {method} {original_path} -> {scope['path']}")
                 

@@ -202,13 +202,6 @@ describe('JoplinSyncClient', () => {
     beforeEach(() => {
       originalFetch = global.fetch;
       global.fetch = jest.fn().mockImplementation((url, options) => {
-        if (url && url.includes('/api/tags')) {
-          return Promise.resolve({
-            ok: true,
-            status: 200,
-            json: async () => ({ models: [{ name: 'nomic-embed-text' }] })
-          });
-        }
         return Promise.resolve({
           ok: true,
           json: async () => ({ embedding: [0.1] })
@@ -233,9 +226,6 @@ describe('JoplinSyncClient', () => {
 
       const mockEmbedding = [0.1, 0.2, 0.3];
       global.fetch.mockImplementation((url, options) => {
-        if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
-        }
         return Promise.resolve({
           ok: true,
           json: async () => ({ embedding: mockEmbedding })
@@ -248,15 +238,11 @@ describe('JoplinSyncClient', () => {
       await client.generateEmbeddings();
 
       expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/embeddings'),
+        expect.stringContaining('/http-api/internal/embed'),
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            model: 'nomic-embed-text',
-            prompt: 'search_document: Title: Note 1\n\nThis is note 1',
-            options: {
-              num_ctx: 8192
-            }
+            text: 'search_document: Title: Note 1\n\nThis is note 1'
           })
         })
       );
@@ -284,9 +270,6 @@ describe('JoplinSyncClient', () => {
 
       const mockEmbedding = [0.4, 0.5, 0.6];
       global.fetch.mockImplementation((url, options) => {
-        if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
-        }
         return Promise.resolve({
           ok: true,
           json: async () => ({ embedding: mockEmbedding })
@@ -295,7 +278,7 @@ describe('JoplinSyncClient', () => {
 
       await client.generateEmbeddings();
 
-      const fetchCallBody = JSON.parse(global.fetch.mock.calls[1][1].body);
+      const fetchCallBody = JSON.parse(global.fetch.mock.calls[0][1].body);
       
       // Expected rawText logic:
       // Title: Large Note\n\n + largeBody
@@ -304,12 +287,11 @@ describe('JoplinSyncClient', () => {
       // The last space before index 8000 is at index 7999 (if it was 1000-char words).
       // Let's test the length is strictly less than or equal to 8000 + prefix length
       
-      expect(fetchCallBody.prompt.startsWith('search_document: ')).toBe(true);
-      expect(fetchCallBody.prompt.length).toBeLessThanOrEqual(8000 + 'search_document: '.length);
-      expect(fetchCallBody.options).toEqual({ num_ctx: 8192 });
+      expect(fetchCallBody.text.startsWith('search_document: ')).toBe(true);
+      expect(fetchCallBody.text.length).toBeLessThanOrEqual(8000 + 'search_document: '.length);
       
       // Ensure the partial word was truncated, meaning it ends cleanly without exceeding the limit
-      expect(fetchCallBody.prompt.endsWith(largeWord)).toBe(true);
+      expect(fetchCallBody.text.endsWith(largeWord)).toBe(true);
     });
 
     it('should handle fetch errors gracefully', async () => {
@@ -422,9 +404,6 @@ describe('JoplinSyncClient', () => {
       // Mock fetch to fail 2 times then succeed for embeddings
       let embedAttempts = 0;
       global.fetch.mockImplementation((url, options) => {
-        if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
-        }
         embedAttempts++;
         if (embedAttempts === 1) return Promise.reject(new Error('fetch failed'));
         if (embedAttempts === 2) return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
@@ -442,7 +421,7 @@ describe('JoplinSyncClient', () => {
 
       await client.generateEmbeddings();
 
-      expect(global.fetch).toHaveBeenCalledTimes(4);
+      expect(global.fetch).toHaveBeenCalledTimes(3);
       expect(consoleWarnSpy).toHaveBeenCalledTimes(2);
       expect(embeddingGeneratedMock).toHaveBeenCalledWith({
         noteId: 'retry_note',

@@ -52,8 +52,9 @@
 <body>
   <div class="container">
     <h1>Joplin Memory Server Dashboard</h1>
-    <div class="status">
-      <h2>Sync Status: <span id="status-text" class="status-offline">Offline</span> <span id="progress-text" style="font-size: 0.9em; color: #555; margin-left: 10px;"></span></h2>
+    <div class="status" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+      <h2 style="margin: 0;">Sync Status: <span id="sync-status-text" class="status-offline">Offline</span> <span id="sync-progress-text" style="font-size: 0.9em; color: #555; margin-left: 10px;"></span></h2>
+      <h2 style="margin: 0; font-size: 1.1rem; color: #555;">Embedding Status: <span id="embed-status-text" class="status-offline">Offline</span> <span id="embed-progress-text" style="font-size: 0.9em; color: #555; margin-left: 10px;"></span></h2>
     </div>
     
     <h2>Configuration</h2>
@@ -64,11 +65,11 @@
       </div>
       <div class="form-group">
         <label>Username (Email)</label>
-        <input type="text" id="username" placeholder="user@example.com" required>
+        <input type="text" id="username" placeholder="user@example.com" autocomplete="username" required>
       </div>
       <div class="form-group">
         <label>Password</label>
-        <input type="password" id="password" required>
+        <input type="password" id="password" autocomplete="current-password" required>
       </div>
       <div class="form-group">
         <label>Master Password (Optional, for E2EE)</label>
@@ -128,7 +129,7 @@
       <summary>Advanced RAG Configuration</summary>
       <form id="advanced-rag-form">
         
-        <fieldset>
+        <fieldset data-critical="true">
           <legend>Ollama Configuration</legend>
           <div class="form-group">
             <label>Ollama Base URL</label>
@@ -187,11 +188,20 @@
         </div>
       </form>
     </details>
+
+    <details style="margin-top: 2rem;">
+      <summary style="color: #dc3545; font-weight: bold;">Danger Zone</summary>
+      <div style="padding: 1rem; border: 1px solid #dc3545; border-radius: 4px; margin-top: 1rem; background-color: #fff5f5;">
+        <h3 style="color: #dc3545; margin-top: 0;">Factory Reset & Relinquish Lock</h3>
+        <p>This will completely wipe all local vector databases, downloaded notes, and configuration files, restoring the system to a clean slate. This is used to relinquish the account lock so a different user can log in.</p>
+        <button type="button" id="factory-reset-btn" style="background-color: #dc3545;">Wipe Data & Reset</button>
+      </div>
+    </details>
   </div>
 
   <dialog id="warning-modal">
     <h3>⚠️ Critical Changes Detected</h3>
-    <p>You have changed critical RAG settings (Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
+    <p>You have changed critical RAG settings (e.g. Models or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
     <p>Are you sure you want to proceed?</p>
     <div class="form-group" style="margin-top: 1rem;">
       <input type="text" id="reindex-confirm-input" placeholder="Type REINDEX to confirm">
@@ -213,15 +223,37 @@
       try {
         const res = await fetch('/status');
         const data = await res.json();
-        const el = document.getElementById('status-text');
-        el.innerText = data.status;
-        el.className = 'status-' + data.status;
         
-        const progressEl = document.getElementById('progress-text');
-        if (data.status === 'syncing' && data.progress && data.progress.percent !== undefined) {
-          progressEl.innerText = `${data.progress.percent}% (${data.progress.current} out of ${data.progress.total} notes)`;
+        // Sync Status
+        const syncEl = document.getElementById('sync-status-text');
+        const syncState = data.syncState || { status: 'offline' };
+        syncEl.innerText = syncState.status;
+        syncEl.className = 'status-' + syncState.status;
+        
+        const syncProgEl = document.getElementById('sync-progress-text');
+        if (syncState.status === 'syncing' && syncState.progress && syncState.progress.percent !== undefined) {
+          syncProgEl.innerText = `${syncState.progress.percent}% (${syncState.progress.current} out of ${syncState.progress.total} notes)`;
+        } else if (syncState.error) {
+          syncProgEl.innerText = syncState.error;
+          syncProgEl.style.color = 'red';
         } else {
-          progressEl.innerText = '';
+          syncProgEl.innerText = '';
+        }
+
+        // Embedding Status
+        const embedEl = document.getElementById('embed-status-text');
+        const embedState = data.embeddingState || { status: 'offline' };
+        embedEl.innerText = embedState.status;
+        embedEl.className = 'status-' + embedState.status;
+        
+        const embedProgEl = document.getElementById('embed-progress-text');
+        if (embedState.status === 'embedding' && embedState.progress && embedState.progress.percent !== undefined) {
+          embedProgEl.innerText = `${embedState.progress.percent}% (${embedState.progress.current} out of ${embedState.progress.total} notes)`;
+        } else if (embedState.error) {
+          embedProgEl.innerText = embedState.error;
+          embedProgEl.style.color = 'red';
+        } else {
+          embedProgEl.innerText = '';
         }
 
         if (data.config && data.config.token) {
@@ -237,6 +269,14 @@
              setVal('username', data.config.joplinUsername);
              setVal('memoryServerAddress', data.config.memoryServerAddress);
              // don't populate password
+             
+             if (data.hasCredentials) {
+                 document.getElementById('auth-msg').innerText = '✅ Sync Unlocked via Browser Auth. If you use a separate E2EE Master Password, you must still enter it below.';
+                 document.getElementById('auth-msg').className = 'messages success';
+                 
+                 // Collapse the form details by default since it's unlocked
+                 document.querySelector('details').removeAttribute('open');
+             }
            }
            
            const memAddr = window.location.origin;
@@ -277,9 +317,16 @@
            }, null, 2);
         }
       } catch(e) {
-        const el = document.getElementById('status-text');
-        el.innerText = 'offline';
-        el.className = 'status-offline';
+        const syncEl = document.getElementById('sync-status-text');
+        if (syncEl) {
+          syncEl.innerText = 'offline';
+          syncEl.className = 'status-offline';
+        }
+        const embedEl = document.getElementById('embed-status-text');
+        if (embedEl) {
+          embedEl.innerText = 'offline';
+          embedEl.className = 'status-offline';
+        }
       }
     }
     setInterval(() => fetchStatus(false), 5000);
@@ -442,7 +489,7 @@
       if (isCriticalChanged) {
         pendingAction = 'save';
         if (warningTitle) warningTitle.innerText = '⚠️ Critical Changes Detected';
-        if (warningText) warningText.innerText = 'You have changed critical RAG settings (Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.';
+        if (warningText) warningText.innerText = 'You have changed critical RAG settings (e.g. Models or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.';
         warningModal.showModal();
         reindexInput.value = '';
         confirmBtn.disabled = true;
@@ -586,6 +633,45 @@
         restoreDefaultsBtn.disabled = false;
       }
     }
+
+    document.getElementById('factory-reset-btn').addEventListener('click', async () => {
+      if (!confirm("⚠️ WARNING ⚠️\n\nThis will permanently delete the local vector database, all downloaded notes, and reset all configuration (including the current account lock).\n\nAre you absolutely sure you want to proceed?")) {
+        return;
+      }
+
+      const token = getToken();
+      if (!token) {
+        alert("Missing authentication token. Please log in first.");
+        return;
+      }
+
+      const btn = document.getElementById('factory-reset-btn');
+      btn.innerText = 'Wiping system...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/auth/wipe', {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Bearer ' + token
+          }
+        });
+
+        if (res.ok) {
+          alert('System successfully reset. The page will now reload.');
+          window.location.reload();
+        } else {
+          const data = await res.json();
+          alert('Failed to reset system: ' + (data.error || 'Unknown error'));
+          btn.innerText = 'Wipe Data & Reset';
+          btn.disabled = false;
+        }
+      } catch (e) {
+        alert('Network error: ' + e.message);
+        btn.innerText = 'Wipe Data & Reset';
+        btn.disabled = false;
+      }
+    });
   </script>
 </body>
 </html>

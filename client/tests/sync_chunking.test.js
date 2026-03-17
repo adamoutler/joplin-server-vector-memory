@@ -23,6 +23,9 @@ describe('Semantic Chunking for Large Notes', () => {
       embeddingModel: 'test-model'
     });
     
+    // Mock vectorDb
+    client.vectorDb = { all: (q, cb) => cb(null, []), run: (q, p, cb) => cb && cb(null), get: (q, p, cb) => cb(null, null) };
+    
     // Mock upsert method so we don't need real sqlite
     client.upsertVector = jest.fn().mockResolvedValue();
     
@@ -38,13 +41,9 @@ describe('Semantic Chunking for Large Notes', () => {
     let capturedPrompt = '';
     
     global.fetch.mockImplementation(async (url, options) => {
-      if (url.includes('/api/tags')) {
-        // Return 200 with the model available
-        return { ok: true, status: 200, json: async () => ({ models: [{ name: 'test-model' }] }) };
-      }
-      if (url.includes('/api/embeddings')) {
+      if (url.includes('/http-api/internal/embed')) {
         const body = JSON.parse(options.body);
-        capturedPrompt = body.prompt;
+        capturedPrompt = body.text;
         return { ok: true, status: 200, json: async () => ({ embedding: [0.1, 0.2, 0.3] }) };
       }
       return { ok: false, status: 404, json: async () => ({}) };

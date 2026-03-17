@@ -110,7 +110,8 @@ describe('Dashboard Endpoints', () => {
     
     const response = await request(app).get('/status').set('Authorization', authHeader);
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('status');
+    expect(response.body).toHaveProperty('syncState');
+    expect(response.body.syncState).toHaveProperty('status');
   });
 
   test('GET /status returns progress object when syncing', async () => {
@@ -132,9 +133,9 @@ describe('Dashboard Endpoints', () => {
 
     const statusResponse = await request(app).get('/status').set('Authorization', authHeader);
     expect(statusResponse.status).toBe(200);
-    expect(statusResponse.body).toHaveProperty('status', 'syncing');
-    expect(statusResponse.body).toHaveProperty('progress');
-    expect(statusResponse.body.progress).toEqual({ phase: 'embedding', current: 5, total: 10, percent: 50 });
+    expect(statusResponse.body.syncState).toHaveProperty('status', 'syncing');
+    expect(statusResponse.body.embeddingState).toHaveProperty('progress');
+    expect(statusResponse.body.embeddingState.progress).toEqual({ phase: 'embedding', current: 5, total: 10, percent: 50 });
   });
 
   test('GET /status uses cached authentication if Joplin Server fails subsequently', async () => {
