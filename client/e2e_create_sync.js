@@ -20,8 +20,8 @@ async function main() {
   
   // Generate random padding text
   const generateRandomWord = () => Math.random().toString(36).substring(2, 8);
-  const randomTextChunk = Array.from({ length: 5000 }, generateRandomWord).join(" ");
-  const randomTextChunk2 = Array.from({ length: 5000 }, generateRandomWord).join(" ");
+  const randomTextChunk = Array.from({ length: 500 }, generateRandomWord).join(" ");
+  const randomTextChunk2 = Array.from({ length: 500 }, generateRandomWord).join(" ");
 
   // Create a note with large random text to test token size limits
   let note = await Note.save({

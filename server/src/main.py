@@ -94,13 +94,15 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
     config = get_config()
     username = config.get("joplin_username", "")
     password = config.get("joplin_password", "")
-    url = f"http://127.0.0.1:3000{path}"
+    base_url = os.environ.get("NODE_PROXY_URL", "http://127.0.0.1:3000")
+    url = f"{base_url}{path}"
+    # Node proxy expects Basic Auth on some routes, but /node-api is internally bypassed.
+    # However, keeping auth here is fine just in case.
     auth = (username, password) if username and password else None
-    
+
     if method.upper() == "GET":
         return requests.get(url, auth=auth)
-    elif method.upper() == "POST":
-        return requests.post(url, json=json_data, auth=auth)
+    elif method.upper() == "POST":        return requests.post(url, json=json_data, auth=auth)
     return requests.request(method, url, auth=auth)
 
 @mcp.tool()
@@ -373,7 +375,7 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
         db.close()
         return {"error": "Invalid update_mode. Must be 'append' or 'replace'."}
         
-    new_time = int(time.time())
+    new_time = int(time.time() * 1000)
     
     try:
         embedding = get_embedding(f"{title}\n{new_content}")

@@ -31,12 +31,32 @@ from conftest import ephemeral_joplin
 
 class MockOllamaHandler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path == '/api/embeddings':
-            content_length = int(self.headers.get('Content-Length', 0))
-            post_data = self.rfile.read(content_length).decode('utf-8')
-            req = json.loads(post_data)
-            
-            prompt = req.get('prompt', '')
+        if self.path in ['/api/embeddings', '/http-api/internal/embed']:
+            try:
+                if self.headers.get('Transfer-Encoding', '').lower() == 'chunked':
+                    post_data_bytes = b""
+                    while True:
+                        line = self.rfile.readline().strip()
+                        if not line:
+                            continue
+                        chunk_size = int(line, 16)
+                        if chunk_size == 0:
+                            break
+                        post_data_bytes += self.rfile.read(chunk_size)
+                        self.rfile.readline() # read trailing \r\n
+                    post_data = post_data_bytes.decode('utf-8')
+                else:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ''
+                    
+                req = json.loads(post_data) if post_data else {}
+                prompt = req.get('prompt', req.get('text', ''))
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                print(f"MockOllamaHandler error parsing request: {e}")
+                prompt = 'fallback'
+
             embedding = [0.0] * 768
             
             import re
@@ -57,9 +77,11 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
-            self.end_headers()
             response = {"embedding": embedding}
-            self.wfile.write(json.dumps(response).encode())
+            response_bytes = json.dumps(response).encode()
+            self.send_header('Content-Length', str(len(response_bytes)))
+            self.end_headers()
+            self.wfile.write(response_bytes)
         else:
             self.send_response(404)
             self.end_headers()
@@ -97,6 +119,7 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
     # 1. Run Node.js client to create note, sync it, and generate embeddings
     env = os.environ.copy()
     env["OLLAMA_URL"] = mock_ollama_server
+    env["BACKEND_URL"] = mock_ollama_server
     env["JOPLIN_PROFILE_DIR"] = temp_profile
     env["JOPLIN_SERVER_URL"] = "http://localhost:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
@@ -133,6 +156,7 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
     main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
     env["SQLITE_DB_PATH"] = sqlite_db_path
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
+    env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"
     
     server_params = StdioServerParameters(
         command=sys.executable,
@@ -153,8 +177,9 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
                 arguments={"query": search_query}
             )
             
-            print("Search Response:", search_res.content[0].text)
-            search_data = json.loads(search_res.content[0].text)
+            print("Raw Search Res:", search_res)
+            print("Search Response:", search_res.content[0].text if search_res.content else "EMPTY")
+            search_data = json.loads(search_res.content[0].text) if search_res.content else []
             
             # Verify the note is found
             assert isinstance(search_data, list)
@@ -175,15 +200,31 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
             get_data = json.loads(get_res.content[0].text)
             assert get_data.get("id") == found_note_id
             assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
-            
-            # Delete the note
-            del_res = await session.call_tool(
-                "delete_note",
-                arguments={"note_id": found_note_id}
+            # 4. Delete the note
+            print("Requesting note deletion...")
+            del_req_res = await session.call_tool(
+                "request_note_deletion",
+                arguments={"note_id": found_note_id, "reason": "E2E test cleanup"}
             )
-            print("Delete Response:", del_res.content[0].text)
-            del_data = json.loads(del_res.content[0].text)
-            assert del_data.get("status") == "success"
+            print("Delete Request Response:", del_req_res.content[0].text)
+            del_req_data = json.loads(del_req_res.content[0].text)
+            token = del_req_data.get("deletion_token")
+
+            print("Executing note deletion...")
+            del_exec_res = await session.call_tool(
+                "execute_deletion",
+                arguments={
+                    "deletion_token": token,
+                    "confirm_title": get_data.get("title"),
+                    "safety_attestation": {
+                        "content_hash": get_data.get("content_hash"),
+                        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+                    }
+                }
+            )
+            print("Delete Execute Response:", del_exec_res.content[0].text)
+            del_data = json.loads(del_exec_res.content[0].text)
+            assert del_data.get("status") == "success", f"Delete failed: {del_data}"
             
             # Search again and verify it's gone
             search_res_2 = await session.call_tool(
@@ -214,6 +255,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     # Run Node.js client to create 50 notes, sync them, and generate embeddings
     env = os.environ.copy()
     env["OLLAMA_URL"] = mock_ollama_server
+    env["BACKEND_URL"] = mock_ollama_server
     env["JOPLIN_PROFILE_DIR"] = temp_profile
     env["JOPLIN_SERVER_URL"] = "http://localhost:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
@@ -252,6 +294,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
     env["SQLITE_DB_PATH"] = sqlite_db_path
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
+    env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"
     
     server_params = StdioServerParameters(
         command=sys.executable,
@@ -272,8 +315,9 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
                 arguments={"query": search_query}
             )
             
-            print("Search Response:", search_res.content[0].text)
-            search_data = json.loads(search_res.content[0].text)
+            print("Raw Search Res:", search_res)
+            print("Search Response:", search_res.content[0].text if search_res.content else "EMPTY")
+            search_data = json.loads(search_res.content[0].text) if search_res.content else []
             
             # Verify the specific note is found correctly
             assert isinstance(search_data, list)

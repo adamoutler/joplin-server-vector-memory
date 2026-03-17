@@ -26,15 +26,11 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
-    ports:
-      - "11434:11434"
     entrypoint: [ "/bin/sh", "-c", "ollama serve & sleep 5 && ollama pull nomic-embed-text && wait" ]
     restart: unless-stopped
 
   db:
     image: postgres:16
-    ports:
-        - "5432:5432"
     restart: unless-stopped
     environment:
         - POSTGRES_PASSWORD=joplin

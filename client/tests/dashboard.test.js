@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 process.env.JOPLIN_SERVER_URL = 'http://testserver';
-const authHeader = 'Basic ' + Buffer.from('admin:password123').toString('base64');
+const authHeader = 'Basic ' + Buffer.from('setup:1-mcp-server').toString('base64');
 
 jest.mock('fs', () => {
   const actualFs = jest.requireActual('fs');
@@ -115,18 +115,21 @@ describe('Dashboard Endpoints', () => {
   });
 
   test('GET /status returns progress object when syncing', async () => {
-    fs.existsSync.mockReturnValue(false);
-    
+    fs.existsSync.mockReturnValue(true);
+    fs.promises.readFile.mockResolvedValue(JSON.stringify({
+      joplinUsername: 'setup',
+      joplinPassword: '1-mcp-server'
+    }));
+
     const response = await request(app)
       .post('/auth')
       .set('Authorization', authHeader)
       .send({
         serverUrl: 'http://testserver',
-        username: 'testuser',
-        password: 'testpassword',
+        username: 'setup',
+        password: '1-mcp-server',
         memoryServerAddress: 'http://localhost:8000'
-      });
-      
+      });      
     // trigger them using the captured mock handlers
     if (mockHandlers.syncStart) mockHandlers.syncStart();
     if (mockHandlers.progress) mockHandlers.progress({ phase: 'embedding', current: 5, total: 10, percent: 50 });
@@ -192,6 +195,7 @@ describe('Dashboard Endpoints', () => {
   });
 
   test('POST /auth validates and saves credentials', async () => {
+    fs.existsSync.mockReturnValue(false);
     const response = await request(app)
       .post('/auth')
       .set('Authorization', authHeader)
@@ -204,7 +208,7 @@ describe('Dashboard Endpoints', () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('success', true);
-    expect(response.body).toHaveProperty('token');
+    expect(response.body).toHaveProperty('requireRelogin', true);
     
     // Check that fs.writeFileSync was called with memoryServerAddress
     const writeCalls = fs.writeFileSync.mock.calls;

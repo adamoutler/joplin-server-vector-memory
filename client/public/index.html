@@ -351,6 +351,11 @@
         });
         const data = await res.json();
         if (res.ok) {
+          if (data.requireRelogin) {
+            alert(data.message);
+            window.location.reload();
+            return;
+          }
           msgEl.innerText = 'Saved successfully!';
           msgEl.className = 'messages success';
           document.getElementById('token').value = data.token;

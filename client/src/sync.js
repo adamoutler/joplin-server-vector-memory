@@ -316,6 +316,7 @@ class JoplinSyncClient extends EventEmitter {
           
           while (retries < maxRetries) {
             try {
+              console.log(`Fetching from: ${internalApiUrl}/http-api/internal/embed`);
               response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

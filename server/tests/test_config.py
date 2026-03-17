@@ -17,7 +17,7 @@ def mock_env(tmp_path):
 
 def test_default_config(mock_env):
     config = get_config()
-    assert config["ollama_url"] == "http://localhost:11434"
+    assert config["ollama_url"] == ""
     assert config["embedding_model"] == "nomic-embed-text"
 
 def test_env_config(mock_env):

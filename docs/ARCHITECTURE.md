@@ -61,8 +61,8 @@ Embedding generation is managed entirely by the Python backend.
 
 ## Security & Authentication Flow
 To ensure data security and prevent the unauthorized exposure of credentials, the system employs a strict locking mechanism:
-1. **Initial Boot (Locked State):** On first run (or if no credentials are provided via `.env`), the system boots into a "Locked" state. The background sync daemon is paused.
-2. **Browser Authentication:** The user accesses the web dashboard (`http://localhost:3000`) and is prompted for Basic Auth. The user's browser/password manager handles the credentials securely.
-3. **Credential Interception & System Lock:** The Node.js backend intercepts the Basic Auth headers, stores the passwords in volatile RAM (never writing them to disk), and permanently "locks" the local `config.json` to that specific `joplinUsername`.
+1. **Initial Boot (Setup Mode):** On first run (or if no credentials are provided via `.env`), the system boots into "Setup" mode. The background sync daemon is paused. The user accesses the web dashboard (`http://localhost:3000`) using the default credentials: **Username:** `setup`, **Password:** `1-mcp-server`.
+2. **Configuration & Account Marriage:** In the dashboard, the user inputs their *real* Joplin Server credentials. The Node.js backend verifies these credentials against the remote server.
+3. **Credential Interception & System Lock:** The Node.js backend intercepts the credentials, stores the passwords in volatile RAM (never writing them to disk), and permanently "locks" the local `config.json` to that specific real `joplinUsername`. It then invalidates the `setup` session and prompts the user to log in again using their real credentials via Basic Auth.
 4. **Subsequent Access:** Any future API or dashboard access must match the locked username. The system will reject attempts to change the locked username via the API to prevent account takeovers.
 5. **Relinquishing the Lock:** The only way to unlock the system for a different user is for the originally authenticated user to access the "Danger Zone" in the dashboard and trigger a "Factory Reset". This explicitly authenticated action wipes the entire local SQLite database, removes the synced Joplin profile, deletes the config file, and reboots the container into a clean slate.

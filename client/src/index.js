@@ -128,10 +128,6 @@ app.use(async (req, res, next) => {
     }
   }
 
-  if (!joplinUrl) {
-    return next();
-  }
-
   const send401 = () => {
     if (req.path === '/' || req.path === '/index.html') {
       res.setHeader('WWW-Authenticate', 'Basic realm="Joplin Sync Client"');
@@ -163,8 +159,20 @@ app.use(async (req, res, next) => {
   const reqUser = auth[0];
   const reqPass = auth.slice(1).join(':');
 
+  // Setup mode check
+  const isSetupMode = !proxyConfig || !proxyConfig.joplinUsername;
+  
+  if (isSetupMode) {
+      if (reqUser === 'setup' && reqPass === '1-mcp-server') {
+          authCache.set(base64Credentials, now);
+          return next();
+      } else {
+          return send401();
+      }
+  }
+
   // Enforce username lock: if we have a configured username, reject any other username immediately
-  if (proxyConfig && proxyConfig.joplinUsername && reqUser !== proxyConfig.joplinUsername) {
+  if (reqUser !== proxyConfig.joplinUsername) {
       authCache.delete(base64Credentials);
       return send401();
   }
@@ -172,19 +180,10 @@ app.use(async (req, res, next) => {
   const onAuthSuccess = () => {
       authCache.set(base64Credentials, now);
       globalCredentials.password = reqPass;
-
-      // If we don't have the username locked in config yet, save it now.
-      if (!proxyConfig || !proxyConfig.joplinUsername) {
-          proxyConfig = proxyConfig || {};
-          proxyConfig.joplinUsername = reqUser;
-          // Ensure we don't lose existing settings
-          const newConfig = { ...proxyConfig };
-          try {
-              fs.writeFileSync(CONFIG_PATH, JSON.stringify(newConfig, null, 2));
-              console.log(`Locked system to authenticated username: ${reqUser}`);
-          } catch (e) {
-              console.error('Failed to lock username to config.json:', e);
-          }
+      
+      // Optimistically assume master password is the sync password if not set
+      if (!globalCredentials.masterPassword) {
+          globalCredentials.masterPassword = reqPass; 
       }
       
       // Auto-unlock: If we have a proxy config but sync isn't running or errored, try to start it
@@ -205,8 +204,8 @@ app.use(async (req, res, next) => {
 
   // Check local config first
   const currentPass = globalCredentials.password || process.env.JOPLIN_PASSWORD || proxyConfig?.joplinPassword;
-  if (proxyConfig && proxyConfig.joplinUsername && currentPass) {
-    if (reqUser === proxyConfig.joplinUsername && reqPass === currentPass) {
+  if (currentPass) {
+    if (reqPass === currentPass) {
       return onAuthSuccess();
     } else {
       authCache.delete(base64Credentials);
@@ -487,15 +486,20 @@ app.post('/auth', async (req, res) => {
   }
 
   const token = config.token || crypto.randomUUID();
+  const isMarriage = !config.joplinUsername;
+
+  globalCredentials.password = password;
+  globalCredentials.masterPassword = masterPassword;
+  
   config = { 
     ...config, 
     joplinServerUrl: serverUrl, 
     joplinUsername: username, 
-    joplinPassword: password, 
-    joplinMasterPassword: masterPassword,
     memoryServerAddress,
     token 
   };
+  delete config.joplinPassword;
+  delete config.joplinMasterPassword;
   
   try {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
@@ -503,6 +507,15 @@ app.post('/auth', async (req, res) => {
     console.error('Failed to write config.json:', err);
   }
   
+  if (isMarriage) {
+    authCache.clear();
+    return res.json({ 
+      success: true, 
+      requireRelogin: true, 
+      message: 'System locked to your account. Please log in again using your Joplin Server username and password.' 
+    });
+  }
+
   // Re-init sync client in background
   startSync(config);
 

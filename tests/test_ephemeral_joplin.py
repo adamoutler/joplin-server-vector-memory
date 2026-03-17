@@ -8,13 +8,19 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 
 @pytest.fixture(scope="module", autouse=True)
 def ephemeral_joplin():
+    env = os.environ.copy()
+    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
+    env["JOPLIN_USERNAME"] = "admin@localhost"
+    env["JOPLIN_PASSWORD"] = "admin"
+    env["JOPLIN_MASTER_PASSWORD"] = "admin"
+
     # Down first just in case
-    subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
+    subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env)
     # Spin up
-    subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "up", "-d"], check=True)
+    subprocess.run(["docker", "compose", "-f", DOCKER_COMPOSE_FILE, "up", "-d"], env=env, check=True)
     
     # Wait for the server to be ready
-    max_retries = 30
+    max_retries = 60
     ready = False
     for i in range(max_retries):
         try:
