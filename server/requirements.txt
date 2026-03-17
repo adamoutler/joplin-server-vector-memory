@@ -1,4 +1,5 @@
 fastmcp
+mcp
 ollama
 sqlite-vec
 pytest
