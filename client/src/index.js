@@ -421,7 +421,7 @@ app.get('/status', async (req, res) => {
       // omit sensitive data
       delete config.joplinPassword;
       delete config.joplinMasterPassword;
-    } catch(e) {}
+    } catch (e) { /* ignore */ }
   }
   res.json({ syncState, embeddingState, config });
 });
@@ -434,7 +434,7 @@ app.post('/auth', async (req, res) => {
     try {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       config = JSON.parse(data);
-    } catch(e) {}
+    } catch (e) { /* ignore */ }
   }
 
   if (!serverUrl || !username || !password) {
@@ -522,7 +522,7 @@ app.get('/auth/keys', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    } catch(e) {}
+    } catch (e) { /* ignore */ }
   }
   res.json({ api_keys: config.api_keys || [] });
 });
@@ -533,7 +533,7 @@ app.post('/auth/keys/create', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    } catch(e) {}
+    } catch (e) { /* ignore */ }
   }
   
   const newKey = 'JMS_' + crypto.randomBytes(32).toString('hex');
@@ -560,7 +560,7 @@ app.post('/auth/keys/delete', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    } catch(e) {}
+    } catch (e) { /* ignore */ }
   }
   
   if (config.api_keys) {

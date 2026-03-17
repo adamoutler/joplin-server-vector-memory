@@ -10,3 +10,5 @@ sentence-transformers
 torch
 pytest-playwright
 playwright
+flake8
+pytest-cov
