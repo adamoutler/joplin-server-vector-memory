@@ -1,3 +1,4 @@
+from src.main import search_notes, remember
 import pytest
 import os
 import sys
@@ -7,7 +8,6 @@ from unittest.mock import patch
 # Add src to python path so we can import main and db
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.main import search_notes, remember
 
 @pytest.fixture
 def temp_db():
@@ -20,6 +20,7 @@ def temp_db():
     except OSError:
         pass
 
+
 @pytest.fixture
 def mock_ollama():
     with patch('src.main.get_embedding') as mock_embed:
@@ -28,16 +29,17 @@ def mock_ollama():
         mock_embed.side_effect = side_effect
         yield mock_embed
 
+
 def test_hybrid_search_fts(temp_db, mock_ollama):
     # Insert notes. All have same vector embedding from mock,
     # so distance will be same. We rely on FTS score via RRF.
     remember("Common Note 1", "This is just a regular note.")
     remember("Common Note 2", "Another note without the rare keyword.")
     remember("Specific Note", "This contains the rare keyword Xylophagalicious.")
-    
+
     # Search for exact keyword
     results = search_notes("Xylophagalicious")
-    
+
     # Verify the note containing the exact keyword is top
     assert len(results) > 0
     assert "Xylophagalicious" in results[0]["blurb"]

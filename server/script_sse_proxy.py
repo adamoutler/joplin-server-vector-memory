@@ -1,12 +1,12 @@
 from fastapi import FastAPI, Request
 from fastmcp import FastMCP
-import asyncio
 import uvicorn
 
 mcp = FastMCP("test")
 fastmcp_app = mcp.http_app(transport='sse', path="/")
 
 app = FastAPI()
+
 
 @app.api_route("/http-api/mcp/sse", methods=["GET", "POST", "OPTIONS"])
 @app.api_route("/http-api/mcp/sse/{path:path}", methods=["GET", "POST", "OPTIONS"])

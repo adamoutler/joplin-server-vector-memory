@@ -8,10 +8,12 @@ from unittest.mock import patch, MagicMock
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'docker-compose.test.yml'))
 
+
 @pytest.fixture(autouse=True)
 def setup_test_env(monkeypatch):
     """Ensure tests run with a consistent environment to avoid host-dependent failures."""
     monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+
 
 @pytest.fixture(autouse=True)
 def mock_node_proxy():
@@ -26,6 +28,7 @@ def mock_node_proxy():
         mock.side_effect = side_effect
         yield mock
 
+
 @pytest.fixture(scope="session", autouse=True)
 def ephemeral_joplin():
     # Ensure no local .env variables leak into the ephemeral environment
@@ -36,10 +39,12 @@ def ephemeral_joplin():
     env["JOPLIN_MASTER_PASSWORD"] = "admin"
 
     # Down first just in case
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
+                   "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
     # Spin up
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
-    
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
+                   "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
+
     # Wait for the server to be ready
     max_retries = 60
     ready = False
@@ -52,19 +57,22 @@ def ephemeral_joplin():
         except requests.exceptions.ConnectionError:
             pass
         time.sleep(1)
-        
+
     if not ready:
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file",
+                       "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
+                       "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
         raise RuntimeError("Joplin server did not start in time")
-    
+
     # Provide admin credentials to the test environment
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
     os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"
     os.environ["JOPLIN_BASE_URL"] = "http://localhost:22300"
-    
+
     try:
         yield
     finally:
         # Tear down
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=True)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
+                       "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=True)

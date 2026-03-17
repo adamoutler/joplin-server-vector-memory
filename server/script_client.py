@@ -15,4 +15,3 @@ print("Stream root:", r3.status_code)
 # Test Stateless root
 r4 = requests.post("http://localhost:8000/http-api/mcp/stateless/")
 print("Stateless root:", r4.status_code)
-

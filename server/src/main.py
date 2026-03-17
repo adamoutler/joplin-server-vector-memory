@@ -1,7 +1,12 @@
+import fastmcp
+from contextlib import asynccontextmanager
+from typing import List, Optional
+from pydantic import BaseModel, Field
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastmcp import FastMCP
 import ollama
 import json
-import uuid
 import logging
 import os
 import hashlib
@@ -9,16 +14,16 @@ import secrets
 import time
 import base64
 import requests
-from starlette.datastructures import MutableHeaders
 from src.db import get_db_connection
 from sqlite_vec import serialize_float32
 from enum import Enum
-from mcp.types import ImageContent, TextContent, EmbeddedResource, BlobResourceContents
+from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents
 from typing import Union, List, Optional
 from sentence_transformers import SentenceTransformer
 
 # Load the local model lazily to save memory if Ollama is used
 _local_model = None
+
 
 def get_local_model():
     global _local_model
@@ -27,9 +32,11 @@ def get_local_model():
         _local_model = SentenceTransformer('all-MiniLM-L6-v2')
     return _local_model
 
+
 class UpdateMode(str, Enum):
     replace = "replace"
     append = "append"
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,6 +47,7 @@ mcp = FastMCP("JoplinSemanticSearch")
 
 _config_cache = {}
 _config_mtime = 0
+
 
 def _load_config_file() -> dict:
     """
@@ -60,9 +68,10 @@ def _load_config_file() -> dict:
         logger.error(f"Error reading config.json: {e}")
     return _config_cache
 
+
 def get_config() -> dict:
     config = _load_config_file()
-    
+
     return {
         "ollama_url": config.get("ollamaUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL", ""))),
         "embedding_model": config.get("embeddingModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text"))),
@@ -71,10 +80,11 @@ def get_config() -> dict:
         "joplin_password": config.get("joplinPassword", config.get("JOPLIN_PASSWORD", os.environ.get("JOPLIN_PASSWORD", ""))),
     }
 
+
 def get_embedding(text: str) -> list[float]:
     config = get_config()
     ollama_url = config.get("ollama_url")
-    
+
     # If Ollama URL is provided, use external Ollama server
     if ollama_url and ollama_url.strip():
         try:
@@ -83,12 +93,13 @@ def get_embedding(text: str) -> list[float]:
             return response["embedding"]
         except Exception as e:
             logger.warning(f"Ollama embedding failed ({e}), falling back to local model.")
-            
+
     # Fallback to completely local CPU embedding
     model = get_local_model()
     # SentenceTransformer returns a numpy array, we need a list of floats
     embedding = model.encode(text)
     return embedding.tolist()
+
 
 def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests.Response:
     config = get_config()
@@ -102,8 +113,10 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
 
     if method.upper() == "GET":
         return requests.get(url, auth=auth)
-    elif method.upper() == "POST":        return requests.post(url, json=json_data, auth=auth)
+    elif method.upper() == "POST":
+        return requests.post(url, json=json_data, auth=auth)
     return requests.request(method, url, auth=auth)
+
 
 @mcp.tool()
 def search_notes(query: str) -> list[dict]:
@@ -116,7 +129,7 @@ def search_notes(query: str) -> list[dict]:
         embedding = get_embedding(f"search_query: {query}")
         db = get_db_connection()
         cursor = db.cursor()
-        
+
         # 1. Vector Search using CTE MATCH pattern
         cursor.execute("""
             WITH knn_matches AS (
@@ -135,7 +148,7 @@ def search_notes(query: str) -> list[dict]:
         # Sanitize query for FTS phrase search to prevent syntax errors
         sanitized_query = query.replace('"', '""')
         fts_query = f'"{sanitized_query}"'
-        
+
         try:
             cursor.execute("""
                 SELECT m.rowid, m.note_id, m.title, m.content, bm25(notes_fts) as score
@@ -147,33 +160,34 @@ def search_notes(query: str) -> list[dict]:
             """, (fts_query,))
             fts_results = cursor.fetchall()
         except Exception as e:
-            logger.warning(f"FTS search failed (likely syntax error in query), proceeding with only vector results: {e}")
+            logger.warning(
+                f"FTS search failed (likely syntax error in query), proceeding with only vector results: {e}")
             fts_results = []
-        
+
         db.close()
-        
+
         # 3. Reciprocal Rank Fusion (RRF)
         rrf_scores = {}
         notes_data = {}
-        
+
         for rank, row in enumerate(vec_results):
             rowid, note_id, title, content, distance = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
                 notes_data[rowid] = {"id": note_id, "title": title, "content": content}
             rrf_scores[rowid] += 1.0 / (rank + 60)
-            
+
         for rank, row in enumerate(fts_results):
             rowid, note_id, title, content, score = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
                 notes_data[rowid] = {"id": note_id, "title": title, "content": content}
             rrf_scores[rowid] += 1.0 / (rank + 60)
-            
+
         # Sort by RRF score descending
         sorted_rowids = sorted(rrf_scores.keys(), key=lambda r: rrf_scores[r], reverse=True)
         top_rowids = sorted_rowids[:5]
-        
+
         notes = []
         for i, rowid in enumerate(top_rowids):
             data = notes_data[rowid]
@@ -186,7 +200,7 @@ def search_notes(query: str) -> list[dict]:
             # Create a simple blurb
             content = data["content"]
             blurb = content[:2000] + "..." if len(content) > 2000 else content
-            
+
             note_dict = {
                 "id": note_id,
                 "title": data["title"],
@@ -195,12 +209,13 @@ def search_notes(query: str) -> list[dict]:
             }
             if i == 0:
                 note_dict["full_body"] = content
-                
+
             notes.append(note_dict)
         return notes
     except Exception as e:
         logger.error(f"Error in search_notes: {e}")
         return []
+
 
 @mcp.tool()
 def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]:
@@ -211,27 +226,28 @@ def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]
         res = _call_node_proxy("GET", f"/node-api/resources/{resource_id}")
         if res.status_code != 200:
             return f"Error fetching resource: {res.text}"
-            
+
         content_type = res.headers.get("Content-Type", "application/octet-stream")
-        
+
         if content_type.startswith("text/") or content_type in ["application/json", "application/x-sh", "application/javascript"]:
             return res.text
-            
+
         b64_data = base64.b64encode(res.content).decode("utf-8")
-        
+
         if content_type.startswith("image/"):
             return ImageContent(type="image", mimeType=content_type, data=b64_data)
-            
+
         return EmbeddedResource(
-            type="resource", 
+            type="resource",
             resource=BlobResourceContents(
-                uri=f"joplin://resource/{resource_id}", 
-                mimeType=content_type, 
+                uri=f"joplin://resource/{resource_id}",
+                mimeType=content_type,
                 blob=b64_data
             )
         )
     except Exception as e:
         return f"Error: {e}"
+
 
 @mcp.tool()
 def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> str:
@@ -247,13 +263,14 @@ def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> s
         }
         if mime_type:
             payload["mime_type"] = mime_type
-            
+
         res = _call_node_proxy("POST", "/node-api/resources", json_data=payload)
         if res.status_code == 200:
             return json.dumps(res.json())
         return f"Error uploading resource: {res.text}"
     except Exception as e:
         return f"Error: {e}"
+
 
 @mcp.tool()
 def get_note(note_id: str) -> dict:
@@ -265,11 +282,11 @@ def get_note(note_id: str) -> dict:
     cursor.execute("SELECT note_id, title, content, updated_time FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
     db.close()
-    
+
     if row:
         content = row[2]
         content_hash = "sha256:" + hashlib.sha256(content.encode('utf-8')).hexdigest()
-        
+
         resources = []
         try:
             res = _call_node_proxy("GET", f"/node-api/notes/{note_id}/resources")
@@ -277,7 +294,7 @@ def get_note(note_id: str) -> dict:
                 resources = res.json()
         except Exception as e:
             logger.warning(f"Failed to fetch resources for note {note_id}: {e}")
-            
+
         return {
             "id": row[0],
             "title": row[1],
@@ -288,6 +305,7 @@ def get_note(note_id: str) -> dict:
         }
     return {"error": "Note not found"}
 
+
 @mcp.tool()
 def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
     """
@@ -295,7 +313,7 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
     Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
 
     folder: Optional, discouraged, folder to save the note in. Defaults to "Agent Memory".
-    
+
     ATTACHING FILES: If you need to attach a file, script, or image to this note, 
     you must FIRST call the `upload_resource` tool. That tool will return an ID.
     You must then embed that ID into the `content` of this note using standard 
@@ -309,32 +327,32 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
         res = _call_node_proxy("POST", "/node-api/notes", json_data={"title": title, "body": content, "folder": folder})
         if res.status_code != 200:
             return {"error": f"Failed to create note in Joplin: {res.text}"}
-            
+
         note_id = res.json().get("id")
         if not note_id:
             return {"error": "Failed to get note ID from Joplin."}
-            
+
         # 2. Update local SQLite for instant searchability
         embedding = get_embedding(f"{title}\n{content}")
-        
+
         db = get_db_connection()
         cursor = db.cursor()
-        
-        updated_time = int(time.time() * 1000) # Joplin uses ms typically, but we should match what sync.js uses
+
+        updated_time = int(time.time() * 1000)  # Joplin uses ms typically, but we should match what sync.js uses
         cursor.execute(
             "INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)",
             (note_id, title, content, updated_time)
         )
         rowid = cursor.lastrowid
-        
+
         cursor.execute(
             "INSERT INTO vec_notes (rowid, embedding) VALUES (?, ?)",
             (rowid, serialize_float32(embedding))
         )
-        
+
         db.commit()
         db.close()
-        
+
         return {
             "status": "success",
             "id": note_id,
@@ -344,6 +362,7 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
     except Exception as e:
         logger.error(f"Error in remember: {e}")
         return {"error": str(e)}
+
 
 @mcp.tool()
 def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modified_timestamp: int, summary_of_changes: str) -> dict:
@@ -356,17 +375,17 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
     cursor = db.cursor()
     cursor.execute("SELECT title, content, updated_time, rowid FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
-    
+
     if not row:
         db.close()
         return {"error": "Note not found"}
-        
+
     title, current_content, current_time, rowid = row
-    
+
     if last_modified_timestamp != current_time:
         db.close()
         return {"error": "Error: Note has been modified since you last read it. Retrieve the note again before updating."}
-        
+
     if update_mode == UpdateMode.append:
         new_content = current_content + "\n" + content
     elif update_mode == UpdateMode.replace:
@@ -374,25 +393,25 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
     else:
         db.close()
         return {"error": "Invalid update_mode. Must be 'append' or 'replace'."}
-        
+
     new_time = int(time.time() * 1000)
-    
+
     try:
         embedding = get_embedding(f"{title}\n{new_content}")
-        
+
         cursor.execute(
             "UPDATE note_metadata SET content = ?, updated_time = ? WHERE note_id = ?",
             (new_content, new_time, note_id)
         )
-        
+
         cursor.execute(
             "UPDATE vec_notes SET embedding = ? WHERE rowid = ?",
             (serialize_float32(embedding), rowid)
         )
-        
+
         db.commit()
         db.close()
-        
+
         return {
             "status": "success",
             "id": note_id
@@ -403,7 +422,9 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
         db.close()
         return {"error": str(e)}
 
+
 _deletion_tokens = {}
+
 
 @mcp.tool()
 def request_note_deletion(note_id: str, reason: str) -> dict:
@@ -416,20 +437,20 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
     cursor.execute("SELECT title FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
     db.close()
-    
+
     if not row:
         return {"error": "Note not found"}
-        
+
     title = row[0]
     token = secrets.token_hex(8)
-    expires_at = time.time() + 300 # 5 minutes
-    
+    expires_at = time.time() + 300  # 5 minutes
+
     _deletion_tokens[token] = {
         "note_id": note_id,
         "title": title,
         "expires_at": expires_at
     }
-    
+
     return {
         "status": "pending",
         "message": "Deletion requested. To complete deletion, call execute_deletion with this token, the exact note title, and the required safety attestation.",
@@ -439,6 +460,7 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
         "expires_in_seconds": 300
     }
 
+
 @mcp.tool()
 def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation: dict) -> dict:
     """
@@ -447,38 +469,38 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     """
     if deletion_token not in _deletion_tokens:
         return {"error": "Invalid or expired deletion token."}
-        
+
     token_data = _deletion_tokens[deletion_token]
-    
+
     if time.time() > token_data["expires_at"]:
         del _deletion_tokens[deletion_token]
         return {"error": "Deletion token expired. Request a new one."}
-        
+
     if confirm_title != token_data["title"]:
         return {"error": "confirm_title does not match the requested note's title."}
-        
+
     if not isinstance(safety_attestation, dict) or "content_hash" not in safety_attestation or "confirmation_statement" not in safety_attestation:
         return {"error": "safety_attestation must contain 'content_hash' and 'confirmation_statement'."}
-        
+
     expected_statement = "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
     if safety_attestation["confirmation_statement"] != expected_statement:
         return {"error": f"Invalid confirmation_statement. Must be exactly: '{expected_statement}'"}
-        
+
     note_id = token_data["note_id"]
-    
+
     db = get_db_connection()
     cursor = db.cursor()
     cursor.execute("SELECT content FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
-    
+
     if not row:
         db.close()
         del _deletion_tokens[deletion_token]
         return {"error": "Note not found during execution."}
-        
+
     content = row[0]
     expected_hash = "sha256:" + hashlib.sha256(content.encode('utf-8')).hexdigest()
-    
+
     if safety_attestation["content_hash"] != expected_hash:
         db.close()
         return {"error": f"content_hash does not match the note's content. Expected {expected_hash}"}
@@ -497,7 +519,7 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
             rowid = rowid_row[0]
             # Delete from tables
             cursor.execute("DELETE FROM vec_notes WHERE rowid = ?", (rowid,))
-            cursor.execute("DELETE FROM note_metadata WHERE note_id = ?", (note_id,))    
+            cursor.execute("DELETE FROM note_metadata WHERE note_id = ?", (note_id,))
         db.commit()
     except Exception as e:
         db.rollback()
@@ -505,9 +527,9 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
         return {"error": f"Error deleting note: {str(e)}"}
     finally:
         db.close()
-    
+
     del _deletion_tokens[deletion_token]
-    
+
     return {
         "status": "success",
         "id": note_id,
@@ -515,16 +537,9 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     }
 
 
-
-from fastapi import FastAPI, Request, Depends, HTTPException, status
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field
-from typing import List, Optional
-from contextlib import asynccontextmanager
-
 class InternalEmbedRequest(BaseModel):
     text: str
+
 
 class Settings(BaseModel):
     ollamaBaseUrl: str = "http://localhost:11434"
@@ -541,21 +556,28 @@ class Settings(BaseModel):
     joplinMasterPassword: str = ""
     memoryServerAddress: str = ""
 
+
 class SettingsUpdate(Settings):
     reindex_approved: bool = False
 
+
 class SearchRequest(BaseModel):
     query: str = Field(..., description="The semantic search query.", examples=["how to cook pasta"])
+
 
 class SearchResponseItem(BaseModel):
     id: str = Field(..., description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
     blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
     distance: float = Field(..., description="Cosine Distance", examples=[0.123])
-    full_body: Optional[str] = Field(None, description="Full content of the note (only included for the top result)", examples=["# Pasta Recipe\n\nBoil water..."])
+    full_body: Optional[str] = Field(None, description="Full content of the note (only included for the top result)", examples=[
+                                     "# Pasta Recipe\n\nBoil water..."])
+
 
 class GetRequest(BaseModel):
-    note_id: str = Field(..., description="ID of the note to retrieve", examples=["123e4567-e89b-12d3-a456-426614174000"])
+    note_id: str = Field(..., description="ID of the note to retrieve",
+                         examples=["123e4567-e89b-12d3-a456-426614174000"])
+
 
 class GetResponse(BaseModel):
     id: Optional[str] = Field(None, description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
@@ -565,21 +587,28 @@ class GetResponse(BaseModel):
     content_hash: Optional[str] = Field(None, description="SHA256 hash of the content")
     error: Optional[str] = Field(None, description="Error message if any")
 
+
 class RememberRequest(BaseModel):
     title: str = Field(..., description="Title of the new note", examples=["New Recipe"])
     content: str = Field(..., description="Content of the new note", examples=["# New Recipe\n\nIngredients..."])
-    folder: str = Field("Agent Memory", description="Optional folder name to save the note in", examples=["Agent Memory"])
+    folder: str = Field("Agent Memory", description="Optional folder name to save the note in",
+                        examples=["Agent Memory"])
+
 
 class RememberResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
     id: Optional[str] = Field(None, description="New Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: Optional[str] = Field(None, description="New Note Title", examples=["New Recipe"])
-    message: Optional[str] = Field(None, description="Success or error message", examples=["Note remembered successfully and synced to Joplin."])
+    message: Optional[str] = Field(None, description="Success or error message", examples=[
+                                   "Note remembered successfully and synced to Joplin."])
     error: Optional[str] = Field(None, description="Error message if any")
 
+
 class RequestDeletionRequest(BaseModel):
-    note_id: str = Field(..., description="ID of the note to request deletion for", examples=["123e4567-e89b-12d3-a456-426614174000"])
+    note_id: str = Field(..., description="ID of the note to request deletion for",
+                         examples=["123e4567-e89b-12d3-a456-426614174000"])
     reason: str = Field(..., description="Reason for deletion")
+
 
 class RequestDeletionResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation")
@@ -590,20 +619,25 @@ class RequestDeletionResponse(BaseModel):
     expires_in_seconds: Optional[int] = Field(None, description="Seconds until the token expires")
     error: Optional[str] = Field(None, description="Error message if any")
 
+
 class SafetyAttestation(BaseModel):
     content_hash: str = Field(..., description="SHA256 hash of the content")
     confirmation_statement: str = Field(..., description="Statement confirming destruction")
+
 
 class ExecuteDeletionRequest(BaseModel):
     deletion_token: str = Field(..., description="Token from request-deletion")
     confirm_title: str = Field(..., description="Exact note title")
     safety_attestation: SafetyAttestation = Field(..., description="Safety attestation object")
 
+
 class ExecuteDeletionResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
     id: Optional[str] = Field(None, description="Deleted Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
-    message: Optional[str] = Field(None, description="Success or error message", examples=["Note deleted successfully and synced to Joplin."])
+    message: Optional[str] = Field(None, description="Success or error message", examples=[
+                                   "Note deleted successfully and synced to Joplin."])
     error: Optional[str] = Field(None, description="Error message if any")
+
 
 class UpdateRequest(BaseModel):
     note_id: str = Field(..., description="ID of the note to update")
@@ -612,12 +646,15 @@ class UpdateRequest(BaseModel):
     last_modified_timestamp: int = Field(..., description="Timestamp for Optimistic Concurrency Control")
     summary_of_changes: str = Field(..., description="Summary of changes")
 
+
 class UpdateResponse(BaseModel):
     status: Optional[str] = Field(None, description="Status of the operation")
     id: Optional[str] = Field(None, description="Updated Note ID")
     error: Optional[str] = Field(None, description="Error message if any")
 
+
 security = HTTPBearer()
+
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     import datetime
@@ -646,14 +683,14 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
 
-    if not is_valid:        raise HTTPException(
+    if not is_valid:
+        raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
         )
     return token
 
-import fastmcp
 
 # Configure FastMCP global settings for absolute paths (to avoid 404s when mounted at root)
 fastmcp.settings.sse_path = "/http-api/mcp/sse"
@@ -664,6 +701,7 @@ fastmcp.settings.streamable_http_path = "/http-api/mcp/stream"
 fastmcp_app = mcp.http_app(transport='sse')
 stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/http-api/mcp/stateless", json_response=True)
 streamable_app = mcp.http_app(transport='streamable-http')
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -682,9 +720,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+
 @app.get("/", summary="Root Endpoint", description="Root endpoint indicating the server is running.")
 async def root():
     return {"message": "Joplin Server Vector Memory API is running. Access MCP at / or /mcp-server/stateless."}
+
 
 @app.post("/http-api/internal/embed")
 async def internal_embed(request: InternalEmbedRequest):
@@ -698,6 +738,7 @@ async def internal_embed(request: InternalEmbedRequest):
     except Exception as e:
         logger.error(f"Error generating internal embedding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post(
     "/http-api/search",
@@ -731,6 +772,7 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
     results = search_notes(request.query)
     return results
 
+
 @app.post(
     "/http-api/get",
     response_model=GetResponse,
@@ -740,6 +782,7 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
 async def api_get(request: GetRequest, token: str = Depends(verify_token)):
     result = get_note(request.note_id)
     return result
+
 
 @app.post(
     "/http-api/remember",
@@ -773,6 +816,7 @@ async def api_remember(request: RememberRequest, token: str = Depends(verify_tok
     result = remember(request.title, request.content, request.folder)
     return result
 
+
 @app.post(
     "/http-api/request-deletion",
     response_model=RequestDeletionResponse,
@@ -784,6 +828,7 @@ async def api_request_deletion(request: RequestDeletionRequest, token: str = Dep
     if "error" in res:
         return RequestDeletionResponse(error=res["error"])
     return RequestDeletionResponse(**res)
+
 
 @app.post(
     "/http-api/execute-deletion",
@@ -797,11 +842,12 @@ async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Dep
         return ExecuteDeletionResponse(error=res["error"])
     return ExecuteDeletionResponse(**res)
 
-@app.post(    "/http-api/update",
-    response_model=UpdateResponse,
-    summary="Update Note",
-    description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
-)
+
+@app.post("/http-api/update",
+          response_model=UpdateResponse,
+          summary="Update Note",
+          description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
+          )
 async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):
     result = update_note(
         note_id=request.note_id,
@@ -812,6 +858,7 @@ async def api_update(request: UpdateRequest, token: str = Depends(verify_token))
     )
     return result
 
+
 @app.get("/api/settings", response_model=Settings)
 async def get_settings(token: str = Depends(verify_token)):
     config = _load_config_file()
@@ -820,59 +867,61 @@ async def get_settings(token: str = Depends(verify_token)):
     settings_dict = {k: v for k, v in config.items() if k in valid_keys}
     return Settings(**settings_dict)
 
+
 @app.post("/api/settings", response_model=Settings)
 async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
     current_config = _load_config_file()
-    
+
     # Handle both Pydantic v1 and v2
     if hasattr(settings_update, "model_dump"):
         new_config = settings_update.model_dump(exclude={"reindex_approved"})
     else:
         new_config = settings_update.dict(exclude={"reindex_approved"})
-    
+
     # Check for critical changes
     critical_keys = ["chunkSize", "chunkOverlap", "ollamaModel", "ollamaBaseUrl"]
     critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys)
-    
+
     if critical_changed and settings_update.reindex_approved:
         # Trigger DB reset
         from src.db import reset_database
         reset_database()
-        
+
     merged_config = {**current_config, **new_config}
-        
+
     # Save to config.json
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     # Make sure directory exists
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     with open(config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
-        
+
     global _config_mtime
-    _config_mtime = 0 # Invalidate cache
-        
+    _config_mtime = 0  # Invalidate cache
+
     return Settings(**new_config)
-    
+
+
 @app.post("/api/settings/reset", response_model=Settings)
 async def reset_settings(token: str = Depends(verify_token)):
     default_settings = Settings()
     current_config = _load_config_file()
-    
+
     if hasattr(default_settings, "model_dump"):
         default_dict = default_settings.model_dump()
     else:
         default_dict = default_settings.dict()
-        
+
     merged_config = {**current_config, **default_dict}
-    
+
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     with open(config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
-        
+
     global _config_mtime
-    _config_mtime = 0 # Invalidate cache
-        
+    _config_mtime = 0  # Invalidate cache
+
     return default_settings
 
 # Actually, let's just append the routes directly
@@ -883,6 +932,7 @@ for route in streamable_app.routes:
 for route in stateless_app.routes:
     app.routes.append(route)
 
+
 class ForceAcceptJSONMiddleware:
     def __init__(self, app):
         self.app = app
@@ -891,7 +941,7 @@ class ForceAcceptJSONMiddleware:
         if scope["type"] == "http":
             original_path = scope["path"]
             method = scope.get("method", "")
-            
+
             # Map exact /http-api/mcp based on method for Gemini CLI compatibility
             if original_path.startswith("/http-api/mcp"):
                 # If it's explicitly one of the mounted sub-apps, leave it alone
@@ -908,9 +958,9 @@ class ForceAcceptJSONMiddleware:
                             scope["path"] = f"/http-api/mcp/sse{subpath}"
                         else:
                             scope["path"] = f"/http-api/mcp/sse{subpath}"
-            
+
             logger.info(f"[MIDDLEWARE] {method} {original_path} -> {scope['path']}")
-                
+
             if scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
                 headers = dict(scope.get("headers", []))
                 accept_key = b"accept"
@@ -922,6 +972,7 @@ class ForceAcceptJSONMiddleware:
                         headers[accept_key] = b"application/json"
                     scope["headers"] = [(k, v) for k, v in headers.items()]
         await self.app(scope, receive, send)
+
 
 app = ForceAcceptJSONMiddleware(app)
 

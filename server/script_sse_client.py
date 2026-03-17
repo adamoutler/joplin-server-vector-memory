@@ -2,6 +2,7 @@ import asyncio
 from mcp.client.sse import sse_client
 from mcp.client.session import ClientSession
 
+
 async def main():
     async with sse_client("http://localhost:8000/http-api/mcp/sse") as (read, write):
         async with ClientSession(read, write) as session:

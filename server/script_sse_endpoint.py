@@ -1,7 +1,6 @@
 import asyncio
 from mcp.client.sse import sse_client
-from mcp.client.session import ClientSession
-import json
+
 
 async def run():
     url = "http://127.0.0.1:8000/http-api/mcp/sse"
