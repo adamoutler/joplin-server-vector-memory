@@ -29,7 +29,7 @@ def mock_node_proxy():
         yield mock
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session")
 def ephemeral_joplin():
     # Ensure no local .env variables leak into the ephemeral environment
     env = os.environ.copy()
@@ -41,50 +41,9 @@ def ephemeral_joplin():
     # Down first just in case
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
                    "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
-    # Spin up
+    # Spin up and wait for healthchecks
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
-                   "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
-
-    # Wait for the server to be ready
-    max_retries = 60
-    ready = False
-    for i in range(max_retries):
-        try:
-            resp = requests.get("http://localhost:22300/api/ping")
-            if resp.status_code == 200:
-                ready = True
-                break
-        except requests.exceptions.ConnectionError:
-            pass
-        time.sleep(1)
-
-    if not ready:
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file",
-                       "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
-                       "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
-        raise RuntimeError("Joplin server did not start in time")
-
-    # Wait for the app container to be ready
-    app_ready = False
-    for i in range(max_retries):
-        try:
-            resp = requests.get("http://localhost:8002/http-api/mcp/stateless", timeout=2)
-            # Just getting a response (even 405 Method Not Allowed) means it's up
-            app_ready = True
-            break
-        except requests.exceptions.ConnectionError:
-            pass
-        except requests.exceptions.ReadTimeout:
-            pass
-        time.sleep(1)
-
-    if not app_ready:
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file",
-                       "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
-                       "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
-        raise RuntimeError("App container did not start in time")
+                   "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build", "--wait"], env=env, check=True)
 
     # Provide admin credentials to the test environment
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"

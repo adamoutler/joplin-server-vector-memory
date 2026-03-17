@@ -19,25 +19,8 @@ def setup_ui_server():
     env.pop("JOPLIN_PASSWORD", None)
     env.pop("JOPLIN_MASTER_PASSWORD", None)
 
-    subprocess.run(["docker", "compose", "-p", "joplin-test-ui", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-ui", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build", "--wait"], env=env, check=True)
     
-    # Wait for the app container to be ready
-    ready = False
-    for _ in range(30):
-        try:
-            resp = requests.get("http://localhost:3002/", auth=("setup", "1-mcp-server"))
-            if resp.status_code == 200:
-                ready = True
-                break
-        except Exception:
-            pass
-        time.sleep(1)
-
-    if not ready:
-        subprocess.run(["docker", "compose", "-p", "joplin-test-ui", "-f", DOCKER_COMPOSE_FILE, "logs", "app"])
-        subprocess.run(["docker", "compose", "-p", "joplin-test-ui", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
-        pytest.fail("App container did not start in time")
-        
     yield "http://localhost:3002"
     
     subprocess.run(["docker", "compose", "-p", "joplin-test-ui", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])

@@ -109,10 +109,15 @@ jobs:
           pip install pytest pytest-cov
           python -m playwright install chromium
 
-      - name: Run Pytest (Core API & Server)
+      - name: Run Pytest (Unit Tests)
         working-directory: ./
         run: |
-          python -m pytest server/tests/ tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py --junitxml=server/test-results/pytest-core.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+          python -m pytest server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_extreme_friction_deletion.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
+
+      - name: Run Pytest (Core API & Server E2E)
+        working-directory: ./
+        run: |
+          python -m pytest server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py --junitxml=server/test-results/pytest-core.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Teardown Core Env
         if: always()

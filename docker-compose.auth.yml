@@ -18,16 +18,28 @@ services:
       - EMBEDDING_MODEL=nomic-embed-text
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     depends_on:
-      - ollama
-      - joplin
+      ollama:
+        condition: service_healthy
+      joplin:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/http-api/mcp/stateless"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   ollama:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
-    entrypoint: [ "/bin/sh", "-c", "ollama serve & (timeout 60s /bin/sh -c 'until curl -s http://localhost:11434/api/tags; do sleep 2; done' && ollama pull nomic-embed-text) & wait" ]
+    entrypoint: [ "/bin/sh", "-c", "ollama serve & (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 2; done' && ollama pull nomic-embed-text) & wait" ]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   db:
     image: postgres:16
@@ -38,11 +50,17 @@ services:
         - POSTGRES_DB=joplin
     volumes:
         - joplin_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U joplin -d joplin"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   joplin:
     image: joplin/server:latest
     depends_on:
-        - db
+      db:
+        condition: service_healthy
     ports:
         - "22301:22300"
     restart: unless-stopped
@@ -55,6 +73,11 @@ services:
         - POSTGRES_USER=joplin
         - POSTGRES_PORT=5432
         - POSTGRES_HOST=db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:22300/api/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
 volumes:
   ollama_data:
