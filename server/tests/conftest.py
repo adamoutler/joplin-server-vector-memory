@@ -64,7 +64,7 @@ def ephemeral_joplin():
         subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null",
                        "-f", DOCKER_COMPOSE_FILE, "down", "-v"], env=env, check=False)
         raise RuntimeError("Joplin server did not start in time")
-        
+
     # Wait for the app container to be ready
     app_ready = False
     for i in range(max_retries):
@@ -78,7 +78,7 @@ def ephemeral_joplin():
         except requests.exceptions.ReadTimeout:
             pass
         time.sleep(1)
-        
+
     if not app_ready:
         subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file",
                        "/dev/null", "-f", DOCKER_COMPOSE_FILE, "logs"], env=env)
