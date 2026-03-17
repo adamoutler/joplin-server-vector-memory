@@ -24,7 +24,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/http-api/mcp/stateless"]
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:3000 || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -74,7 +74,7 @@ services:
         - POSTGRES_PORT=5432
         - POSTGRES_HOST=db
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:22300/api/ping', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"require('http').get({host: 'localhost', port: 22300, path: '/api/ping', headers: {host: 'localhost:22300'}}, (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
       interval: 5s
       timeout: 3s
       retries: 20
