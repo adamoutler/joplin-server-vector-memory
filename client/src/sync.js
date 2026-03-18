@@ -519,9 +519,9 @@ class JoplinSyncClient extends EventEmitter {
                 try {
                   if (this.vectorDb) this.vectorDb.close();
                   if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
-                } catch (e) {}
+                } catch (e) { /* ignore cleanup error */ }
                 setTimeout(() => process.exit(0), 1000);
-                throw new Error(`Self-healing triggered: Vector database connection was poisoned.`);
+                throw new Error(`Self-healing triggered: Vector database connection was poisoned.`, { cause: error });
               }
               throw new Error(`Bulk database insertion failed critically: ${error.message}`, { cause: error });
            } finally {

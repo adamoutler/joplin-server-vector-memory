@@ -314,7 +314,7 @@ describe('JoplinSyncClient', () => {
       global.fetch.mockImplementation((url, options) => {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embeddings: [ mockEmbedding })
+          json: async () => ({ embeddings: [ mockEmbedding ] })
         });
       });
 
@@ -358,7 +358,7 @@ describe('JoplinSyncClient', () => {
       global.fetch.mockImplementation((url, options) => {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embeddings: [ mockEmbedding })
+          json: async () => ({ embeddings: [ mockEmbedding ] })
         });
       });
 
@@ -393,7 +393,7 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockImplementation((url) => {
         if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }]) });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
         }
         return Promise.reject(new Error('Network error'));
       });
@@ -442,7 +442,7 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockImplementation((url, options) => {
         if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }]) });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
         }
         return Promise.resolve({
           ok: true,
@@ -491,7 +491,7 @@ describe('JoplinSyncClient', () => {
         if (embedAttempts === 2) return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embeddings: [ mockEmbedding })
+          json: async () => ({ embeddings: [ mockEmbedding ] })
         });
       });
 
