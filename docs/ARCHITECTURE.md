@@ -110,9 +110,9 @@ Embedding generation is managed entirely by the Python backend.
 1. The Sync Client polls the Joplin Server.
 2. The synchronization cycle (`runSyncCycle()`) begins, protected by an `isProcessing` lock.
 3. Encrypted note items are downloaded and decrypted locally. The progress is tracked in `syncState`.
-4. The plain text content is sent to the Python MCP Backend via `/http-api/internal/embed`.
+4. Node.js implements a "pipelined" sync loop. It gathers exactly 32 decrypted notes at a time and sends them as a single batched JSON array (`texts: [...]`) to the Python `/http-api/internal/embed` endpoint in exactly 1 HTTP request. This completely eliminates the Node.js event-loop network bottleneck.
 5. The backend generates vector embeddings using either Ollama or the local CPU fallback. The progress of this phase is tracked in `embeddingState`.
-6. Note metadata and embeddings are persisted in the SQLite database.
+6. When the 32 embeddings return, Node.js uses a background queue to bulk-insert all 32 vectors into SQLite in a single atomic `BEGIN IMMEDIATE TRANSACTION` ... `COMMIT` block. It does this in the background while instantly fetching the next 32 notes from the GPU, preventing SQLite deadlocks and keeping the GPU fed.
 
 ### Searching (Reciprocal Rank Fusion)
 1. An AI Agent sends a search query via MCP or the HTTP API.
@@ -130,3 +130,4 @@ To ensure data security and prevent the unauthorized exposure of credentials, th
 3. **Credential Interception & System Lock:** The Node.js backend intercepts the credentials, stores the passwords in volatile RAM (never writing them to disk), and permanently "locks" the local `config.json` to that specific real `joplinUsername`. It then invalidates the `setup` session and prompts the user to log in again using their real credentials via Basic Auth.
 4. **Subsequent Access:** Any future API or dashboard access must match the locked username. The system will reject attempts to change the locked username via the API to prevent account takeovers.
 5. **Relinquishing the Lock:** The only way to unlock the system for a different user is for the originally authenticated user to access the "Danger Zone" in the dashboard and trigger a "Factory Reset". This explicitly authenticated action wipes the entire local SQLite database, removes the synced Joplin profile, deletes the config file, and reboots the container into a clean slate.
+enticated user to access the "Danger Zone" in the dashboard and trigger a "Factory Reset". This explicitly authenticated action wipes the entire local SQLite database, removes the synced Joplin profile, deletes the config file, and reboots the container into a clean slate.
