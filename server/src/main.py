@@ -107,13 +107,11 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
         SAFE_BATCH_SIZE = 8
         all_embeddings = []
         
-        # Helper for fallback: process a single string with truncation retry logic
         def fetch_single_with_retry(t: str) -> list[float]:
             current_text = t
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    # Fallback to single embed
                     response = client.embed(model=embed_config["model"], input=[current_text])
                     return response["embeddings"][0]
                 except Exception as e:
@@ -126,24 +124,32 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
                     logger.error(f"Ollama embedding failed critically on single item: {e}")
                     raise RuntimeError(str(e))
         
-        for i in range(0, len(texts), SAFE_BATCH_SIZE):
-            chunk = texts[i:i + SAFE_BATCH_SIZE]
+        def fetch_chunk(chunk: List[str]) -> List[list[float]]:
             try:
-                # Attempt to embed the entire chunk of 8 at once to minimize network/queue overhead
                 response = client.embed(model=embed_config["model"], input=chunk)
-                all_embeddings.extend(response["embeddings"])
+                return response["embeddings"]
             except Exception as e:
                 error_msg = str(e).lower()
                 if "context length" in error_msg or "size limit" in error_msg or "too long" in error_msg:
-                    logger.warning(f"Batch of {len(chunk)} hit a context length limit. Falling back to sequential processing to isolate and truncate the long note.")
-                    # If the batch fails due to length, we don't know WHICH one is too long.
-                    # Fall back to doing this specific chunk of 8 sequentially.
+                    logger.warning(f"Batch of {len(chunk)} hit a context length limit. Falling back to sequential processing.")
+                    chunk_embeddings = []
                     for t in chunk:
-                        all_embeddings.append(fetch_single_with_retry(t))
+                        chunk_embeddings.append(fetch_single_with_retry(t))
+                    return chunk_embeddings
                 else:
                     logger.error(f"Ollama batch embedding failed critically: {e}")
                     raise RuntimeError(str(e))
-                    
+
+        chunks = [texts[i:i + SAFE_BATCH_SIZE] for i in range(0, len(texts), SAFE_BATCH_SIZE)]
+        
+        import concurrent.futures
+        # Use 3 concurrent workers to send 3 arrays of 8 simultaneously (24 total embeddings in flight)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            results = list(executor.map(fetch_chunk, chunks))
+            
+        for res in results:
+            all_embeddings.extend(res)
+            
         return all_embeddings if is_batch else all_embeddings[0]
 
     # Fallback to completely local CPU embedding
