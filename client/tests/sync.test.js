@@ -290,7 +290,7 @@ describe('JoplinSyncClient', () => {
       global.fetch = jest.fn().mockImplementation((url, options) => {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embedding: [0.1] })
+          json: async () => ({ embeddings: [ [0.1] ] })
         });
       });
     });
@@ -314,7 +314,7 @@ describe('JoplinSyncClient', () => {
       global.fetch.mockImplementation((url, options) => {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embedding: mockEmbedding })
+          json: async () => ({ embeddings: [ mockEmbedding })
         });
       });
 
@@ -328,7 +328,7 @@ describe('JoplinSyncClient', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
-            text: 'search_document: Title: Note 1\n\nThis is note 1'
+            texts: ['search_document: Title: Note 1\n\nThis is note 1']
           })
         })
       );
@@ -358,7 +358,7 @@ describe('JoplinSyncClient', () => {
       global.fetch.mockImplementation((url, options) => {
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embedding: mockEmbedding })
+          json: async () => ({ embeddings: [ mockEmbedding })
         });
       });
 
@@ -393,7 +393,7 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockImplementation((url) => {
         if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }]) });
         }
         return Promise.reject(new Error('Network error'));
       });
@@ -402,11 +402,7 @@ describe('JoplinSyncClient', () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((cb) => { cb(); return 0; });
 
-      await client.generateEmbeddings();
-
-      expect(consoleErrorSpy).toHaveBeenCalledWith(
-        'Failed to generate embedding for note note1: Unknown Unknown'
-      );
+      await expect(client.generateEmbeddings()).rejects.toThrow('Embedding process failed critically on note note1: Failed to generate embedding for note note1: HTTP Unknown Unknown.');
       
       consoleWarnSpy.mockRestore();
       consoleErrorSpy.mockRestore();
@@ -446,11 +442,11 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockImplementation((url, options) => {
         if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }]) });
         }
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embedding: [0.1] })
+          json: async () => ({ embeddings: [ [0.1] ] })
         });
       });
 
@@ -495,7 +491,7 @@ describe('JoplinSyncClient', () => {
         if (embedAttempts === 2) return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });
         return Promise.resolve({
           ok: true,
-          json: async () => ({ embedding: mockEmbedding })
+          json: async () => ({ embeddings: [ mockEmbedding })
         });
       });
 

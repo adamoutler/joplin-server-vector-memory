@@ -44,8 +44,8 @@ describe('Semantic Chunking for Large Notes', () => {
     global.fetch.mockImplementation(async (url, options) => {
       if (url.includes('/http-api/internal/embed')) {
         const body = JSON.parse(options.body);
-        capturedPrompt = body.text;
-        return { ok: true, status: 200, json: async () => ({ embedding: [0.1, 0.2, 0.3] }) };
+        capturedPrompt = body.texts[0];
+        return { ok: true, status: 200, json: async () => ({ embeddings: [[0.1, 0.2, 0.3]] }) };
       }
       return { ok: false, status: 404, json: async () => ({}) };
     });

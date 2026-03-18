@@ -43,7 +43,7 @@ describe('Incremental Backoff for Ollama Initialization', () => {
         } else {
           // On 4th call, return 200 with the embedding
           embedCount++;
-          return { ok: true, status: 200, json: async () => ({ embedding: [0.1, 0.2, 0.3] }) };
+          return { ok: true, status: 200, json: async () => ({ embeddings: [ [0.1, 0.2, 0.3] ] }) };
         }
       }
       return { ok: false, status: 404, json: async () => ({}) };
