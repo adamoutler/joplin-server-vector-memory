@@ -23,7 +23,7 @@ def setup_live_container():
     # Provide admin credentials for Joplin container initialization
     env["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
     env["JOPLIN_ADMIN_PASSWORD"] = "admin"
-    env["JOPLIN_BASE_URL"] = "http://localhost:22300"
+    env["JOPLIN_BASE_URL"] = "http://joplin:22300"
 
     print("[setup_live_container] Starting joplin-live-e2e cluster...", file=sys.stderr)
     subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
@@ -190,3 +190,52 @@ def test_api_server_live_endpoints(setup_live_container):
     search_data_backend = search_resp_backend.json()
     assert len(search_data_backend) > 0, "No results returned for backend search"
     assert search_data_backend[0]["id"] == note_id, "The backend top result should be the note we just created"
+
+    # --- NEW: Test Advanced Settings Flow ---
+    print("[E2E] Testing advanced settings and dynamic embedding model probe...", file=sys.stderr)
+    
+    # 1. Test a fake model probe (should fail)
+    fake_probe_payload = {
+        "provider": "ollama",
+        "baseUrl": "http://ollama:11434",
+        "model": "fake-model-that-doesnt-exist"
+    }
+    probe_fail_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=fake_probe_payload, headers=api_headers, timeout=30)
+    assert probe_fail_resp.status_code == 400, "Expected probe to fail for fake model"
+    
+    # 2. Test a valid model probe (should succeed since docker-compose.test.yml runs ollama with nomic-embed-text)
+    valid_probe_payload = {
+        "provider": "ollama",
+        "baseUrl": "http://ollama:11434",
+        "model": "nomic-embed-text"
+    }
+    probe_success_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=valid_probe_payload, headers=api_headers, timeout=30)
+    assert probe_success_resp.status_code == 200, f"Expected probe to succeed, got: {probe_success_resp.text}"
+    probe_data = probe_success_resp.json()
+    assert probe_data.get("dimension") == 768, f"Expected dimension 768 from nomic-embed-text, got {probe_data}"
+
+    # 3. Update settings and trigger a reindex
+    update_payload = {
+        "embedding": {
+            "provider": "ollama",
+            "baseUrl": "http://ollama:11434",
+            "model": "nomic-embed-text"
+        },
+        "reindex_approved": True
+    }
+    update_resp = requests.post(f"{PROXY_URL}/api/settings", json=update_payload, headers=api_headers, timeout=30)
+    assert update_resp.status_code == 200, f"Failed to update settings: {update_resp.text}"
+    
+    print("[E2E] Settings updated successfully. Awaiting Node.js daemon restart and re-sync...", file=sys.stderr)
+    
+    # Give the Node daemon time to restart and re-sync the note with the new embedding engine
+    time.sleep(15)
+    
+    # 4. Verify search still works with the newly dimensioned database
+    search_resp_after = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "E2E"}, headers=api_headers, timeout=30)
+    assert search_resp_after.status_code == 200, "Search failed after re-indexing"
+    search_data_after = search_resp_after.json()
+    assert len(search_data_after) > 0, "No results returned after re-index"
+    assert search_data_after[0]["id"] == note_id, "The backend top result should still be our note after re-index"
+
+    print("[E2E] Advanced settings flow completed successfully.", file=sys.stderr)

@@ -17,7 +17,7 @@ def node_server_port():
 def node_server(node_server_port, tmp_path):
     client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
     env = os.environ.copy()
-    env["JOPLIN_SERVER_URL"] = "http://localhost:22300"
+    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["PORT"] = node_server_port
     env["DATA_DIR"] = str(tmp_path)
     env.pop("JOPLIN_USERNAME", None)

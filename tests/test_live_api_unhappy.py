@@ -20,7 +20,7 @@ def setup_live_container_unhappy():
     
     env["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
     env["JOPLIN_ADMIN_PASSWORD"] = "admin"
-    env["JOPLIN_BASE_URL"] = "http://localhost:22300"
+    env["JOPLIN_BASE_URL"] = "http://joplin:22300"
 
     print("[setup_live_container_unhappy] Starting joplin-unhappy-e2e cluster...", file=sys.stderr)
     subprocess.run(["docker", "compose", "-p", "joplin-unhappy-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)

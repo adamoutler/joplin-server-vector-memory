@@ -124,7 +124,7 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
     env["OLLAMA_URL"] = mock_ollama_server
     env["BACKEND_URL"] = mock_ollama_server
     env["JOPLIN_PROFILE_DIR"] = temp_profile
-    env["JOPLIN_SERVER_URL"] = "http://localhost:22300"
+    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
     env["JOPLIN_PASSWORD"] = "admin"
     
@@ -260,7 +260,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     env["OLLAMA_URL"] = mock_ollama_server
     env["BACKEND_URL"] = mock_ollama_server
     env["JOPLIN_PROFILE_DIR"] = temp_profile
-    env["JOPLIN_SERVER_URL"] = "http://localhost:22300"
+    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
     env["JOPLIN_PASSWORD"] = "admin"
     
