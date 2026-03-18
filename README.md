@@ -16,14 +16,11 @@ An AI-native semantic search engine and memory bridge for personal notes. It act
 * **Auto-Unlock via Browser:** The system intercepts your browser's native Basic Auth login to acquire the passwords securely. 
 * **User Lock & Factory Reset:** Upon entering your real Joplin Server credentials into the dashboard, the system permanently binds exclusively to that username. It forces a logout of the `setup` account, requiring you to log back in using your *real* Joplin username and password. It cannot be hijacked by other accounts. To switch users, the authenticated owner must access the "Danger Zone" in the dashboard to perform a Factory Reset, which wipes the local databases and relinquishes the lock.
 
-## AI-Feedback Loop (Git P Alias)
-To ensure AI agents receive immediate feedback from GitHub Actions when committing code, this project utilizes a custom `git p` command wrapper.
-
-If you are a developer or an AI agent working on this repository, you should configure the `git p` alias:
-```bash
-git config alias.p '!bash scripts/git-p.sh'
-```
-Once configured, use `git p` instead of `git push`. The script will automatically push your commits and wait for the corresponding CI run to complete, outputting any failure logs directly to your terminal. There is a pre-push hook installed (for specific users) that will block standard `git push` to enforce this workflow.
+## Automated CI/CD & Versioning
+This project uses GitHub Actions for continuous integration.
+* **Auto-Versioning:** Every local commit automatically triggers a `post-commit` hook that generates and tags a semver version (e.g. `v0.1.X`) based on the commit depth.
+* **Deployment:** Pushing to the `main` branch triggers the CI pipeline. If all tests pass, the container is automatically built and deployed to the GitHub Container Registry (`ghcr.io`) with the new version tag.
+* **AI Feedback Loop:** The Gemini CLI is configured with a post-tool hook that intercepts `git push` commands. The AI will automatically wait for the GitHub Actions workflow to complete and read the CI results, ensuring rigorous QA without manual intervention.
 
 ## Quick Start
 1. Configure your `.env` file (copy from `.env.example`).
