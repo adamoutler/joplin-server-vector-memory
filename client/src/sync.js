@@ -319,15 +319,18 @@ class JoplinSyncClient extends EventEmitter {
     }
     return {
       ollamaUrl: config.ollamaUrl || config.OLLAMA_URL || process.env.OLLAMA_URL || 'http://localhost:11434',
-      embeddingModel: config.embeddingModel || config.EMBEDDING_MODEL || process.env.EMBEDDING_MODEL || 'nomic-embed-text'
+      embeddingModel: config.embeddingModel || config.EMBEDDING_MODEL || process.env.EMBEDDING_MODEL || 'nomic-embed-text',
+      chunkSize: config.chunkSize || 1000,
+      chunkOverlap: config.chunkOverlap || 200
     };
   }
 
   async generateEmbeddings() {
     this.emit('embeddingStart');
-    
-    try {
-      // 1. Fetch current decrypted notes from Joplin DB
+
+    const config = await this.getConfig();
+
+    try {      // 1. Fetch current decrypted notes from Joplin DB
       const notes = await this.db.selectAll('SELECT id, title, body, updated_time FROM notes WHERE encryption_applied = 0');
       
       // 2. Fetch existing metadata from Vector DB
@@ -385,11 +388,10 @@ class JoplinSyncClient extends EventEmitter {
         try {
           // Truncate from the start to avoid 500 context length errors on Ollama side if applicable.
           let rawText = `Title: ${note.title}\n\n${note.body}`;
-          
-          const CHUNK_LIMIT = 8000;
+
+          const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
           if (rawText.length > CHUNK_LIMIT) {
-              let chunk = rawText.substring(0, CHUNK_LIMIT);
-              let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
+              let chunk = rawText.substring(0, CHUNK_LIMIT);              let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
               if (lastSpace > 0) {
                   rawText = chunk.substring(0, lastSpace);
               } else {

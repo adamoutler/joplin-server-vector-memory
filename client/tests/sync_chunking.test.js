@@ -20,7 +20,8 @@ describe('Semantic Chunking for Large Notes', () => {
     // Mock config
     client.getConfig = jest.fn().mockResolvedValue({
       ollamaUrl: 'http://localhost:11434',
-      embeddingModel: 'test-model'
+      embeddingModel: 'test-model',
+      chunkSize: 2000
     });
     
     // Mock vectorDb
