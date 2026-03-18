@@ -264,46 +264,103 @@ class JoplinSyncClient extends EventEmitter {
     }
     this.emit('decryptComplete');
   }
-  upsertVector(noteId, title, content, embedding, updatedTime) {
-    return new Promise((resolve, reject) => {
-      this.vectorDb.serialize(() => {
-        if (!this._vecNotesCreated) {
-            this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${embedding.length}])`);
-            this._vecNotesCreated = true;
-        }
-        this.vectorDb.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
-          if (err) return reject(err);
-          this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {
-            if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
-            const eStr = new Float32Array(embedding);
-            
-            if (row) {
-              const rowid = row.rowid;
-              this.vectorDb.run(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [title, content, updatedTime, rowid], (err) => {
-                if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
-                this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid], (err) => {
-                  if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
-                  this.vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
-                    if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
-                    this.vectorDb.run('COMMIT', resolve);
-                  });
-                });
-              });
-            } else {
-              const vectorDb = this.vectorDb;
-              vectorDb.run(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [noteId, title, content, updatedTime], function(err) {
-                if (err) { vectorDb.run('ROLLBACK'); return reject(err); }
-                const rowid = this.lastID;
-                vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
-                  if (err) { vectorDb.run('ROLLBACK'); return reject(err); }
-                  vectorDb.run('COMMIT', resolve);
-                });
-              });
-            }
-          });
-        });
+  async bulkUpsertVectors(notes, embeddings) {
+    const runAsync = (query, params) => new Promise((resolve, reject) => {
+      this.vectorDb.run(query, params, function(err) {
+        if (err) reject(err);
+        else resolve(this);
       });
     });
+    const getAsync = (query, params) => new Promise((resolve, reject) => {
+      this.vectorDb.get(query, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (notes.length === 0) return;
+
+    if (!this._vecNotesCreated) {
+        await runAsync(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${embeddings[0].length}])`, []);
+        this._vecNotesCreated = true;
+    }
+
+    try {
+      await runAsync('BEGIN IMMEDIATE TRANSACTION', []);
+      
+      for (let i = 0; i < notes.length; i++) {
+        const note = notes[i];
+        const embedding = embeddings[i];
+        const eStr = new Float32Array(embedding);
+        
+        const row = await getAsync(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [note.id]);
+        
+        if (row) {
+          const rowid = row.rowid;
+          await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [note.title, note.body, note.updated_time, rowid]);
+          await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
+          await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
+        } else {
+          const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [note.id, note.title, note.body, note.updated_time]);
+          const rowid = result.lastID;
+          await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
+        }
+      }
+      
+      await runAsync('COMMIT', []);
+    } catch (err) {
+      try {
+        await runAsync('ROLLBACK', []);
+      } catch (rollbackErr) {
+        console.error('Failed to rollback transaction:', rollbackErr);
+      }
+      throw err;
+    }
+  }
+
+  async upsertVector(noteId, title, content, embedding, updatedTime) {
+    const runAsync = (query, params) => new Promise((resolve, reject) => {
+      this.vectorDb.run(query, params, function(err) {
+        if (err) reject(err);
+        else resolve(this);
+      });
+    });
+    const getAsync = (query, params) => new Promise((resolve, reject) => {
+      this.vectorDb.get(query, params, (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+
+    if (!this._vecNotesCreated) {
+        await runAsync(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${embedding.length}])`, []);
+        this._vecNotesCreated = true;
+    }
+
+    try {
+      await runAsync('BEGIN IMMEDIATE TRANSACTION', []);
+      const row = await getAsync(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId]);
+      const eStr = new Float32Array(embedding);
+
+      if (row) {
+        const rowid = row.rowid;
+        await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [title, content, updatedTime, rowid]);
+        await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
+        await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
+      } else {
+        const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [noteId, title, content, updatedTime]);
+        const rowid = result.lastID;
+        await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
+      }
+      await runAsync('COMMIT', []);
+    } catch (err) {
+      try {
+        await runAsync('ROLLBACK', []);
+      } catch (rollbackErr) {
+        console.error('Failed to rollback transaction:', rollbackErr);
+      }
+      throw err;
+    }
   }
 
   async getConfig() {
@@ -378,120 +435,106 @@ class JoplinSyncClient extends EventEmitter {
       // Instead of polling Ollama directly, we just call our Python server.
       // The Python server will handle whether it uses local SentenceTransformers or an external Ollama server.
       const internalApiUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
-      
-      const BATCH_SIZE = 10;
+
+      const BATCH_SIZE = 100;
       let processedCount = 0;
+      let dbWriteQueue = Promise.resolve();
 
       for (let i = 0; i < notesToProcess.length; i += BATCH_SIZE) {
         const batch = notesToProcess.slice(i, i + BATCH_SIZE);
-        
-        await Promise.all(batch.map(async (note) => {
-          if (!note.body) {
-            processedCount++;
-            return;
+        const validNotes = [];
+        const prompts = [];
+
+        for (const note of batch) {
+          if (!note.body) continue;
+          let rawText = `Title: ${note.title}\n\n${note.body}`;
+          const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
+          if (rawText.length > CHUNK_LIMIT) {
+              let chunk = rawText.substring(0, CHUNK_LIMIT);
+              let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
+              if (lastSpace > 0) {
+                  rawText = chunk.substring(0, lastSpace);
+              } else {
+                  rawText = chunk;
+              }
           }
-          
+          prompts.push(`search_document: ${rawText}`);
+          validNotes.push(note);
+        }
+
+        if (prompts.length === 0) {
+          processedCount += batch.length;
+          this.emit('progress', { phase: 'embedding', current: processedCount, total: notesToProcess.length, percent: Math.round((processedCount / notesToProcess.length) * 100) });
+          continue;
+        }
+
+        let response;
+        let retries = 0;
+        const maxRetries = 5;
+        let backoff = 1000;
+
+        while (retries < maxRetries) {
           try {
-            // Truncate from the start to avoid 500 context length errors on Ollama side if applicable.
-            let rawText = `Title: ${note.title}\n\n${note.body}`;
-
-            const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
-            if (rawText.length > CHUNK_LIMIT) {
-                let chunk = rawText.substring(0, CHUNK_LIMIT);
-                let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
-                if (lastSpace > 0) {
-                    rawText = chunk.substring(0, lastSpace);
-                } else {
-                    rawText = chunk;
-                }
-            }
-            let promptBody = `search_document: ${rawText}`;
-
-            let response;
-            let retries = 0;
-            const maxRetries = 5;
-            let backoff = 1000;
-            
-            while (retries < maxRetries) {
-              try {
-                response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    text: promptBody
-                  })
-                });
-
-                if (response.ok) {
-                  break;
-                }
-
-                console.warn(`Internal embed API error (${response.status}) for note ${note.id}. Retrying in ${backoff}ms...`);
-              } catch (err) {
-                console.warn(`Network error (${err.message}) for note ${note.id}. Retrying in ${backoff}ms...`);
-                await new Promise(resolve => setTimeout(resolve, backoff));
-                retries++;
-                backoff *= 2;
-                continue;
-              }
-              await new Promise(resolve => setTimeout(resolve, backoff));
-              retries++;
-              backoff *= 2;
-            }          
-            if (!response || !response.ok) {
-              const status = response ? response.status : 'Unknown';
-              const statusText = response ? response.statusText : 'Unknown';
-              let errBody = '';
-              try { errBody = await response.text(); } catch(e) { /* ignore */ }
-              throw new Error(`Failed to generate embedding for note ${note.id}: HTTP ${status} ${statusText}. ${errBody}`);
-            }
-            
-            const data = await response.json();
-            
-            await this.upsertVector(note.id, note.title, note.body, data.embedding, note.updated_time);
-            
-            this.emit('noteEmbeddingGenerated', {
-              noteId: note.id,
-              embedding: data.embedding
+            response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ texts: prompts })
             });
-          } catch (error) {
-            console.error(`Catastrophic error generating embedding for note ${note.id}:`, error);
-            
-            if (error.message && error.message.includes('Dimension mismatch')) {
-              console.warn('Vector dimension mismatch detected. The underlying embedding model has changed but the DB schema is stale.');
-              console.warn('Treating the vector database as ephemeral: Wiping the vector DB and forcing a container restart to rebuild schema from scratch.');
-              
-              const fs = require('fs');
-              const path = require('path');
-              const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
-              
-              try {
-                if (this.vectorDb) {
-                  this.vectorDb.close();
-                }
-                if (fs.existsSync(vectorDbPath)) {
-                  fs.unlinkSync(vectorDbPath);
-                  console.log('Stale vector database deleted successfully.');
-                }
-              } catch (e) {
-                console.error('Failed to wipe stale vector database:', e);
-              }
-              
-              // Force Docker to restart the node process to re-init with correct dimensions
-              setTimeout(() => process.exit(0), 1000);
-              
-              throw new Error(`Self-healing triggered: Vector database schema was stale and has been wiped. System is automatically restarting to reconstruct the database with correct vector dimensions. Please refresh in a moment.`);
-            }
-
-            throw new Error(`Embedding process failed critically on note ${note.id}: ${error.message}`, { cause: error });
-          } finally {
-            processedCount++;
-            this.emit('progress', { phase: 'embedding', current: processedCount, total: notesToProcess.length, percent: Math.round((processedCount / notesToProcess.length) * 100) });
+            if (response.ok) break;
+            console.warn(`Internal embed API error (${response.status}) for batch. Retrying in ${backoff}ms...`);
+          } catch (err) {
+            console.warn(`Network error (${err.message}) for batch. Retrying in ${backoff}ms...`);
           }
-        }));
+          await new Promise(resolve => setTimeout(resolve, backoff));
+          retries++;
+          backoff *= 2;
+        }          
+        if (!response || !response.ok) {
+          const status = response ? response.status : 'Unknown';
+          const statusText = response ? response.statusText : 'Unknown';
+          let errBody = '';
+          try { errBody = await response.text(); } catch(e) { /* ignore */ }
+          throw new Error(`Failed to generate embeddings for batch: HTTP ${status} ${statusText}. ${errBody}`);
+        }
+
+        const data = await response.json();
+        const embeddings = data.embeddings;
+
+        // Pipeline the DB write: chain it to the queue without awaiting it here
+        // so the next iteration can immediately start fetching the next batch!
+        dbWriteQueue = dbWriteQueue.then(async () => {
+           try {
+              await this.bulkUpsertVectors(validNotes, embeddings);
+              for (let j = 0; j < validNotes.length; j++) {
+                this.emit('noteEmbeddingGenerated', {
+                  noteId: validNotes[j].id,
+                  embedding: embeddings[j]
+                });
+              }
+           } catch (error) {
+              if (error.message && (error.message.includes('Dimension mismatch') || error.message.includes('transaction') || error.message.includes('memory'))) {
+                console.warn('Fatal database state detected. Treating vector database as ephemeral: Wiping DB and forcing restart.');
+                const fs = require('fs');
+                const path = require('path');
+                const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
+                try {
+                  if (this.vectorDb) this.vectorDb.close();
+                  if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
+                } catch (e) {}
+                setTimeout(() => process.exit(0), 1000);
+                throw new Error(`Self-healing triggered: Vector database connection was poisoned.`);
+              }
+              throw new Error(`Bulk database insertion failed critically: ${error.message}`, { cause: error });
+           } finally {
+              processedCount += batch.length; // use batch.length so empty notes are counted
+              this.emit('progress', { phase: 'embedding', current: processedCount, total: notesToProcess.length, percent: Math.round((processedCount / notesToProcess.length) * 100) });
+           }
+        });
       }
-      this.emit('embeddingComplete');
-    } catch (err) {
+
+      // Await the very last DB write before emitting complete
+      await dbWriteQueue;
+      this.emit('embeddingComplete');    } catch (err) {
       console.error('Error in generateEmbeddings:', err);
       this.emit('embeddingError', err);
       throw err;
