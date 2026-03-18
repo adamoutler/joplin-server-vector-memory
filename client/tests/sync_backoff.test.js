@@ -17,10 +17,17 @@ describe('Incremental Backoff for Ollama Initialization', () => {
       embeddingModel: 'test-model'
     });
     // Mock vectorDb
-    client.vectorDb = { all: (q, cb) => cb(null, []), run: (q, p, cb) => cb && cb(null), get: (q, p, cb) => cb(null, null) };
+    client.vectorDb = { 
+      all: (q, cb) => cb(null, []), 
+      run: function(q, p, cb) { 
+        if (cb) cb.call({ lastID: 1 }, null); 
+      }, 
+      get: (q, p, cb) => cb(null, null),
+      serialize: (cb) => cb()
+    };
     
     // Mock upsert method so we don't need real sqlite
-    client.upsertVector = jest.fn().mockResolvedValue();
+    client.bulkUpsertVectors = jest.fn().mockResolvedValue();
     
     // Mock global fetch
     global.fetch = jest.fn();
@@ -68,7 +75,10 @@ describe('Incremental Backoff for Ollama Initialization', () => {
     
     // Check that it eventually generated the embedding
     expect(embedCount).toBe(1);
-    expect(client.upsertVector).toHaveBeenCalledWith('note1', 'Test Note', 'Test Body', [0.1, 0.2, 0.3], 12345);
+    expect(client.bulkUpsertVectors).toHaveBeenCalledWith(
+      [{ id: 'note1', title: 'Test Note', body: 'Test Body', updated_time: 12345, encryption_applied: 0 }],
+      [[0.1, 0.2, 0.3]]
+    );
     
     console.log(`Test passed. Total fetch calls for tags: ${callCount}. Duration: ${duration}ms`);
   }, 10000);

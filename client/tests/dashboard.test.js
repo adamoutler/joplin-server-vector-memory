@@ -125,9 +125,13 @@ describe('Dashboard Endpoints', () => {
       .set('Authorization', authHeader)
       .send({
         serverUrl: 'http://testserver',
-        username: 'setup',
-        password: '1-mcp-server',
-        memoryServerAddress: 'http://localhost:8000'
+        username: 'admin',
+        password: 'password123',
+        embedding: {
+          provider: 'ollama',
+          baseUrl: 'http://my-ollama:11434',
+          model: 'my-model'
+        }
       });      
     // trigger them using the captured mock handlers
     if (mockHandlers.syncStart) mockHandlers.syncStart();
@@ -200,8 +204,8 @@ describe('Dashboard Endpoints', () => {
       .set('Authorization', authHeader)
       .send({
         serverUrl: 'http://testserver',
-        username: 'testuser',
-        password: 'testpassword',
+        username: 'admin',
+        password: 'password123',
         memoryServerAddress: 'http://localhost:8000'
       });
 

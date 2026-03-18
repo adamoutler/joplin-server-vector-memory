@@ -373,11 +373,11 @@ describe('JoplinSyncClient', () => {
       // The last space before index 8000 is at index 7999 (if it was 1000-char words).
       // Let's test the length is strictly less than or equal to 8000 + prefix length
       
-      expect(fetchCallBody.text.startsWith('search_document: ')).toBe(true);
-      expect(fetchCallBody.text.length).toBeLessThanOrEqual(8000 + 'search_document: '.length);
+      expect(fetchCallBody.texts[0].startsWith('search_document: ')).toBe(true);
+      expect(fetchCallBody.texts[0].length).toBeLessThanOrEqual(8000 + 'search_document: '.length);
       
       // Ensure the partial word was truncated, meaning it ends cleanly without exceeding the limit
-      expect(fetchCallBody.text.endsWith(largeWord)).toBe(true);
+      expect(fetchCallBody.texts[0].endsWith(largeWord)).toBe(true);
     });
 
     it('should handle fetch errors gracefully', async () => {
@@ -402,7 +402,7 @@ describe('JoplinSyncClient', () => {
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
       const setTimeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((cb) => { cb(); return 0; });
 
-      await expect(client.generateEmbeddings()).rejects.toThrow('Embedding process failed critically on note note1: Failed to generate embedding for note note1: HTTP Unknown Unknown.');
+      await expect(client.generateEmbeddings()).rejects.toThrow('Failed to generate embeddings for batch: HTTP Unknown Unknown.');
       
       consoleWarnSpy.mockRestore();
       consoleErrorSpy.mockRestore();
@@ -455,14 +455,8 @@ describe('JoplinSyncClient', () => {
 
       await client.generateEmbeddings();
 
-      expect(progressMock).toHaveBeenCalledTimes(2);
+      expect(progressMock).toHaveBeenCalledTimes(1);
       expect(progressMock).toHaveBeenNthCalledWith(1, {
-        phase: 'embedding',
-        current: 1,
-        total: 2,
-        percent: 50
-      });
-      expect(progressMock).toHaveBeenNthCalledWith(2, {
         phase: 'embedding',
         current: 2,
         total: 2,
