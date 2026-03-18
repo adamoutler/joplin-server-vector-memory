@@ -731,15 +731,29 @@ async function runSyncCycle(config) {
     
   } catch (err) {
     console.error('Cycle top-level error:', err);
-    if (syncState.status === 'syncing') {
-      syncState.status = 'error';
-      syncState.error = err.message;
+    // Determine the source of the error to avoid cross-contamination of status states
+    if (err.message && err.message.includes('Embedding')) {
+        embeddingState.status = 'error';
+        embeddingState.error = err.message;
+    } else if (err.message && err.message.includes('Joplin Server')) {
+        syncState.status = 'error';
+        syncState.error = err.message;
+    } else if (syncState.status === 'syncing') {
+        syncState.status = 'error';
+        syncState.error = err.message;
     } else if (embeddingState.status === 'embedding') {
-      embeddingState.status = 'error';
-      embeddingState.error = err.message;
+        embeddingState.status = 'error';
+        embeddingState.error = err.message;
     } else {
-      syncState.status = 'error';
-      syncState.error = 'Initialization or cycle failed: ' + err.message;
+        // Only fallback to sync error if we literally don't know where it came from, 
+        // but avoid overwriting a 'ready' sync state if embedding just failed.
+        if (syncState.status !== 'ready') {
+           syncState.status = 'error';
+           syncState.error = 'Initialization failed: ' + err.message;
+        } else {
+           embeddingState.status = 'error';
+           embeddingState.error = 'Cycle failed: ' + err.message;
+        }
     }
   } finally {
     isProcessing = false;

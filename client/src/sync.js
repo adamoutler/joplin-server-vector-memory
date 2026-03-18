@@ -268,33 +268,36 @@ class JoplinSyncClient extends EventEmitter {
   upsertVector(noteId, title, content, embedding, updatedTime) {
     return new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
-        this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {
+        this.vectorDb.run('BEGIN TRANSACTION', (err) => {
           if (err) return reject(err);
-          const eStr = new Float32Array(embedding);
-          
-          if (row) {
-            const rowid = row.rowid;
-            this.vectorDb.run(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [title, content, updatedTime, rowid], (err) => {
-              if (err) return reject(err);
-              this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid], (err) => {
-                if (err) return reject(err);
-                this.vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
-                  if (err) return reject(err);
-                  resolve();
+          this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {
+            if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
+            const eStr = new Float32Array(embedding);
+            
+            if (row) {
+              const rowid = row.rowid;
+              this.vectorDb.run(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [title, content, updatedTime, rowid], (err) => {
+                if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
+                this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid], (err) => {
+                  if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
+                  this.vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
+                    if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
+                    this.vectorDb.run('COMMIT', resolve);
+                  });
                 });
               });
-            });
-          } else {
-            const vectorDb = this.vectorDb;
-            vectorDb.run(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [noteId, title, content, updatedTime], function(err) {
-              if (err) return reject(err);
-              const rowid = this.lastID;
-              vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
-                if (err) return reject(err);
-                resolve();
+            } else {
+              const vectorDb = this.vectorDb;
+              vectorDb.run(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [noteId, title, content, updatedTime], function(err) {
+                if (err) { vectorDb.run('ROLLBACK'); return reject(err); }
+                const rowid = this.lastID;
+                vectorDb.run(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr], (err) => {
+                  if (err) { vectorDb.run('ROLLBACK'); return reject(err); }
+                  vectorDb.run('COMMIT', resolve);
+                });
               });
-            });
-          }
+            }
+          });
         });
       });
     });

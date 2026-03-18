@@ -74,7 +74,7 @@ def get_config() -> dict:
 
     return {
         "ollama_url": config.get("ollamaBaseUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL", ""))),
-        "embedding_model": config.get("embeddingModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text"))),
+        "embedding_model": config.get("ollamaModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text"))),
         "joplin_server_url": config.get("joplinServerUrl", config.get("JOPLIN_SERVER_URL", os.environ.get("JOPLIN_SERVER_URL", ""))),
         "joplin_username": config.get("joplinUsername", config.get("JOPLIN_USERNAME", os.environ.get("JOPLIN_USERNAME", ""))),
         "joplin_password": config.get("joplinPassword", config.get("JOPLIN_PASSWORD", os.environ.get("JOPLIN_PASSWORD", ""))),
@@ -898,6 +898,13 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
         # Trigger DB reset
         from src.db import reset_database
         reset_database()
+        
+        # Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
+        try:
+            import requests
+            requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
+        except Exception as e:
+            logger.error(f"Failed to restart Node daemon: {e}")
 
     merged_config = {**current_config, **new_config}
 
