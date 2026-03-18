@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# Skip if we are mid-rebase
+if [ "$GIT_REFLOG_ACTION" == "rebase" ]; then
+    exit 0
+fi
+
+# Calculate total commits
+COUNT=$(git rev-list --count HEAD)
+
+# Get short hash
+HASH=$(git rev-parse --short HEAD)
+
+VERSION="0.1.${COUNT}"
+TAG="v${VERSION}"
+
+# Check if tag already exists (e.g. if amending)
+if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+    git tag -a "$TAG" -m "Auto-version ${VERSION} for commit ${HASH}"
+    echo "Auto-versioned commit with tag: $TAG"
+fi

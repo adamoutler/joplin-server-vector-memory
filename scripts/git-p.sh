@@ -14,7 +14,7 @@ fi
 
 echo "[git-p] Pushing..."
 export GIT_P_RUNNING=1
-if ! git push "$@"; then
+if ! git push --follow-tags "$@"; then
     echo "[git-p] Error: git push failed."
     exit 1
 fi
