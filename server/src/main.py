@@ -93,25 +93,63 @@ def get_config() -> dict:
     }
 
 
-def get_embedding(text: str) -> list[float]:
+def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[float]]]:
     config = get_config()
     embed_config = config.get("embedding", {})
 
+    is_batch = isinstance(text, list)
+    texts = text if is_batch else [text]
+
     # If Ollama URL is provided, use external Ollama server exclusively
     if embed_config.get("provider") == "ollama" and embed_config.get("baseUrl"):
-        try:
-            client = ollama.Client(host=embed_config["baseUrl"])
-            response = client.embeddings(model=embed_config["model"], prompt=text)
-            return response["embedding"]
-        except Exception as e:
-            logger.error(f"Ollama embedding failed critically: {e}")
-            raise RuntimeError(str(e))
+        client = ollama.Client(host=embed_config["baseUrl"])
+        
+        SAFE_BATCH_SIZE = 8
+        all_embeddings = []
+        
+        # Helper for fallback: process a single string with truncation retry logic
+        def fetch_single_with_retry(t: str) -> list[float]:
+            current_text = t
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Fallback to single embed
+                    response = client.embed(model=embed_config["model"], input=[current_text])
+                    return response["embeddings"][0]
+                except Exception as e:
+                    error_msg = str(e).lower()
+                    if "context length" in error_msg or "size limit" in error_msg or "too long" in error_msg:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Ollama context length exceeded. Truncating text and retrying (attempt {attempt + 1})...")
+                            current_text = current_text[:len(current_text) // 2]
+                            continue
+                    logger.error(f"Ollama embedding failed critically on single item: {e}")
+                    raise RuntimeError(str(e))
+        
+        for i in range(0, len(texts), SAFE_BATCH_SIZE):
+            chunk = texts[i:i + SAFE_BATCH_SIZE]
+            try:
+                # Attempt to embed the entire chunk of 8 at once to minimize network/queue overhead
+                response = client.embed(model=embed_config["model"], input=chunk)
+                all_embeddings.extend(response["embeddings"])
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "context length" in error_msg or "size limit" in error_msg or "too long" in error_msg:
+                    logger.warning(f"Batch of {len(chunk)} hit a context length limit. Falling back to sequential processing to isolate and truncate the long note.")
+                    # If the batch fails due to length, we don't know WHICH one is too long.
+                    # Fall back to doing this specific chunk of 8 sequentially.
+                    for t in chunk:
+                        all_embeddings.append(fetch_single_with_retry(t))
+                else:
+                    logger.error(f"Ollama batch embedding failed critically: {e}")
+                    raise RuntimeError(str(e))
+                    
+        return all_embeddings if is_batch else all_embeddings[0]
 
     # Fallback to completely local CPU embedding
     model = get_local_model()
-    # SentenceTransformer returns a numpy array, we need a list of floats
-    embedding = model.encode(text)
-    return embedding.tolist()
+    embeddings = model.encode(texts).tolist()
+    return embeddings if is_batch else embeddings[0]
 
 
 def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests.Response:
@@ -553,7 +591,7 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
 from typing import Literal
 
 class InternalEmbedRequest(BaseModel):
-    text: str
+    texts: List[str]
 
 class InternalEmbeddingSettings(BaseModel):
     provider: Literal["internal"] = "internal"
@@ -759,14 +797,14 @@ async def root():
 
 
 @app.post("/http-api/internal/embed")
-async def internal_embed(request: InternalEmbedRequest):
+def internal_embed(request: InternalEmbedRequest):
     """
     Internal endpoint for the Node.js sync daemon to request embeddings
     without needing to know if we are using Ollama or a local model.
     """
     try:
-        embedding = get_embedding(request.text)
-        return {"embedding": embedding}
+        embeddings = get_embedding(request.texts)
+        return {"embeddings": embeddings}
     except Exception as e:
         logger.error(f"Error generating internal embedding: {e}")
         raise HTTPException(status_code=500, detail=str(e))
