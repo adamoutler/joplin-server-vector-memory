@@ -32,8 +32,10 @@ def ephemeral_joplin():
             resp1 = requests.get("http://localhost:22300/api/ping", timeout=2)
             # Check Node Proxy
             resp2 = requests.get("http://localhost:3001/status", timeout=2)
+            # Check FastAPI backend
+            resp3 = requests.get("http://localhost:8002/", timeout=2)
             
-            if resp1.status_code == 200 and resp2.status_code in [200, 401]:
+            if resp1.status_code == 200 and resp2.status_code in [200, 401] and resp3.status_code == 200:
                 break
         except requests.exceptions.ConnectionError:
             time.sleep(1)
