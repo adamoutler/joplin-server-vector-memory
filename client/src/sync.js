@@ -379,106 +379,116 @@ class JoplinSyncClient extends EventEmitter {
       // The Python server will handle whether it uses local SentenceTransformers or an external Ollama server.
       const internalApiUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
       
-      let i = 0;
-      for (const note of notesToProcess) {
-        i++;
-        this.emit('progress', { phase: 'embedding', current: i, total: notesToProcess.length, percent: Math.round((i / notesToProcess.length) * 100) });
-        if (!note.body) continue;
+      const BATCH_SIZE = 10;
+      let processedCount = 0;
+
+      for (let i = 0; i < notesToProcess.length; i += BATCH_SIZE) {
+        const batch = notesToProcess.slice(i, i + BATCH_SIZE);
         
-        try {
-          // Truncate from the start to avoid 500 context length errors on Ollama side if applicable.
-          let rawText = `Title: ${note.title}\n\n${note.body}`;
-
-          const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
-          if (rawText.length > CHUNK_LIMIT) {
-              let chunk = rawText.substring(0, CHUNK_LIMIT);              let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
-              if (lastSpace > 0) {
-                  rawText = chunk.substring(0, lastSpace);
-              } else {
-                  rawText = chunk;
-              }
+        await Promise.all(batch.map(async (note) => {
+          if (!note.body) {
+            processedCount++;
+            return;
           }
-          let promptBody = `search_document: ${rawText}`;
-
-          let response;
-          let retries = 0;
-          const maxRetries = 5;
-          let backoff = 1000;
           
-          while (retries < maxRetries) {
-            try {
-              console.log(`Fetching from: ${internalApiUrl}/http-api/internal/embed`);
-              response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  text: promptBody
-                })
-              });
+          try {
+            // Truncate from the start to avoid 500 context length errors on Ollama side if applicable.
+            let rawText = `Title: ${note.title}\n\n${note.body}`;
 
-              if (response.ok) {
-                break;
+            const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
+            if (rawText.length > CHUNK_LIMIT) {
+                let chunk = rawText.substring(0, CHUNK_LIMIT);
+                let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));
+                if (lastSpace > 0) {
+                    rawText = chunk.substring(0, lastSpace);
+                } else {
+                    rawText = chunk;
+                }
+            }
+            let promptBody = `search_document: ${rawText}`;
+
+            let response;
+            let retries = 0;
+            const maxRetries = 5;
+            let backoff = 1000;
+            
+            while (retries < maxRetries) {
+              try {
+                response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    text: promptBody
+                  })
+                });
+
+                if (response.ok) {
+                  break;
+                }
+
+                console.warn(`Internal embed API error (${response.status}) for note ${note.id}. Retrying in ${backoff}ms...`);
+              } catch (err) {
+                console.warn(`Network error (${err.message}) for note ${note.id}. Retrying in ${backoff}ms...`);
+                await new Promise(resolve => setTimeout(resolve, backoff));
+                retries++;
+                backoff *= 2;
+                continue;
               }
-
-              console.warn(`Internal embed API error (${response.status}) for note ${note.id}. Retrying in ${backoff}ms...`);
-            } catch (err) {
-              console.warn(`Network error (${err.message}) for note ${note.id}. Retrying in ${backoff}ms...`);
               await new Promise(resolve => setTimeout(resolve, backoff));
               retries++;
               backoff *= 2;
-              continue;
-            }
-            await new Promise(resolve => setTimeout(resolve, backoff));
-            retries++;
-            backoff *= 2;
-          }          
-          if (!response || !response.ok) {
-            const status = response ? response.status : 'Unknown';
-            const statusText = response ? response.statusText : 'Unknown';
-            let errBody = '';
-            try { errBody = await response.text(); } catch(e) { /* ignore */ }
-            throw new Error(`Failed to generate embedding for note ${note.id}: HTTP ${status} ${statusText}. ${errBody}`);
-          }
-          
-          const data = await response.json();
-          
-          await this.upsertVector(note.id, note.title, note.body, data.embedding, note.updated_time);
-          
-          this.emit('noteEmbeddingGenerated', {
-            noteId: note.id,
-            embedding: data.embedding
-          });
-        } catch (error) {
-          console.error(`Catastrophic error generating embedding for note ${note.id}:`, error);
-          
-          if (error.message && error.message.includes('Dimension mismatch')) {
-            console.warn('Vector dimension mismatch detected. The underlying embedding model has changed but the DB schema is stale.');
-            console.warn('Treating the vector database as ephemeral: Wiping the vector DB and forcing a container restart to rebuild schema from scratch.');
-            
-            const fs = require('fs');
-            const path = require('path');
-            const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
-            
-            try {
-              if (this.vectorDb) {
-                this.vectorDb.close();
-              }
-              if (fs.existsSync(vectorDbPath)) {
-                fs.unlinkSync(vectorDbPath);
-                console.log('Stale vector database deleted successfully.');
-              }
-            } catch (e) {
-              console.error('Failed to wipe stale vector database:', e);
+            }          
+            if (!response || !response.ok) {
+              const status = response ? response.status : 'Unknown';
+              const statusText = response ? response.statusText : 'Unknown';
+              let errBody = '';
+              try { errBody = await response.text(); } catch(e) { /* ignore */ }
+              throw new Error(`Failed to generate embedding for note ${note.id}: HTTP ${status} ${statusText}. ${errBody}`);
             }
             
-            // Force Docker to restart the node process to re-init with correct dimensions
-            setTimeout(() => process.exit(0), 1000);
+            const data = await response.json();
             
-            throw new Error(`Self-healing triggered: Vector database schema was stale and has been wiped. System is automatically restarting to reconstruct the database with correct vector dimensions. Please refresh in a moment.`);
-          }
+            await this.upsertVector(note.id, note.title, note.body, data.embedding, note.updated_time);
+            
+            this.emit('noteEmbeddingGenerated', {
+              noteId: note.id,
+              embedding: data.embedding
+            });
+          } catch (error) {
+            console.error(`Catastrophic error generating embedding for note ${note.id}:`, error);
+            
+            if (error.message && error.message.includes('Dimension mismatch')) {
+              console.warn('Vector dimension mismatch detected. The underlying embedding model has changed but the DB schema is stale.');
+              console.warn('Treating the vector database as ephemeral: Wiping the vector DB and forcing a container restart to rebuild schema from scratch.');
+              
+              const fs = require('fs');
+              const path = require('path');
+              const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
+              
+              try {
+                if (this.vectorDb) {
+                  this.vectorDb.close();
+                }
+                if (fs.existsSync(vectorDbPath)) {
+                  fs.unlinkSync(vectorDbPath);
+                  console.log('Stale vector database deleted successfully.');
+                }
+              } catch (e) {
+                console.error('Failed to wipe stale vector database:', e);
+              }
+              
+              // Force Docker to restart the node process to re-init with correct dimensions
+              setTimeout(() => process.exit(0), 1000);
+              
+              throw new Error(`Self-healing triggered: Vector database schema was stale and has been wiped. System is automatically restarting to reconstruct the database with correct vector dimensions. Please refresh in a moment.`);
+            }
 
-          throw new Error(`Embedding process failed critically on note ${note.id}: ${error.message}`, { cause: error });
-        }
+            throw new Error(`Embedding process failed critically on note ${note.id}: ${error.message}`, { cause: error });
+          } finally {
+            processedCount++;
+            this.emit('progress', { phase: 'embedding', current: processedCount, total: notesToProcess.length, percent: Math.round((processedCount / notesToProcess.length) * 100) });
+          }
+        }));
       }
       this.emit('embeddingComplete');
     } catch (err) {
