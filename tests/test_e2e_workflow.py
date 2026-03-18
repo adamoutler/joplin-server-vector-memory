@@ -53,34 +53,47 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                     post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ''
                     
                 req = json.loads(post_data) if post_data else {}
-                prompt = req.get('prompt', req.get('text', ''))
+                
+                # Check if it's a batched request or single
+                texts = req.get('texts', [])
+                if not texts:
+                    single_prompt = req.get('prompt', req.get('text', ''))
+                    if single_prompt:
+                        texts = [single_prompt]
+                        
+                import re
+                import hashlib
+                
+                all_embeddings = []
+                for prompt in texts:
+                    embedding = [0.0] * 384
+                    # Look for a UUID in the prompt (case-insensitive to be safe)
+                    m = re.search(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', prompt, re.IGNORECASE)
+                    if m:
+                        # Target note logic: distinct non-zero vector
+                        embedding[1] = 1.0
+                        embedding[2] = 0.5
+                    else:
+                        # Random noise logic: completely orthogonal but deterministic based on prompt
+                        h = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)
+                        idx = h % 300 + 10 # ensure it never hits index 1 or 2
+                        embedding[idx] = 1.0
+                        embedding[idx+1] = 0.5
+                    all_embeddings.append(embedding)
             except Exception as e:
                 import traceback
                 traceback.print_exc()
                 print(f"MockOllamaHandler error parsing request: {e}")
-                prompt = 'fallback'
+                all_embeddings = [[0.0] * 384]
 
-            embedding = [0.0] * 768
-            
-            import re
-            import hashlib
-            
-            # Look for a UUID in the prompt (case-insensitive to be safe)
-            m = re.search(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', prompt, re.IGNORECASE)
-            if m:
-                # Target note logic: distinct non-zero vector
-                embedding[1] = 1.0
-                embedding[2] = 0.5
-            else:
-                # Random noise logic: completely orthogonal but deterministic based on prompt
-                h = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)
-                idx = h % 700 + 10 # ensure it never hits index 1 or 2
-                embedding[idx] = 1.0
-                embedding[idx+1] = 0.5
-            
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
-            response = {"embedding": embedding}
+            
+            if 'internal/embed' in self.path:
+                response = {"embeddings": all_embeddings}
+            else:
+                response = {"embedding": all_embeddings[0] if all_embeddings else []}
+                
             response_bytes = json.dumps(response).encode()
             self.send_header('Content-Length', str(len(response_bytes)))
             self.end_headers()
@@ -130,9 +143,8 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
     
     print("Running Node.js client to create, sync and generate embedding...")
     result = subprocess.run(
-        ["node", script_path, secret_uuid],
-        cwd=client_dir,
-        env=env,
+        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_create_sync.js", secret_uuid],
+        cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
         capture_output=True,
         text=True
     )
@@ -267,9 +279,8 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     print("Running Node.js client for massive note injection...")
     # Increase timeout significantly as per instructions
     result = subprocess.run(
-        ["node", script_path, secret_uuid],
-        cwd=client_dir,
-        env=env,
+        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid],
+        cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
         capture_output=True,
         text=True,
         timeout=300
