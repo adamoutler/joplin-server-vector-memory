@@ -1,3 +1,4 @@
+from typing import Literal
 import fastmcp
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -71,19 +72,19 @@ def _load_config_file() -> dict:
 
 def get_config() -> dict:
     config = _load_config_file()
-    
+
     # Handle legacy flat structure or new polymorphic structure
     embedding_config = config.get("embedding", {})
     if not embedding_config:
         # Backwards compatibility check
         if config.get("ollamaBaseUrl"):
-             embedding_config = {
-                 "provider": "ollama",
-                 "baseUrl": config.get("ollamaBaseUrl"),
-                 "model": config.get("ollamaModel", "nomic-embed-text")
-             }
+            embedding_config = {
+                "provider": "ollama",
+                "baseUrl": config.get("ollamaBaseUrl"),
+                "model": config.get("ollamaModel", "nomic-embed-text")
+            }
         else:
-             embedding_config = {"provider": "internal"}
+            embedding_config = {"provider": "internal"}
 
     return {
         "embedding": embedding_config,
@@ -103,10 +104,10 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
     # If Ollama URL is provided, use external Ollama server exclusively
     if embed_config.get("provider") == "ollama" and embed_config.get("baseUrl"):
         client = ollama.Client(host=embed_config["baseUrl"])
-        
+
         SAFE_BATCH_SIZE = 8
         all_embeddings = []
-        
+
         def fetch_single_with_retry(t: str) -> list[float]:
             current_text = t
             max_retries = 3
@@ -123,7 +124,7 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
                             continue
                     logger.error(f"Ollama embedding failed critically on single item: {e}")
                     raise RuntimeError(str(e))
-        
+
         def fetch_chunk(chunk: List[str]) -> List[list[float]]:
             try:
                 response = client.embed(model=embed_config["model"], input=chunk)
@@ -141,15 +142,15 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
                     raise RuntimeError(str(e))
 
         chunks = [texts[i:i + SAFE_BATCH_SIZE] for i in range(0, len(texts), SAFE_BATCH_SIZE)]
-        
+
         import concurrent.futures
         # Use 3 concurrent workers to send 3 arrays of 8 simultaneously (24 total embeddings in flight)
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             results = list(executor.map(fetch_chunk, chunks))
-            
+
         for res in results:
             all_embeddings.extend(res)
-            
+
         return all_embeddings if is_batch else all_embeddings[0]
 
     # Fallback to completely local CPU embedding
@@ -594,18 +595,19 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     }
 
 
-from typing import Literal
-
 class InternalEmbedRequest(BaseModel):
     texts: List[str]
 
+
 class InternalEmbeddingSettings(BaseModel):
     provider: Literal["internal"] = "internal"
+
 
 class OllamaEmbeddingSettings(BaseModel):
     provider: Literal["ollama"] = "ollama"
     baseUrl: str = ""
     model: str = ""
+
 
 class Settings(BaseModel):
     embedding: Union[OllamaEmbeddingSettings, InternalEmbeddingSettings] = Field(default_factory=InternalEmbeddingSettings)
@@ -620,6 +622,7 @@ class Settings(BaseModel):
     joplinPassword: str = ""
     joplinMasterPassword: str = ""
     memoryServerAddress: str = ""
+
 
 class SettingsUpdate(BaseModel):
     embedding: Optional[Union[OllamaEmbeddingSettings, InternalEmbeddingSettings]] = None
@@ -948,6 +951,7 @@ class TestModelRequest(BaseModel):
     baseUrl: str
     model: str
 
+
 @app.post("/api/settings/test-model")
 async def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):
     if not request.baseUrl:
@@ -967,6 +971,7 @@ async def test_model_connection(request: TestModelRequest, token: str = Depends(
     except Exception as e:
         logger.error(f"Model test failed: {e}")
         raise HTTPException(status_code=400, detail=f"Failed to connect to or pull model '{request.model}' from '{request.baseUrl}': {str(e)}")
+
 
 @app.post("/api/settings", response_model=Settings)
 async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
@@ -1007,13 +1012,13 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
             except Exception as e:
                 logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
                 raise HTTPException(status_code=400, detail=f"Failed to connect to model {new_embed.get('model')} at {new_embed.get('baseUrl')}: {str(e)}")
-        
+
         new_config["embeddingDimension"] = new_dim
 
         # Trigger DB reset
         from src.db import reset_database
         reset_database(new_dim)
-        
+
         # Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
         try:
             import requests

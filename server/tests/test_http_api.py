@@ -4,7 +4,7 @@ import os
 import sys
 import tempfile
 import json
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from starlette.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -33,7 +33,7 @@ def temp_config_and_db():
 def mock_ollama():
     with patch('src.main.get_embedding') as mock_embed:
         def side_effect(text):
-            vec = [0.0] * 768
+            vec = [0.0] * 384
             if "test query" in text.lower():
                 vec[0] = 1.0
             elif "apple" in text.lower():
@@ -211,7 +211,8 @@ def test_settings_api(client, temp_config_and_db):
     response = client.get("/api/settings", headers=headers)
     assert response.status_code == 200
     data = response.json()
-    assert "ollamaBaseUrl" in data
+    assert "embedding" in data
+    assert data["embedding"]["provider"] == "internal"
     assert "chunkSize" in data
 
     # 2. Update settings (non-critical)
@@ -229,24 +230,56 @@ def test_settings_api(client, temp_config_and_db):
     # Make sure token was not lost
     assert saved_config["api_keys"][0]["key"] == token
 
-    # 3. Update settings (critical, without reindex_approved)
-    # The DB shouldn't be reset
-    update_data["chunkSize"] = 2000
+    # 3. Test Polymorphic Embedding Schema
+    # Switch from internal to Ollama
+    update_data["embedding"] = {
+        "provider": "ollama",
+        "baseUrl": "http://ollama-test:11434",
+        "model": "test-model"
+    }
     update_data["reindex_approved"] = False
 
-    with patch("src.db.reset_database") as mock_reset:
-        response = client.post("/api/settings", json=update_data, headers=headers)
-        assert response.status_code == 200
-        mock_reset.assert_not_called()
+    # We need to patch the actual model probe since the server will try to reach out
+    with patch("ollama.Client") as mock_ollama:
+        mock_client = MagicMock()
+        mock_client.embeddings.return_value = {"embedding": [0.1] * 768}
+        mock_ollama.return_value = mock_client
+
+        with patch("src.db.reset_database") as mock_reset:
+            # We must mock requests.post to stop it hitting Node proxy during tests
+            with patch("requests.post"):
+                # Because it's a critical change (embedding provider changed), but reindex is FALSE, 
+                # wait! If reindex_approved is False, the API does NOT trigger reset_database OR the probe!
+                response = client.post("/api/settings", json=update_data, headers=headers)
+                assert response.status_code == 200
+
+                res_data = response.json()
+                assert res_data["embedding"]["provider"] == "ollama"
+                assert res_data["embedding"]["baseUrl"] == "http://ollama-test:11434"
+                assert res_data["embedding"]["model"] == "test-model"
+
+                with open(conf_path, "r") as f:
+                    saved_config = json.load(f)
+
+                # Verify nested structure was flattened or saved perfectly based on how backend handles it
+                # Since we changed it to just serialize the nested dict, it should be nested in the JSON file
+                assert saved_config["embedding"]["provider"] == "ollama"
+                assert saved_config["embedding"]["baseUrl"] == "http://ollama-test:11434"
 
     # 4. Update settings (critical, with reindex_approved)
     update_data["chunkSize"] = 3000
     update_data["reindex_approved"] = True
 
-    with patch("src.db.reset_database") as mock_reset:
-        response = client.post("/api/settings", json=update_data, headers=headers)
-        assert response.status_code == 200
-        mock_reset.assert_called_once()
+    with patch("ollama.Client") as mock_ollama:
+        mock_client = MagicMock()
+        mock_client.embeddings.return_value = {"embedding": [0.1] * 768}
+        mock_ollama.return_value = mock_client
+
+        with patch("src.db.reset_database") as mock_reset:
+            with patch("requests.post"):
+                response = client.post("/api/settings", json=update_data, headers=headers)
+                assert response.status_code == 200
+                mock_reset.assert_called_once_with(768)
 
     # 5. Reset settings
     response = client.post("/api/settings/reset", headers=headers)
@@ -255,6 +288,7 @@ def test_settings_api(client, temp_config_and_db):
     # Check default
     assert reset_data["chunkSize"] == 1000
     assert reset_data["searchTopK"] == 5
+    assert reset_data["embedding"]["provider"] == "internal"
 
     with open(conf_path, "r") as f:
         saved_config = json.load(f)

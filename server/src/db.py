@@ -42,7 +42,6 @@ def init_db(db, explicit_dim=None):
     dim = explicit_dim
     if not dim:
         # Determine vector dimension
-        ollama_url = os.environ.get("OLLAMA_URL", "")
         config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
         dim = 384
         try:
@@ -50,10 +49,14 @@ def init_db(db, explicit_dim=None):
             if os.path.exists(config_path):
                 with open(config_path, "r") as f:
                     config = json.load(f)
-                    ollama_url = config.get("ollamaBaseUrl", config.get("OLLAMA_URL", ollama_url))
+                    embed_config = config.get("embedding", {})
+                    if not embed_config:
+                        if config.get("ollamaBaseUrl"):
+                            embed_config = {"provider": "ollama"}
+
                     if config.get("embeddingDimension"):
                         dim = int(config.get("embeddingDimension"))
-                    elif ollama_url and ollama_url.strip():
+                    elif embed_config.get("provider") == "ollama":
                         dim = 768
         except:
             pass
@@ -102,6 +105,6 @@ def reset_database(explicit_dim=None):
         try:
             os.remove(db_path)
         except OSError:
-            pass # Ignore if locked, node-js proxy will unlink it later
+            pass  # Ignore if locked, node-js proxy will unlink it later
     # Re-initialize
     get_db_connection(explicit_dim)
