@@ -61,10 +61,26 @@ class JoplinSyncClient extends EventEmitter {
     this.vectorDb = new sqlite3.Database(vectorDbPath);
     sqliteVec.load(this.vectorDb);
 
+    // Determine vector dimension
+    let dim = 384; // Default for local sentence-transformers
+    const configPath = process.env.CONFIG_PATH || path.join(this.profileDir, '../config.json');
+    try {
+      if (fs.existsSync(configPath)) {
+        const data = fs.readFileSync(configPath, 'utf8');
+        const config = JSON.parse(data);
+        const ollamaUrl = config.ollamaBaseUrl || config.OLLAMA_URL || process.env.OLLAMA_URL || '';
+        if (ollamaUrl && ollamaUrl.trim() !== '') {
+          dim = 768; // Default for nomic-embed-text/ollama
+        }
+      }
+    } catch (e) {
+      console.error('Error reading config for db init:', e);
+    }
+
     // Create tables in vector db
     await new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
-        this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[768])`, err => err && reject(err));
+        this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${dim}])`, err => err && reject(err));
         this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, updated_time INTEGER DEFAULT 0)`, err => {
           if (err) return reject(err);
           this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
@@ -268,7 +284,7 @@ class JoplinSyncClient extends EventEmitter {
   upsertVector(noteId, title, content, embedding, updatedTime) {
     return new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
-        this.vectorDb.run('BEGIN TRANSACTION', (err) => {
+        this.vectorDb.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
           if (err) return reject(err);
           this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {
             if (err) { this.vectorDb.run('ROLLBACK'); return reject(err); }
@@ -445,6 +461,33 @@ class JoplinSyncClient extends EventEmitter {
           });
         } catch (error) {
           console.error(`Catastrophic error generating embedding for note ${note.id}:`, error);
+          
+          if (error.message && error.message.includes('Dimension mismatch')) {
+            console.warn('Vector dimension mismatch detected. The underlying embedding model has changed but the DB schema is stale.');
+            console.warn('Treating the vector database as ephemeral: Wiping the vector DB and forcing a container restart to rebuild schema from scratch.');
+            
+            const fs = require('fs');
+            const path = require('path');
+            const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
+            
+            try {
+              if (this.vectorDb) {
+                this.vectorDb.close();
+              }
+              if (fs.existsSync(vectorDbPath)) {
+                fs.unlinkSync(vectorDbPath);
+                console.log('Stale vector database deleted successfully.');
+              }
+            } catch (e) {
+              console.error('Failed to wipe stale vector database:', e);
+            }
+            
+            // Force Docker to restart the node process to re-init with correct dimensions
+            setTimeout(() => process.exit(0), 1000);
+            
+            throw new Error(`Self-healing triggered: Vector database schema was stale and has been wiped. System is automatically restarting to reconstruct the database with correct vector dimensions. Please refresh in a moment.`);
+          }
+
           throw new Error(`Embedding process failed critically on note ${note.id}: ${error.message}`, { cause: error });
         }
       }
