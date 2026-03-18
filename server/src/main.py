@@ -538,12 +538,21 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     }
 
 
+from typing import Literal
+
 class InternalEmbedRequest(BaseModel):
     text: str
 
+class InternalEmbeddingSettings(BaseModel):
+    provider: Literal["internal"] = "internal"
+
+class OllamaEmbeddingSettings(BaseModel):
+    provider: Literal["ollama"] = "ollama"
+    baseUrl: str = ""
+    model: str = ""
+
 class Settings(BaseModel):
-    ollamaBaseUrl: str = ""
-    ollamaModel: str = ""
+    embedding: Union[OllamaEmbeddingSettings, InternalEmbeddingSettings] = Field(default_factory=InternalEmbeddingSettings)
     chunkSize: int = 1000
     chunkOverlap: int = 200
     searchTopK: int = 5
@@ -557,8 +566,7 @@ class Settings(BaseModel):
     memoryServerAddress: str = ""
 
 class SettingsUpdate(BaseModel):
-    ollamaBaseUrl: Optional[str] = None
-    ollamaModel: Optional[str] = None
+    embedding: Optional[Union[OllamaEmbeddingSettings, InternalEmbeddingSettings]] = None
     chunkSize: Optional[int] = None
     chunkOverlap: Optional[int] = None
     searchTopK: Optional[int] = None
@@ -895,9 +903,31 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
     critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys if k in new_config)
 
     if critical_changed and settings_update.reindex_approved:
+        # Determine actual dimensionality before wiping
+        new_dim = 384
+        if new_config.get("ollamaBaseUrl"):
+            try:
+                import ollama
+                client = ollama.Client(host=new_config["ollamaBaseUrl"])
+                # Pull the model if it doesn't exist
+                try:
+                    client.show(new_config["ollamaModel"])
+                except:
+                    client.pull(new_config["ollamaModel"])
+                # Generate a tiny embedding to measure its length
+                res = client.embeddings(model=new_config["ollamaModel"], prompt="test")
+                if "embedding" in res:
+                    new_dim = len(res["embedding"])
+            except Exception as e:
+                logger.error(f"Failed to determine dimensions for model {new_config.get('ollamaModel')}: {e}")
+                # We won't crash here so the user isn't fully locked out, but it will fallback to 768 as a guess
+                new_dim = 768
+        
+        new_config["embeddingDimension"] = new_dim
+
         # Trigger DB reset
         from src.db import reset_database
-        reset_database()
+        reset_database(new_dim)
         
         # Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
         try:

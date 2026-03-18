@@ -61,26 +61,9 @@ class JoplinSyncClient extends EventEmitter {
     this.vectorDb = new sqlite3.Database(vectorDbPath);
     sqliteVec.load(this.vectorDb);
 
-    // Determine vector dimension
-    let dim = 384; // Default for local sentence-transformers
-    const configPath = process.env.CONFIG_PATH || path.join(this.profileDir, '../config.json');
-    try {
-      if (fs.existsSync(configPath)) {
-        const data = fs.readFileSync(configPath, 'utf8');
-        const config = JSON.parse(data);
-        const ollamaUrl = config.ollamaBaseUrl || config.OLLAMA_URL || process.env.OLLAMA_URL || '';
-        if (ollamaUrl && ollamaUrl.trim() !== '') {
-          dim = 768; // Default for nomic-embed-text/ollama
-        }
-      }
-    } catch (e) {
-      console.error('Error reading config for db init:', e);
-    }
-
     // Create tables in vector db
     await new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
-        this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${dim}])`, err => err && reject(err));
         this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, updated_time INTEGER DEFAULT 0)`, err => {
           if (err) return reject(err);
           this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
@@ -284,6 +267,10 @@ class JoplinSyncClient extends EventEmitter {
   upsertVector(noteId, title, content, embedding, updatedTime) {
     return new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
+        if (!this._vecNotesCreated) {
+            this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${embedding.length}])`);
+            this._vecNotesCreated = true;
+        }
         this.vectorDb.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
           if (err) return reject(err);
           this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId], (err, row) => {

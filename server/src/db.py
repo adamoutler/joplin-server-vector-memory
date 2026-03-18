@@ -3,7 +3,7 @@ import sqlite_vec
 import os
 
 
-def get_db_connection():
+def get_db_connection(explicit_dim=None):
     db_path = os.environ.get("SQLITE_DB_PATH", "joplin_vector.db")
     # Connect to SQLite
     db = sqlite3.connect(db_path)
@@ -14,12 +14,12 @@ def get_db_connection():
     db.enable_load_extension(False)
 
     # Initialize tables if they don't exist
-    init_db(db)
+    init_db(db, explicit_dim)
 
     return db
 
 
-def init_db(db):
+def init_db(db, explicit_dim=None):
     cursor = db.cursor()
 
     # Create note_metadata table
@@ -39,19 +39,24 @@ def init_db(db):
     if 'updated_time' not in columns:
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0")
 
-    # Determine vector dimension
-    ollama_url = os.environ.get("OLLAMA_URL", "")
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
-    try:
-        import json
-        if os.path.exists(config_path):
-            with open(config_path, "r") as f:
-                config = json.load(f)
-                ollama_url = config.get("ollamaBaseUrl", config.get("OLLAMA_URL", ollama_url))
-    except:
-        pass
-
-    dim = 768 if ollama_url and ollama_url.strip() else 384
+    dim = explicit_dim
+    if not dim:
+        # Determine vector dimension
+        ollama_url = os.environ.get("OLLAMA_URL", "")
+        config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+        dim = 384
+        try:
+            import json
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    config = json.load(f)
+                    ollama_url = config.get("ollamaBaseUrl", config.get("OLLAMA_URL", ollama_url))
+                    if config.get("embeddingDimension"):
+                        dim = int(config.get("embeddingDimension"))
+                    elif ollama_url and ollama_url.strip():
+                        dim = 768
+        except:
+            pass
 
     # Create vec_notes table for sqlite-vec
     cursor.execute(f"""
@@ -91,9 +96,12 @@ def init_db(db):
     db.commit()
 
 
-def reset_database():
+def reset_database(explicit_dim=None):
     db_path = os.environ.get("SQLITE_DB_PATH", "joplin_vector.db")
     if os.path.exists(db_path):
-        os.remove(db_path)
+        try:
+            os.remove(db_path)
+        except OSError:
+            pass # Ignore if locked, node-js proxy will unlink it later
     # Re-initialize
-    get_db_connection()
+    get_db_connection(explicit_dim)
