@@ -20,9 +20,9 @@ def test_sqlite_vec_extension_loads():
 
     # Insert some dummy vectors to test cosine distance
     import json
-    vec1 = [0.0] * 768
+    vec1 = [0.0] * 384
     vec1[0] = 1.0
-    vec2 = [0.0] * 768
+    vec2 = [0.0] * 384
     vec2[1] = 1.0
 
     cursor.execute("INSERT INTO note_metadata (note_id, title, content) VALUES (?, ?, ?)",

@@ -18,8 +18,7 @@ def mock_env(tmp_path):
 
 def test_default_config(mock_env):
     config = get_config()
-    assert config["ollama_url"] == ""
-    assert config["embedding_model"] == "nomic-embed-text"
+    assert config.get("embedding") == {"provider": "internal"}
 
 
 def test_env_config(mock_env):
@@ -29,8 +28,9 @@ def test_env_config(mock_env):
         "CONFIG_PATH": str(mock_env)
     }):
         config = get_config()
-        assert config["ollama_url"] == "http://env-ollama:11434"
-        assert config["embedding_model"] == "env-model"
+        # Ensure backwards compatibility env fallback
+        assert config["embedding"]["baseUrl"] == "http://env-ollama:11434"
+        assert config["embedding"]["model"] == "env-model"
 
 
 def test_file_config(mock_env):
@@ -43,14 +43,16 @@ def test_file_config(mock_env):
         # Write config file which should take precedence
         with open(mock_env, "w") as f:
             json.dump({
-                "ollamaUrl": "http://file-ollama:11434",
-                "embeddingModel": "file-model"
+                "embedding": {
+                    "provider": "ollama",
+                    "baseUrl": "http://file-ollama:11434",
+                    "model": "file-model"
+                }
             }, f)
 
         config = get_config()
-        assert config["ollama_url"] == "http://file-ollama:11434"
-        assert config["embedding_model"] == "file-model"
-
+        assert config["embedding"]["baseUrl"] == "http://file-ollama:11434"
+        assert config["embedding"]["model"] == "file-model"
 
 def test_file_config_uppercase_keys(mock_env):
     with open(mock_env, "w") as f:
@@ -60,5 +62,5 @@ def test_file_config_uppercase_keys(mock_env):
         }, f)
 
     config = get_config()
-    assert config["ollama_url"] == "http://file-ollama-upper:11434"
-    assert config["embedding_model"] == "file-model-upper"
+    assert config["embedding"]["baseUrl"] == "http://file-ollama-upper:11434"
+    assert config["embedding"]["model"] == "file-model-upper"

@@ -25,10 +25,10 @@ def temp_db():
 @pytest.fixture
 def mock_ollama():
     with patch('src.main.get_embedding') as mock_embed:
-        # Return a simple mock embedding of 768 zeros
+        # Return a simple mock embedding of 384 zeros
         # We can modify a specific index based on the prompt for testing
         def side_effect(text):
-            vec = [0.0] * 768
+            vec = [0.0] * 384
             if "test query" in text.lower():
                 vec[0] = 1.0
             elif "apple" in text.lower():
@@ -181,14 +181,14 @@ def test_config_caching():
 
     fd, path = tempfile.mkstemp()
     with open(path, "w") as f:
-        json.dump({"token": "test-token", "ollamaUrl": "http://test-url", "embeddingModel": "test-model"}, f)
+        json.dump({"token": "test-token", "embedding": {"provider": "ollama", "baseUrl": "http://test-url", "model": "test-model"}}, f)
 
     os.environ["CONFIG_PATH"] = path
 
     # First call, should read from file
     with patch("builtins.open", side_effect=open) as mock_open:
         config1 = get_config()
-        assert config1["ollama_url"] == "http://test-url"
+        assert config1["embedding"]["baseUrl"] == "http://test-url"
         assert mock_open.call_count >= 1
         initial_call_count = mock_open.call_count
 
@@ -200,13 +200,13 @@ def test_config_caching():
     new_time = time.time() + 10
     with open(path, "w") as f:
         json.dump({"api_keys": [{"key": "new-token"}],
-                  "ollamaUrl": "http://new-url", "embeddingModel": "test-model"}, f)
+                  "embedding": {"provider": "ollama", "baseUrl": "http://new-url", "model": "test-model"}}, f)
     os.utime(path, (new_time, new_time))
 
     with patch("builtins.open", side_effect=open) as mock_open:
         # Third call, should reload because mtime changed
         config3 = get_config()
-        assert config3["ollama_url"] == "http://new-url"
+        assert config3["embedding"]["baseUrl"] == "http://new-url"
         assert mock_open.call_count >= 1
         reload_call_count = mock_open.call_count
 

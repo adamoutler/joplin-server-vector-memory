@@ -77,11 +77,12 @@ def get_config() -> dict:
     embedding_config = config.get("embedding", {})
     if not embedding_config:
         # Backwards compatibility check
-        if config.get("ollamaBaseUrl"):
+        legacy_url = config.get("ollamaBaseUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL")))
+        if legacy_url:
             embedding_config = {
                 "provider": "ollama",
-                "baseUrl": config.get("ollamaBaseUrl"),
-                "model": config.get("ollamaModel", "nomic-embed-text")
+                "baseUrl": legacy_url,
+                "model": config.get("embeddingModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")))
             }
         else:
             embedding_config = {"provider": "internal"}
