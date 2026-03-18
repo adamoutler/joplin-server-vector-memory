@@ -54,6 +54,7 @@ def test_file_config(mock_env):
         assert config["embedding"]["baseUrl"] == "http://file-ollama:11434"
         assert config["embedding"]["model"] == "file-model"
 
+
 def test_file_config_uppercase_keys(mock_env):
     with open(mock_env, "w") as f:
         json.dump({
