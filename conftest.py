@@ -1,6 +1,8 @@
 import pytest
 import subprocess
 import os
+import time
+import requests
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
@@ -21,6 +23,21 @@ def ephemeral_joplin():
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
     os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"
     os.environ["JOPLIN_BASE_URL"] = "http://localhost:22300"
+    
+    # Poll endpoints to ensure they are actually ready for traffic
+    max_retries = 30
+    for _ in range(max_retries):
+        try:
+            # Check Joplin
+            resp1 = requests.get("http://localhost:22300/api/ping", timeout=2)
+            # Check Node Proxy
+            resp2 = requests.get("http://localhost:3001/status", timeout=2)
+            
+            if resp1.status_code == 200 and resp2.status_code in [200, 401]:
+                break
+        except requests.exceptions.ConnectionError:
+            time.sleep(1)
+            continue
     
     try:
         yield
