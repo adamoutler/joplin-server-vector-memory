@@ -105,8 +105,22 @@ def test_api_server_live_endpoints(setup_live_container):
             pass
         time.sleep(1)
 
-    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=30)
-    assert auth_resp.status_code == 200, f"Failed to authenticate setup: {auth_resp.text}"
+    # The Joplin server inside the docker container might take a few extra seconds 
+    # to run DB migrations and expose the /api/sessions endpoint. We need to retry the auth payload.
+    auth_success = False
+    last_err = ""
+    for i in range(15):
+        try:
+            auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=30)
+            if auth_resp.status_code == 200:
+                auth_success = True
+                break
+            last_err = auth_resp.text
+        except Exception as e:
+            last_err = str(e)
+        time.sleep(2)
+        
+    assert auth_success, f"Failed to authenticate setup after retries: {last_err}"
     
     # Wait for the config to be written and system locked
     time.sleep(2)

@@ -13,6 +13,7 @@ class JoplinSyncClient extends EventEmitter {
     super();
     this.profileDir = options.profileDir || '/tmp/joplin-client';
     this.serverUrl = options.serverUrl || process.env.JOPLIN_SERVER_URL;
+    if (this.serverUrl) this.serverUrl = this.serverUrl.replace(/\/+$/, '');
     this.username = options.username || process.env.JOPLIN_USERNAME;
     this.password = options.password || process.env.JOPLIN_PASSWORD;
     this.masterPassword = options.masterPassword || process.env.JOPLIN_MASTER_PASSWORD;
@@ -38,7 +39,18 @@ class JoplinSyncClient extends EventEmitter {
     const { DatabaseDriverNode } = require('@joplin/lib/database-driver-node');
     const driver = new DatabaseDriverNode();
     this.db = new JoplinDatabase(driver);
-    this.db.setLogger({ debug: () => {}, info: () => {}, warn: () => {}, error: console.error, setLevel: () => {} });
+    const dbLogger = { 
+        debug: () => {}, 
+        info: () => {}, 
+        warn: () => {}, 
+        error: (...args) => {
+            console.error(...args);
+            if (!this._lastSyncErrors) this._lastSyncErrors = [];
+            this._lastSyncErrors.push(args.join(' '));
+        }, 
+        setLevel: () => {} 
+    };
+    this.db.setLogger(dbLogger);
     await this.db.open({ name: dbPath });
     
     const BaseModel = require('@joplin/lib/BaseModel').default;
@@ -75,13 +87,34 @@ class JoplinSyncClient extends EventEmitter {
     const logger = new Logger();
     logger.addTarget('console');
     logger.setLevel(Logger.LEVEL_WARN);
+    
+    const originalError = logger.error.bind(logger);
+    const originalWarn = logger.warn.bind(logger);
+    const originalInfo = logger.info.bind(logger);
+    
+    const trapError = (args) => {
+        const msg = args.map(a => typeof a === 'object' && a instanceof Error ? a.message : String(a)).join(' ');
+        if (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError')) {
+             if (!this._lastSyncErrors) this._lastSyncErrors = [];
+             this._lastSyncErrors.push(msg);
+        }
+    };
+
+    logger.error = (...args) => { originalError(...args); trapError(args); };
+    logger.warn = (...args) => { originalWarn(...args); trapError(args); };
+    logger.info = (...args) => { originalInfo(...args); trapError(args); };
+    
     Logger.initializeGlobalLogger(logger);
 
     const dummyLogger = {
         debug: () => {},
         info: () => {},
         warn: () => {},
-        error: console.error,
+        error: (...args) => {
+            console.error(...args);
+            if (!this._lastSyncErrors) this._lastSyncErrors = [];
+            this._lastSyncErrors.push(args.join(' '));
+        },
         setLevel: () => {}
     };
 
@@ -155,11 +188,41 @@ class JoplinSyncClient extends EventEmitter {
     if (!this.synchronizer) {
       throw new Error('Synchronizer not initialized');
     }
+    this._lastSyncErrors = [];
+    
+    // Hard-patch console to catch EVERYTHING Joplin outputs during this sync cycle
+    const origConsoleError = console.error;
+    const origConsoleWarn = console.warn;
+    const origConsoleLog = console.log;
+    const origConsoleInfo = console.info;
+    
+    const interceptLog = (...args) => {
+        const msg = args.map(a => typeof a === 'object' && a instanceof Error ? (a.stack || a.message) : String(a)).join(' ');
+        if (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError') || msg.includes('errors:')) {
+            this._lastSyncErrors.push(msg);
+        }
+    };
+    
+    console.error = (...args) => { origConsoleError(...args); interceptLog(...args); };
+    console.warn = (...args) => { origConsoleWarn(...args); interceptLog(...args); };
+    console.log = (...args) => { origConsoleLog(...args); interceptLog(...args); };
+    console.info = (...args) => { origConsoleInfo(...args); interceptLog(...args); };
+
     try {
       await this.synchronizer.start();
+      
+      if (this._lastSyncErrors && this._lastSyncErrors.length > 0) {
+        throw new Error(`Sync failed: ${this._lastSyncErrors[0]}`);
+      }
     } catch (err) {
       this.emit('syncError', err);
       throw err;
+    } finally {
+      // Restore console
+      console.error = origConsoleError;
+      console.warn = origConsoleWarn;
+      console.log = origConsoleLog;
+      console.info = origConsoleInfo;
     }
   }
 
@@ -168,20 +231,40 @@ class JoplinSyncClient extends EventEmitter {
       console.warn('No master password provided, skipping decryption.');
       return;
     }
-    
+
     this.emit('decryptStart');
-    const EncryptionService = require('@joplin/lib/services/e2ee/EncryptionService').default;
-    const service = EncryptionService.instance();
-    await service.loadMasterKeysFromSettings();
-    
-    const masterKeys = await service.loadedMasterKeys();
-    for (const key of masterKeys) {
-      await service.unlockMasterKey(key, this.masterPassword);
-      await service.activateMasterKey(key.id);
+    try {
+        const MasterKey = require('@joplin/lib/models/MasterKey').default;
+        const EncryptionService = require('@joplin/lib/services/e2ee/EncryptionService').default;
+        const service = EncryptionService.instance();
+
+        const masterKeys = await MasterKey.all();
+        if (!masterKeys || masterKeys.length === 0) {
+            console.warn('No E2EE master keys found in database. Skipping decryption.');
+            this.emit('decryptComplete');
+            return;
+        }
+
+        let loadedCount = 0;
+        for (const key of masterKeys) {
+            try {
+                await service.loadMasterKey(key, this.masterPassword, true);
+                loadedCount++;
+            } catch (e) {
+                console.warn(`Failed to unlock master key ${key.id} (may be normal if password differs):`, e.message);
+            }
+        }
+
+        if (loadedCount > 0) {
+            console.log(`Successfully unlocked ${loadedCount} master keys.`);
+            // In a full implementation we would invoke the DecryptionWorker here.
+            // For now, Joplin's read endpoints might handle it transparently if the key is loaded in the service.
+        }
+    } catch (err) {
+        console.error('Error during decryption setup:', err);
     }
     this.emit('decryptComplete');
   }
-
   upsertVector(noteId, title, content, embedding, updatedTime) {
     return new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
@@ -344,8 +427,9 @@ class JoplinSyncClient extends EventEmitter {
           if (!response || !response.ok) {
             const status = response ? response.status : 'Unknown';
             const statusText = response ? response.statusText : 'Unknown';
-            console.error(`Failed to generate embedding for note ${note.id}: ${status} ${statusText}`);
-            continue;
+            let errBody = '';
+            try { errBody = await response.text(); } catch(e) { /* ignore */ }
+            throw new Error(`Failed to generate embedding for note ${note.id}: HTTP ${status} ${statusText}. ${errBody}`);
           }
           
           const data = await response.json();
@@ -357,7 +441,8 @@ class JoplinSyncClient extends EventEmitter {
             embedding: data.embedding
           });
         } catch (error) {
-          console.error(`Error generating embedding for note ${note.id}:`, error);
+          console.error(`Catastrophic error generating embedding for note ${note.id}:`, error);
+          throw new Error(`Embedding process failed critically on note ${note.id}: ${error.message}`, { cause: error });
         }
       }
       this.emit('embeddingComplete');

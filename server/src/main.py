@@ -73,7 +73,7 @@ def get_config() -> dict:
     config = _load_config_file()
 
     return {
-        "ollama_url": config.get("ollamaUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL", ""))),
+        "ollama_url": config.get("ollamaBaseUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL", ""))),
         "embedding_model": config.get("embeddingModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text"))),
         "joplin_server_url": config.get("joplinServerUrl", config.get("JOPLIN_SERVER_URL", os.environ.get("JOPLIN_SERVER_URL", ""))),
         "joplin_username": config.get("joplinUsername", config.get("JOPLIN_USERNAME", os.environ.get("JOPLIN_USERNAME", ""))),
@@ -85,16 +85,17 @@ def get_embedding(text: str) -> list[float]:
     config = get_config()
     ollama_url = config.get("ollama_url")
 
-    # If Ollama URL is provided, use external Ollama server
+    # If Ollama URL is provided, use external Ollama server exclusively
     if ollama_url and ollama_url.strip():
         try:
             client = ollama.Client(host=ollama_url)
             response = client.embeddings(model=config["embedding_model"], prompt=text)
             return response["embedding"]
         except Exception as e:
-            logger.warning(f"Ollama embedding failed ({e}), falling back to local model.")
+            logger.error(f"Ollama embedding failed critically: {e}")
+            raise RuntimeError(f"Ollama embedding server unreachable or model missing: {e}")
 
-    # Fallback to completely local CPU embedding
+    # Fallback to completely local CPU embedding only if no URL is configured
     model = get_local_model()
     # SentenceTransformer returns a numpy array, we need a list of floats
     embedding = model.encode(text)
@@ -540,10 +541,9 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
 class InternalEmbedRequest(BaseModel):
     text: str
 
-
 class Settings(BaseModel):
-    ollamaBaseUrl: str = "http://localhost:11434"
-    ollamaModel: str = "nomic-embed-text"
+    ollamaBaseUrl: str = ""
+    ollamaModel: str = ""
     chunkSize: int = 1000
     chunkOverlap: int = 200
     searchTopK: int = 5
@@ -556,8 +556,20 @@ class Settings(BaseModel):
     joplinMasterPassword: str = ""
     memoryServerAddress: str = ""
 
-
-class SettingsUpdate(Settings):
+class SettingsUpdate(BaseModel):
+    ollamaBaseUrl: Optional[str] = None
+    ollamaModel: Optional[str] = None
+    chunkSize: Optional[int] = None
+    chunkOverlap: Optional[int] = None
+    searchTopK: Optional[int] = None
+    hybridAlpha: Optional[float] = None
+    syncInterval: Optional[int] = None
+    syncMaxRetries: Optional[int] = None
+    joplinServerUrl: Optional[str] = None
+    joplinUsername: Optional[str] = None
+    joplinPassword: Optional[str] = None
+    joplinMasterPassword: Optional[str] = None
+    memoryServerAddress: Optional[str] = None
     reindex_approved: bool = False
 
 
@@ -874,13 +886,13 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
 
     # Handle both Pydantic v1 and v2
     if hasattr(settings_update, "model_dump"):
-        new_config = settings_update.model_dump(exclude={"reindex_approved"})
+        new_config = settings_update.model_dump(exclude={"reindex_approved"}, exclude_none=True)
     else:
-        new_config = settings_update.dict(exclude={"reindex_approved"})
+        new_config = settings_update.dict(exclude={"reindex_approved"}, exclude_none=True)
 
     # Check for critical changes
     critical_keys = ["chunkSize", "chunkOverlap", "ollamaModel", "ollamaBaseUrl"]
-    critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys)
+    critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys if k in new_config)
 
     if critical_changed and settings_update.reindex_approved:
         # Trigger DB reset

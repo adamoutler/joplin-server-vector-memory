@@ -47,7 +47,7 @@ def init_db(db):
         if os.path.exists(config_path):
             with open(config_path, "r") as f:
                 config = json.load(f)
-                ollama_url = config.get("ollamaUrl", config.get("OLLAMA_URL", ollama_url))
+                ollama_url = config.get("ollamaBaseUrl", config.get("OLLAMA_URL", ollama_url))
     except:
         pass
 

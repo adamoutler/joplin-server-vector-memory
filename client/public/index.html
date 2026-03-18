@@ -135,16 +135,27 @@
       <form id="advanced-rag-form">
         
         <fieldset data-critical="true">
-          <legend>Ollama Configuration</legend>
+          <legend>Embedding Mode</legend>
           <div class="form-group">
-            <label>Ollama Base URL</label>
-            <input type="text" id="ollamaBaseUrl" placeholder="http://127.0.0.1:11434">
-            <span class="help-text">URL for local or remote Ollama instance.</span>
+            <label>Provider</label>
+            <select id="embeddingMode" onchange="toggleOllamaFields()">
+              <option value="local">Local CPU Model (all-MiniLM-L6-v2) - Default</option>
+              <option value="ollama">External Ollama Server</option>
+            </select>
+            <span class="help-text">Choose whether to run the built-in model directly inside the container or offload to an external GPU via Ollama. Note: Changing this will force a complete re-indexing of all notes.</span>
           </div>
-          <div class="form-group">
-            <label>Embeddings Model</label>
-            <input type="text" id="ollamaModel" placeholder="nomic-embed-text">
-            <span class="help-text">Model used for generating vector embeddings.</span>
+          
+          <div id="ollama-fields" style="display: none;">
+            <div class="form-group">
+              <label>Ollama Base URL</label>
+              <input type="text" id="ollamaBaseUrl" placeholder="http://127.0.0.1:11434">
+              <span class="help-text">URL for local or remote Ollama instance.</span>
+            </div>
+            <div class="form-group">
+              <label>Embeddings Model</label>
+              <input type="text" id="ollamaModel" placeholder="nomic-embed-text">
+              <span class="help-text">Model used for generating vector embeddings on the Ollama server.</span>
+            </div>
           </div>
         </fieldset>
 
@@ -513,9 +524,30 @@
               el.value = data[f];
             }
           });
+
+          // Initialize embedding mode based on whether ollamaBaseUrl has a value
+          const modeSelect = document.getElementById('embeddingMode');
+          if (modeSelect) {
+            modeSelect.value = (data.ollamaBaseUrl && data.ollamaBaseUrl.trim() !== '') ? 'ollama' : 'local';
+            toggleOllamaFields();
+          }
+
         }
       } catch (e) {
         console.error('Failed to load advanced settings', e);
+      }
+    }
+
+    function toggleOllamaFields() {
+      const modeSelect = document.getElementById('embeddingMode');
+      const ollamaFields = document.getElementById('ollama-fields');
+      if (!modeSelect || !ollamaFields) return;
+      
+      if (modeSelect.value === 'ollama') {
+        ollamaFields.style.display = 'block';
+      } else {
+        ollamaFields.style.display = 'none';
+        document.getElementById('ollamaBaseUrl').value = ''; // Ensure backend falls back to local
       }
     }
 
@@ -543,7 +575,7 @@
       criticalFieldsets.forEach(fs => {
         const inputs = fs.querySelectorAll('input, select');
         inputs.forEach(input => {
-          if (input.id) {
+          if (input.id && input.id !== 'embeddingMode') {
             const currentVal = currentValues[input.id];
             const initialVal = initialState[input.id] !== undefined && initialState[input.id] !== null ? initialState[input.id] : '';
             if (String(currentVal) !== String(initialVal)) {

@@ -441,17 +441,18 @@ app.post('/auth', async (req, res) => {
     return res.status(400).json({ error: 'Missing credentials' });
   }
 
+  let isUsernameChange = false;
   if (config.joplinUsername && config.joplinUsername !== username) {
-      return res.status(403).json({ error: 'System is already locked to a different username.' });
+      isUsernameChange = true;
   }
 
-  // Ping or SSL validation
+  // Ping and credential validation
   try {
-    const fetchWithTimeout = async (url) => {
+    const fetchWithTimeout = async (url, options = {}) => {
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 5000);
       try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, { ...options, signal: controller.signal });
         clearTimeout(id);
         return response;
       } catch (err) {
@@ -460,15 +461,34 @@ app.post('/auth', async (req, res) => {
       }
     };
     
-    // Attempt a basic check against the server
+    // Attempt a basic check against the server to see if it's reachable
     const checkRes = await fetchWithTimeout(`${serverUrl}/api/ping`).catch(() => fetchWithTimeout(`${serverUrl}/login`)).catch(() => fetchWithTimeout(serverUrl));
     
     if (!checkRes || !checkRes.ok) {
       if (checkRes && checkRes.status !== 404 && checkRes.status !== 401 && checkRes.status !== 403) {
-        // Many APIs might return 404/401/403 for unauthorized paths but it proves the server is up
         console.warn('Server responded with status:', checkRes.status);
+      } else if (!checkRes) {
+        return res.status(400).json({ error: 'Cannot reach the Joplin Server URL. Please check the address.' });
       }
     }
+
+    // Now validate the actual credentials
+    const cleanUrl = serverUrl.replace(/\/+$/, '');
+    const sessionRes = await fetchWithTimeout(`${cleanUrl}/api/sessions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: username, password })
+    }).catch(err => {
+        throw new Error('Network error reaching /api/sessions: ' + err.message);
+    });
+
+    if (!sessionRes || !sessionRes.ok) {
+        if (sessionRes && sessionRes.status === 403) {
+            return res.status(403).json({ error: 'Invalid username or password.' });
+        }
+        return res.status(400).json({ error: `Authentication failed. Server returned HTTP ${sessionRes ? sessionRes.status : 'Unknown'}.` });
+    }
+
   } catch (err) {
     return res.status(400).json({ error: 'Failed to validate server: ' + err.message });
   }
@@ -485,10 +505,22 @@ app.post('/auth', async (req, res) => {
 
   globalCredentials.password = password;
   globalCredentials.masterPassword = masterPassword;
-  
-  config = { 
-    ...config, 
-    joplinServerUrl: serverUrl, 
+
+  if (isUsernameChange) {
+      console.log('Username changed. Wiping local databases...');
+      const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
+      const sqliteDbPath = path.join(DATA_DIR, 'vector_memory.sqlite');
+      try {
+          if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
+          if (fs.existsSync(sqliteDbPath)) fs.unlinkSync(sqliteDbPath);
+          console.log('Local databases wiped successfully.');
+      } catch (err) {
+          console.error('Failed to wipe databases on username change:', err);
+      }
+  }
+
+  config = {
+    ...config,    joplinServerUrl: serverUrl, 
     joplinUsername: username, 
     memoryServerAddress
   };
@@ -620,6 +652,7 @@ app.post('/auth/wipe', async (req, res) => {
 let syncIntervalId = null;
 
 async function runSyncCycle(config) {
+  console.log('runSyncCycle triggered with config:', Object.keys(config || {}));
   if (isProcessing) return;
   isProcessing = true;
   try {
@@ -627,13 +660,18 @@ async function runSyncCycle(config) {
       syncClient = new JoplinSyncClient({
         serverUrl: config.joplinServerUrl,
         username: config.joplinUsername,
-        password: config.joplinPassword,
-        masterPassword: config.joplinMasterPassword,
+        password: config.joplinPassword || globalCredentials.password,
+        masterPassword: config.joplinMasterPassword || globalCredentials.masterPassword,
         profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
       });
       
       syncClient.on('syncStart', () => { syncState.status = 'syncing'; syncState.progress = null; syncState.error = null; console.log('Sync started...'); });
-      syncClient.on('syncComplete', () => { syncState.status = 'ready'; console.log('Sync completed.'); });
+      syncClient.on('syncComplete', () => { 
+        if (syncState.status !== 'error') {
+          syncState.status = 'ready'; 
+          console.log('Sync completed successfully.'); 
+        }
+      });
       syncClient.on('syncError', (err) => { syncState.status = 'error'; syncState.error = err.message; console.error('Sync error:', err); });
 
       syncClient.on('decryptStart', () => console.log('Decryption started...'));
@@ -654,6 +692,39 @@ async function runSyncCycle(config) {
       await syncClient.init();
     }
     
+    // Explicitly validate sync access before starting to catch 403s immediately
+    if (config.joplinServerUrl) {
+       const joplinUrl = config.joplinServerUrl.replace(/\/+$/, '');
+       const syncPass = config.joplinPassword || globalCredentials.password;
+       if (syncPass) {
+           const sessionRes = await fetch(`${joplinUrl}/api/sessions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: config.joplinUsername, password: syncPass })
+           }).catch(() => null);
+
+           console.log(`[Explicit Check] /api/sessions returned status: ${sessionRes ? sessionRes.status : 'null'}`);
+
+           if (sessionRes && !sessionRes.ok) {
+               throw new Error(`Authentication failed during explicit check. Server returned HTTP ${sessionRes.status}. Please verify your username and password.`);
+           }
+
+           if (sessionRes && sessionRes.ok) {
+              const sessionData = await sessionRes.json();
+              const sessionId = sessionData.id;
+              
+              const syncCheckRes = await fetch(`${joplinUrl}/api/items/root:/info.json:/content`, {
+                  headers: { 'X-API-AUTH': sessionId },
+                  redirect: 'manual'
+              }).catch(() => null);
+              
+              if (syncCheckRes && !syncCheckRes.ok) {
+                  throw new Error(`Joplin Server rejected sync access (HTTP ${syncCheckRes.status}: ${syncCheckRes.statusText}). Ensure your account has sync permissions and you have accepted the Terms of Service on the Joplin Server web UI.`);
+              }
+           }
+       }
+    }
+
     await syncClient.sync();
     await syncClient.decrypt();
     await syncClient.generateEmbeddings();

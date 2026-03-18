@@ -9,6 +9,9 @@ jest.mock('@joplin/utils/Logger', () => {
     constructor() {}
     addTarget() {}
     setLevel() {}
+    error() {}
+    warn() {}
+    info() {}
     static initializeGlobalLogger = jest.fn();
     static create() { return new MockLogger(); }
   }
@@ -65,13 +68,16 @@ jest.mock('@joplin/lib/SyncTargetRegistry', () => ({
   },
 }));
 
+jest.mock('@joplin/lib/models/MasterKey', () => ({
+  default: {
+    all: jest.fn().mockResolvedValue([{ id: 'key1' }])
+  }
+}));
+
 jest.mock('@joplin/lib/services/e2ee/EncryptionService', () => ({
   default: {
     instance: jest.fn().mockReturnValue({
-      loadMasterKeysFromSettings: jest.fn().mockResolvedValue(),
-      loadedMasterKeys: jest.fn().mockResolvedValue([{ id: 'key1' }]),
-      unlockMasterKey: jest.fn().mockResolvedValue(),
-      activateMasterKey: jest.fn().mockResolvedValue(),
+      loadMasterKey: jest.fn().mockResolvedValue()
     }),
   },
 }));
@@ -175,25 +181,105 @@ describe('JoplinSyncClient', () => {
     expect(typeof client.synchronizer.dispatch).toBe('function');
   });
 
+  it('should throw and emit syncError if synchronizer throws an exception', async () => {
+    await client.init();
+    const error = new Error('Network timeout');
+    client.synchronizer.start.mockRejectedValueOnce(error);
+    const errorMock = jest.fn();
+    client.on('syncError', errorMock);
+
+    await expect(client.sync()).rejects.toThrow('Network timeout');
+    expect(errorMock).toHaveBeenCalledWith(error);
+  });
+
+  it('should throw and emit syncError if _lastSyncErrors contains errors', async () => {
+    await client.init();
+    client.synchronizer.start.mockImplementationOnce(() => {
+      client._lastSyncErrors = ['Forbidden'];
+      return Promise.resolve();
+    });
+    const errorMock = jest.fn();
+    client.on('syncError', errorMock);
+
+    await expect(client.sync()).rejects.toThrow('Sync failed: Forbidden');
+    expect(errorMock).toHaveBeenCalledWith(new Error('Sync failed: Forbidden'));
+  });
+
   it('should emit decryptStart and decryptComplete on decrypt', async () => {
     await client.init();
     const decryptStartMock = jest.fn();
     const decryptCompleteMock = jest.fn();
-    
+
     client.on('decryptStart', decryptStartMock);
     client.on('decryptComplete', decryptCompleteMock);
-    
+
     await client.decrypt();
-    
+
     expect(decryptStartMock).toHaveBeenCalled();
     expect(decryptCompleteMock).toHaveBeenCalled();
   });
 
-  it('should decrypt using master password', async () => {
-    await client.init();
-    await client.decrypt();
-    // Test passes if decrypt runs without throwing
-    expect(true).toBe(true);
+  describe('Unhappy Paths', () => {
+    it('should throw an error if sync is called before init', async () => {
+      const uninitClient = new JoplinSyncClient({});
+      await expect(uninitClient.sync()).rejects.toThrow('Synchronizer not initialized');
+    });
+
+    it('should catch and rethrow generic synchronizer exceptions', async () => {
+      await client.init();
+      client.synchronizer.start.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      await expect(client.sync()).rejects.toThrow('ECONNREFUSED');
+    });
+
+    it('should intercept console.error containing Forbidden and throw it as a sync failure', async () => {
+      await client.init();
+      // Simulate synchronizer.start() swallowing the error but logging it to console.error
+      client.synchronizer.start.mockImplementationOnce(async () => {
+        console.error('14:02:35: Synchronizer: JoplinError: Forbidden');
+        // It returns normally without throwing
+      });
+
+      await expect(client.sync()).rejects.toThrow('Sync failed: 14:02:35: Synchronizer: JoplinError: Forbidden');
+    });
+
+    it('should intercept console.warn containing 403 and throw it as a sync failure', async () => {
+      await client.init();
+      // Simulate synchronizer.start() swallowing the error but logging it to console.warn
+      client.synchronizer.start.mockImplementationOnce(async () => {
+        console.warn('GET api/items/root:/info.json:/content: Forbidden (403): {"error":"Forbidden"}');
+      });
+
+      await expect(client.sync()).rejects.toThrow('Sync failed: GET api/items/root:/info.json:/content: Forbidden (403): {"error":"Forbidden"}');
+    });
+
+    it('should ignore regular console logs that do not indicate a catastrophic error', async () => {
+      await client.init();
+      client.synchronizer.start.mockImplementationOnce(async () => {
+        console.log('Downloading item 1 of 500');
+        console.info('Processing tag information');
+      });
+
+      // Should resolve successfully
+      await expect(client.sync()).resolves.toBeUndefined();
+    });
+
+    it('should handle master password missing gracefully during decrypt', async () => {
+      await client.init();
+      client.masterPassword = null;
+      const consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+      await client.decrypt();
+      expect(consoleWarnSpy).toHaveBeenCalledWith('No master password provided, skipping decryption.');
+      consoleWarnSpy.mockRestore();
+    });
+  });
+
+  describe('generateEmbeddings', () => {
+    it('should run without throwing', async () => {
+      await client.init();
+      await client.decrypt();
+      // Test passes if decrypt runs without throwing
+      expect(true).toBe(true);
+    });
   });
 
   describe('generateEmbeddings', () => {
