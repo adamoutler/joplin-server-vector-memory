@@ -37,7 +37,11 @@ def ephemeral_joplin():
             
             if resp1.status_code == 200 and resp2.status_code in [200, 401] and resp3.status_code == 200:
                 break
+            time.sleep(1)
         except requests.exceptions.ConnectionError:
+            time.sleep(1)
+            continue
+        except requests.exceptions.Timeout:
             time.sleep(1)
             continue
     

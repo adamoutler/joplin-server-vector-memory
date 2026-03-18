@@ -34,7 +34,7 @@ def node_server(node_server_port, tmp_path):
     ready = False
     for _ in range(30):
         try:
-            resp = requests.get(f"http://localhost:{node_server_port}/status")
+            resp = requests.get(f"http://localhost:{node_server_port}/status", timeout=30)
             if resp.status_code in [200, 401]:
                 ready = True
                 break
@@ -57,7 +57,7 @@ def test_dashboard_valid_auth(ephemeral_joplin, node_server):
     url, process = node_server
     auth = base64.b64encode(b"setup:1-mcp-server").decode("utf-8")
     headers = {"Authorization": f"Basic {auth}"}
-    resp = requests.get(f"{url}/status", headers=headers)
+    resp = requests.get(f"{url}/status", headers=headers, timeout=30)
     assert resp.status_code == 200
     assert "syncState" in resp.json()
 
@@ -65,7 +65,7 @@ def test_dashboard_invalid_auth(ephemeral_joplin, node_server):
     url, process = node_server
     auth = base64.b64encode(b"admin@localhost:wrongpass").decode("utf-8")
     headers = {"Authorization": f"Basic {auth}"}
-    resp = requests.get(f"{url}/status", headers=headers)
+    resp = requests.get(f"{url}/status", headers=headers, timeout=30)
     assert resp.status_code == 401
 
 def test_dashboard_joplin_unreachable(tmp_path):
@@ -89,7 +89,7 @@ def test_dashboard_joplin_unreachable(tmp_path):
     ready = False
     for _ in range(30):
         try:
-            resp = requests.get("http://localhost:3007/status")
+            resp = requests.get("http://localhost:3007/status", timeout=30)
             if resp.status_code in [200, 401]:
                 ready = True
                 break
@@ -103,7 +103,7 @@ def test_dashboard_joplin_unreachable(tmp_path):
     headers = {"Authorization": f"Basic {auth}"}
     
     try:
-        requests.get("http://localhost:3007/status", headers=headers)
+        requests.get("http://localhost:3007/status", headers=headers, timeout=30)
     except requests.exceptions.ConnectionError:
         pass # It's expected to crash, meaning the connection might drop
         

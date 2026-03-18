@@ -33,7 +33,7 @@ def setup_live_container():
     ready = False
     for _ in range(30):
         try:
-            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"))
+            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=30)
             if resp.status_code == 200:
                 ready = True
                 break
@@ -62,9 +62,9 @@ def test_api_server_live_endpoints(setup_live_container):
     max_retries = 30
     for i in range(max_retries):
         try:
-            r1 = requests.get(f"{BACKEND_URL}/docs")
-            r2 = requests.get(f"{PROXY_URL}/docs")
-            r3 = requests.get(f"{PROXY_URL}/")
+            r1 = requests.get(f"{BACKEND_URL}/docs", timeout=30)
+            r2 = requests.get(f"{PROXY_URL}/docs", timeout=30)
+            r3 = requests.get(f"{PROXY_URL}/", timeout=30)
             if r1.status_code == 200 and r2.status_code == 200 and r3.status_code in [200, 401]:
                 break
         except requests.exceptions.ConnectionError:
@@ -72,17 +72,17 @@ def test_api_server_live_endpoints(setup_live_container):
         time.sleep(1)
 
     # Verify that the ports are responding properly
-    docs_8000 = requests.get(f"{BACKEND_URL}/docs")
+    docs_8000 = requests.get(f"{BACKEND_URL}/docs", timeout=30)
     assert docs_8000.status_code == 200, f"Backend /docs should return 200, got {docs_8000.status_code}"
 
-    docs_3000 = requests.get(f"{PROXY_URL}/docs")
+    docs_3000 = requests.get(f"{PROXY_URL}/docs", timeout=30)
     assert docs_3000.status_code == 200, f"Proxy /docs should return 200, got {docs_3000.status_code}"
     
     # Check /http-api/search without token returns 401
-    search_3000 = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "test"})
+    search_3000 = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "test"}, timeout=30)
     assert search_3000.status_code == 401, "Proxy /http-api/search should return 401 without auth"
     
-    search_8000 = requests.post(f"{BACKEND_URL}/http-api/search", json={"query": "test"})
+    search_8000 = requests.post(f"{BACKEND_URL}/http-api/search", json={"query": "test"}, timeout=30)
     assert search_8000.status_code == 401, "Backend /http-api/search should return 401 without auth"
 
     # Configure the app by posting to /auth
@@ -98,20 +98,20 @@ def test_api_server_live_endpoints(setup_live_container):
     max_retries = 30
     for i in range(max_retries):
         try:
-            r = requests.get(f"{PROXY_URL}/")
+            r = requests.get(f"{PROXY_URL}/", timeout=30)
             if r.status_code == 200:
                 break
         except requests.exceptions.ConnectionError:
             pass
         time.sleep(1)
 
-    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"))
+    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=30)
     assert auth_resp.status_code == 200, f"Failed to authenticate setup: {auth_resp.text}"
     
     # Wait for the config to be written and system locked
     time.sleep(2)
     
-    key_resp = requests.post(f"{PROXY_URL}/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", "admin"))
+    key_resp = requests.post(f"{PROXY_URL}/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", "admin"), timeout=30)
     assert key_resp.status_code == 200, f"Failed to create key: {key_resp.text}"
     token = key_resp.json().get("key", {}).get("key")
     assert token, "Token should be returned"
@@ -133,7 +133,7 @@ def test_api_server_live_endpoints(setup_live_container):
         # Alternatively, hit ollama directly, but we didn't expose it to localhost in the test compose file? 
         # Wait, docker-compose.test.yml exposes ollama on 11434.
         try:
-            ollama_resp = requests.get("http://localhost:11434/api/tags")
+            ollama_resp = requests.get("http://localhost:11434/api/tags", timeout=30)
             if ollama_resp.status_code == 200:
                 models = ollama_resp.json().get("models", [])
                 if any("nomic-embed-text" in m.get("name", "") for m in models):
@@ -150,7 +150,7 @@ def test_api_server_live_endpoints(setup_live_container):
         "content": f"The secret E2E value is {secret_uuid}"
     }
     
-    remember_resp = requests.post(f"{PROXY_URL}/http-api/remember", json=remember_payload, headers=headers)
+    remember_resp = requests.post(f"{PROXY_URL}/http-api/remember", json=remember_payload, headers=headers, timeout=30)
     assert remember_resp.status_code == 200, f"Remember API failed: {remember_resp.text}"
     
     print("REMEMBER RESPONSE:", remember_resp.text)
@@ -162,7 +162,7 @@ def test_api_server_live_endpoints(setup_live_container):
     time.sleep(15)
 
     # 3. Use /http-api/search to retrieve that data
-    search_resp = requests.post(f"{PROXY_URL}/http-api/search", json={"query": secret_uuid}, headers=headers)
+    search_resp = requests.post(f"{PROXY_URL}/http-api/search", json={"query": secret_uuid}, headers=headers, timeout=30)
     assert search_resp.status_code == 200, f"Search API failed: {search_resp.text}"
     
     search_data = search_resp.json()
@@ -170,7 +170,7 @@ def test_api_server_live_endpoints(setup_live_container):
     assert search_data[0]["id"] == note_id, "The top result should be the note we just created"
 
     # 4. Perform the same search against the backend port directly
-    search_resp_backend = requests.post(f"{BACKEND_URL}/http-api/search", json={"query": secret_uuid}, headers=headers)
+    search_resp_backend = requests.post(f"{BACKEND_URL}/http-api/search", json={"query": secret_uuid}, headers=headers, timeout=30)
     assert search_resp_backend.status_code == 200, f"Backend Search API failed: {search_resp_backend.text}"
     
     search_data_backend = search_resp_backend.json()

@@ -36,7 +36,10 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                 if self.headers.get('Transfer-Encoding', '').lower() == 'chunked':
                     post_data_bytes = b""
                     while True:
-                        line = self.rfile.readline().strip()
+                        raw_line = self.rfile.readline()
+                        if not raw_line:
+                            break
+                        line = raw_line.strip()
                         if not line:
                             continue
                         chunk_size = int(line, 16)

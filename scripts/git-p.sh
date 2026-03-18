@@ -20,14 +20,18 @@ if ! git push "$@"; then
 fi
 
 echo "[git-p] Waiting for GitHub Actions CI run to be triggered..."
-sleep 5 # Give it a few seconds to trigger
-
-# Get the latest run ID for the current commit
 COMMIT_SHA=$(git rev-parse HEAD)
-RUN_ID=$(gh run list --commit "$COMMIT_SHA" --json databaseId -q ".[0].databaseId" 2>/dev/null)
+
+for i in {1..15}; do
+    RUN_ID=$(gh run list --commit "$COMMIT_SHA" --json databaseId -q ".[0].databaseId" 2>/dev/null)
+    if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
+        break
+    fi
+    sleep 3
+done
 
 if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
-    echo "[git-p] No CI run found for commit $COMMIT_SHA."
+    echo "[git-p] No CI run found for commit $COMMIT_SHA after waiting."
     exit 0
 fi
 

@@ -1,7 +1,7 @@
 import requests
 
 def test_joplin_is_running(ephemeral_joplin):
-    resp = requests.get("http://localhost:22300/api/ping")
+    resp = requests.get("http://localhost:22300/api/ping", timeout=30)
     assert resp.status_code == 200
     assert resp.json().get("status") == "ok"
 

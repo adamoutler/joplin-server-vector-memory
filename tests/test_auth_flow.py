@@ -25,7 +25,7 @@ def setup_container():
     ready = False
     for _ in range(30):
         try:
-            resp = requests.get("http://localhost:3002/", auth=("setup", "1-mcp-server"))
+            resp = requests.get("http://localhost:3002/", auth=("setup", "1-mcp-server"), timeout=30)
             if resp.status_code == 200:
                 ready = True
                 break
@@ -42,7 +42,7 @@ def setup_container():
     ready = False
     for _ in range(60):
         try:
-            resp = requests.get("http://localhost:22301/api/ping")
+            resp = requests.get("http://localhost:22301/api/ping", timeout=30)
             if resp.status_code == 200:
                 ready = True
                 break
@@ -61,16 +61,16 @@ def test_auth_marriage_and_wipe(setup_container):
     base_url = setup_container
     
     # 1. Test accessing without auth
-    resp = requests.get(f"{base_url}/")
+    resp = requests.get(f"{base_url}/", timeout=30)
     assert resp.status_code == 401
     
     # 2. Test accessing with wrong default auth
-    resp = requests.get(f"{base_url}/", auth=("admin", "admin"))
+    resp = requests.get(f"{base_url}/", auth=("admin", "admin"), timeout=30)
     assert resp.status_code == 401
     
     # 3. Test accessing with correct setup auth
     setup_auth = ("setup", "1-mcp-server")
-    resp = requests.get(f"{base_url}/", auth=setup_auth)
+    resp = requests.get(f"{base_url}/", auth=setup_auth, timeout=30)
     assert resp.status_code == 200
     
     # 4. Perform account "marriage" (requires joplin test server to be running)
@@ -96,11 +96,11 @@ def test_auth_marriage_and_wipe(setup_container):
     time.sleep(2)
     
     # 5. Verify setup auth is now REJECTED
-    resp = requests.get(f"{base_url}/", auth=setup_auth)
+    resp = requests.get(f"{base_url}/", auth=setup_auth, timeout=30)
     assert resp.status_code == 401
     
     # 6. Verify real auth is now ACCEPTED
-    resp = requests.get(f"{base_url}/", auth=real_auth)
+    resp = requests.get(f"{base_url}/", auth=real_auth, timeout=30)
     assert resp.status_code == 200
     
     # 7. Use the python API proxy (which internally uses node proxy) to confirm it works
@@ -119,7 +119,7 @@ def test_auth_marriage_and_wipe(setup_container):
     assert note_id is not None
     
     # 8. Trigger Factory Reset
-    resp = requests.post(f"{base_url}/auth/wipe", auth=real_auth)
+    resp = requests.post(f"{base_url}/auth/wipe", auth=real_auth, timeout=30)
     assert resp.status_code == 200
     assert resp.json().get("success") is True
     
@@ -127,9 +127,9 @@ def test_auth_marriage_and_wipe(setup_container):
     time.sleep(5)
     
     # 10. Verify real auth is REJECTED
-    resp = requests.get(f"{base_url}/", auth=real_auth)
+    resp = requests.get(f"{base_url}/", auth=real_auth, timeout=30)
     assert resp.status_code == 401
     
     # 11. Verify setup auth is ACCEPTED again
-    resp = requests.get(f"{base_url}/", auth=setup_auth)
+    resp = requests.get(f"{base_url}/", auth=setup_auth, timeout=30)
     assert resp.status_code == 200
