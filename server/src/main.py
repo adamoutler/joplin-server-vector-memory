@@ -71,10 +71,22 @@ def _load_config_file() -> dict:
 
 def get_config() -> dict:
     config = _load_config_file()
+    
+    # Handle legacy flat structure or new polymorphic structure
+    embedding_config = config.get("embedding", {})
+    if not embedding_config:
+        # Backwards compatibility check
+        if config.get("ollamaBaseUrl"):
+             embedding_config = {
+                 "provider": "ollama",
+                 "baseUrl": config.get("ollamaBaseUrl"),
+                 "model": config.get("ollamaModel", "nomic-embed-text")
+             }
+        else:
+             embedding_config = {"provider": "internal"}
 
     return {
-        "ollama_url": config.get("ollamaBaseUrl", config.get("OLLAMA_URL", os.environ.get("OLLAMA_URL", ""))),
-        "embedding_model": config.get("ollamaModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text"))),
+        "embedding": embedding_config,
         "joplin_server_url": config.get("joplinServerUrl", config.get("JOPLIN_SERVER_URL", os.environ.get("JOPLIN_SERVER_URL", ""))),
         "joplin_username": config.get("joplinUsername", config.get("JOPLIN_USERNAME", os.environ.get("JOPLIN_USERNAME", ""))),
         "joplin_password": config.get("joplinPassword", config.get("JOPLIN_PASSWORD", os.environ.get("JOPLIN_PASSWORD", ""))),
@@ -83,19 +95,19 @@ def get_config() -> dict:
 
 def get_embedding(text: str) -> list[float]:
     config = get_config()
-    ollama_url = config.get("ollama_url")
+    embed_config = config.get("embedding", {})
 
     # If Ollama URL is provided, use external Ollama server exclusively
-    if ollama_url and ollama_url.strip():
+    if embed_config.get("provider") == "ollama" and embed_config.get("baseUrl"):
         try:
-            client = ollama.Client(host=ollama_url)
-            response = client.embeddings(model=config["embedding_model"], prompt=text)
+            client = ollama.Client(host=embed_config["baseUrl"])
+            response = client.embeddings(model=embed_config["model"], prompt=text)
             return response["embedding"]
         except Exception as e:
             logger.error(f"Ollama embedding failed critically: {e}")
-            raise RuntimeError(f"Ollama embedding server unreachable or model missing: {e}")
+            raise RuntimeError(str(e))
 
-    # Fallback to completely local CPU embedding only if no URL is configured
+    # Fallback to completely local CPU embedding
     model = get_local_model()
     # SentenceTransformer returns a numpy array, we need a list of floats
     embedding = model.encode(text)
@@ -888,6 +900,30 @@ async def get_settings(token: str = Depends(verify_token)):
     return Settings(**settings_dict)
 
 
+class TestModelRequest(BaseModel):
+    baseUrl: str
+    model: str
+
+@app.post("/api/settings/test-model")
+async def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):
+    if not request.baseUrl:
+        return {"success": True, "dimension": 384}  # Local model
+    try:
+        import ollama
+        client = ollama.Client(host=request.baseUrl)
+        try:
+            client.show(request.model)
+        except Exception:
+            client.pull(request.model)
+        res = client.embeddings(model=request.model, prompt="test")
+        if "embedding" in res:
+            return {"success": True, "dimension": len(res["embedding"])}
+        else:
+            raise ValueError("Response did not contain an embedding array.")
+    except Exception as e:
+        logger.error(f"Model test failed: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to connect to or pull model '{request.model}' from '{request.baseUrl}': {str(e)}")
+
 @app.post("/api/settings", response_model=Settings)
 async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
     current_config = _load_config_file()
@@ -899,29 +935,34 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
         new_config = settings_update.dict(exclude={"reindex_approved"}, exclude_none=True)
 
     # Check for critical changes
-    critical_keys = ["chunkSize", "chunkOverlap", "ollamaModel", "ollamaBaseUrl"]
+    critical_keys = ["chunkSize", "chunkOverlap"]
     critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys if k in new_config)
+
+    # Check if embedding changed
+    current_embed = current_config.get("embedding", {})
+    new_embed = new_config.get("embedding", {})
+    if new_embed and current_embed != new_embed:
+        critical_changed = True
 
     if critical_changed and settings_update.reindex_approved:
         # Determine actual dimensionality before wiping
         new_dim = 384
-        if new_config.get("ollamaBaseUrl"):
+        if new_embed.get("provider") == "ollama" and new_embed.get("baseUrl"):
             try:
                 import ollama
-                client = ollama.Client(host=new_config["ollamaBaseUrl"])
+                client = ollama.Client(host=new_embed["baseUrl"])
                 # Pull the model if it doesn't exist
                 try:
-                    client.show(new_config["ollamaModel"])
+                    client.show(new_embed["model"])
                 except:
-                    client.pull(new_config["ollamaModel"])
+                    client.pull(new_embed["model"])
                 # Generate a tiny embedding to measure its length
-                res = client.embeddings(model=new_config["ollamaModel"], prompt="test")
+                res = client.embeddings(model=new_embed["model"], prompt="test")
                 if "embedding" in res:
                     new_dim = len(res["embedding"])
             except Exception as e:
-                logger.error(f"Failed to determine dimensions for model {new_config.get('ollamaModel')}: {e}")
-                # We won't crash here so the user isn't fully locked out, but it will fallback to 768 as a guess
-                new_dim = 768
+                logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
+                raise HTTPException(status_code=400, detail=f"Failed to connect to model {new_embed.get('model')} at {new_embed.get('baseUrl')}: {str(e)}")
         
         new_config["embeddingDimension"] = new_dim
 
