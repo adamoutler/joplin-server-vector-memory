@@ -436,7 +436,7 @@ class JoplinSyncClient extends EventEmitter {
       // The Python server will handle whether it uses local SentenceTransformers or an external Ollama server.
       const internalApiUrl = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
 
-      const BATCH_SIZE = 32;
+      const BATCH_SIZE = 72;
       let processedCount = 0;      let dbWriteQueue = Promise.resolve();
 
       for (let i = 0; i < notesToProcess.length; i += BATCH_SIZE) {
