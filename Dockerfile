@@ -17,11 +17,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install Python dependencies first (leverage caching)
 COPY server/requirements.txt ./server/
-RUN pip install --no-cache-dir -r server/requirements.txt
+RUN pip install --upgrade setuptools wheel && \
+    pip install --no-cache-dir -r server/requirements.txt
 
 # Install Node dependencies
 COPY client/package*.json ./client/
-RUN cd client && npm ci
+RUN cd client && npm ci && find . -type f -name "Cargo.lock" -delete
 
 # Copy full application code
 COPY . .
