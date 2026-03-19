@@ -239,14 +239,3 @@ def test_api_server_live_endpoints(setup_live_container):
     assert search_data_after[0]["id"] == note_id, "The backend top result should still be our note after re-index"
 
     print("[E2E] Advanced settings flow completed successfully.", file=sys.stderr)
-ngine
-    time.sleep(15)
-    
-    # 4. Verify search still works with the newly dimensioned database
-    search_resp_after = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "E2E"}, headers=api_headers, timeout=30)
-    assert search_resp_after.status_code == 200, "Search failed after re-indexing"
-    search_data_after = search_resp_after.json()
-    assert len(search_data_after) > 0, "No results returned after re-index"
-    assert search_data_after[0]["id"] == note_id, "The backend top result should still be our note after re-index"
-
-    print("[E2E] Advanced settings flow completed successfully.", file=sys.stderr)
