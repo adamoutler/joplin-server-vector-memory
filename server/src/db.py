@@ -44,10 +44,9 @@ def init_db(db, explicit_dim=None):
         # Determine vector dimension
         config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
         dim = 384
-        
         if os.environ.get("OLLAMA_URL"):
             dim = 768
-            
+
         try:
             import json
             if os.path.exists(config_path):
