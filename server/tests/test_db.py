@@ -9,9 +9,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../s
 def test_sqlite_vec_extension_loads():
     # Use an in-memory db for tests
     os.environ["SQLITE_DB_PATH"] = ":memory:"
-    db = get_db_connection()
+    db = get_db_connection(explicit_dim=384)
     cursor = db.cursor()
-
     # Verify sqlite-vec version
     cursor.execute("SELECT vec_version();")
     version = cursor.fetchone()[0]

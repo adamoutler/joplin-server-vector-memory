@@ -239,6 +239,7 @@ class JoplinSyncClient extends EventEmitter {
 
         const masterKeys = await MasterKey.all();
         if (!masterKeys || masterKeys.length === 0) {
+            // Note: Not everyone uses encryption, so it is perfectly normal for some users to not have any master keys here.
             console.warn('No E2EE master keys found in database. Skipping decryption.');
             this.emit('decryptComplete');
             return;

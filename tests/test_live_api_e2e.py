@@ -31,13 +31,13 @@ def setup_live_container():
     
     # Wait for the app container to be ready in setup mode
     ready = False
-    for _ in range(30):
+    for _ in range(60):
         try:
-            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=30)
+            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=5)
             if resp.status_code == 200:
                 ready = True
                 break
-        except Exception:
+        except (Exception, requests.exceptions.ReadTimeout):
             pass
         time.sleep(1)
 
@@ -59,18 +59,17 @@ def test_api_server_live_endpoints(setup_live_container):
     BACKEND_URL = "http://localhost:8002"
 
     # Wait for the backend and proxy to be fully responsive
-    max_retries = 30
+    max_retries = 60
     for i in range(max_retries):
         try:
-            r1 = requests.get(f"{BACKEND_URL}/docs", timeout=30)
-            r2 = requests.get(f"{PROXY_URL}/docs", timeout=30)
-            r3 = requests.get(f"{PROXY_URL}/", timeout=30)
+            r1 = requests.get(f"{BACKEND_URL}/docs", timeout=5)
+            r2 = requests.get(f"{PROXY_URL}/docs", timeout=5)
+            r3 = requests.get(f"{PROXY_URL}/", timeout=5)
             if r1.status_code == 200 and r2.status_code == 200 and r3.status_code in [200, 401]:
                 break
-        except requests.exceptions.ConnectionError:
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
             pass
         time.sleep(1)
-
     # Verify that the ports are responding properly
     docs_8000 = requests.get(f"{BACKEND_URL}/docs", timeout=30)
     assert docs_8000.status_code == 404, f"Backend /docs should return 404, got {docs_8000.status_code}"
@@ -95,13 +94,13 @@ def test_api_server_live_endpoints(setup_live_container):
     }
     
     # Actually wait for the app service to be fully up
-    max_retries = 30
+    max_retries = 60
     for i in range(max_retries):
         try:
-            r = requests.get(f"{PROXY_URL}/", timeout=30)
+            r = requests.get(f"{PROXY_URL}/", auth=("setup", "1-mcp-server"), timeout=5)
             if r.status_code == 200:
                 break
-        except requests.exceptions.ConnectionError:
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
             pass
         time.sleep(1)
 
@@ -109,14 +108,14 @@ def test_api_server_live_endpoints(setup_live_container):
     # to run DB migrations and expose the /api/sessions endpoint. We need to retry the auth payload.
     auth_success = False
     last_err = ""
-    for i in range(15):
+    for i in range(30):
         try:
-            auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=30)
+            auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=5)
             if auth_resp.status_code == 200:
                 auth_success = True
                 break
             last_err = auth_resp.text
-        except Exception as e:
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
             last_err = str(e)
         time.sleep(2)
         
@@ -173,13 +172,20 @@ def test_api_server_live_endpoints(setup_live_container):
 
     # Allow time for sync, embedding generation, and vector DB insertion
     print("Waiting for note to be embedded and synced...")
-    time.sleep(15)
-
-    # 3. Use /http-api/search to retrieve that data
-    search_resp = requests.post(f"{PROXY_URL}/http-api/search", json={"query": secret_uuid}, headers=headers, timeout=30)
-    assert search_resp.status_code == 200, f"Search API failed: {search_resp.text}"
     
-    search_data = search_resp.json()
+    # 3. Use /http-api/search to retrieve that data (polling until ready)
+    search_data = []
+    for _ in range(30):
+        try:
+            search_resp = requests.post(f"{PROXY_URL}/http-api/search", json={"query": secret_uuid}, headers=headers, timeout=30)
+            if search_resp.status_code == 200:
+                search_data = search_resp.json()
+                if len(search_data) > 0:
+                    break
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(2)
+
     assert len(search_data) > 0, "No results returned for search"
     assert search_data[0]["id"] == note_id, "The top result should be the note we just created"
 
@@ -228,13 +234,38 @@ def test_api_server_live_endpoints(setup_live_container):
     
     print("[E2E] Settings updated successfully. Awaiting Node.js daemon restart and re-sync...", file=sys.stderr)
     
-    # Give the Node daemon time to restart and re-sync the note with the new embedding engine
-    time.sleep(15)
-    
-    # 4. Verify search still works with the newly dimensioned database
-    search_resp_after = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "E2E"}, headers=headers, timeout=30)
-    assert search_resp_after.status_code == 200, "Search failed after re-indexing"
-    search_data_after = search_resp_after.json()
+    # Wait for the app container to be ready again
+    for _ in range(30):
+        try:
+            if requests.get(f"{PROXY_URL}/", timeout=2).status_code == 200:
+                break
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+            pass
+        time.sleep(1)
+
+    # Re-authenticate because the Node proxy lost the in-memory password during restart
+    auth_success = False
+    for _ in range(15):
+        try:
+            reauth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("admin@localhost", "admin"), timeout=5)
+            if reauth_resp.status_code == 200:
+                auth_success = True
+                break
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+            pass
+        time.sleep(2)
+    assert auth_success, "Failed to re-authenticate after Node proxy restart"
+    # 4. Verify search still works with the newly dimensioned database    search_data_after = []
+    for _ in range(30):
+        try:
+            search_resp_after = requests.post(f"{PROXY_URL}/http-api/search", json={"query": secret_uuid}, headers=headers, timeout=30)
+            if search_resp_after.status_code == 200:
+                search_data_after = search_resp_after.json()
+                if len(search_data_after) > 0:
+                    break
+        except requests.exceptions.ConnectionError:
+            pass
+        time.sleep(2)        
     assert len(search_data_after) > 0, "No results returned after re-index"
     assert search_data_after[0]["id"] == note_id, "The backend top result should still be our note after re-index"
 
