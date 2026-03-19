@@ -107,12 +107,15 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def mock_ollama_server():
-    server = HTTPServer(('127.0.0.1', 0), MockOllamaHandler)
+    server = HTTPServer(('0.0.0.0', 0), MockOllamaHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.daemon = True
     thread.start()
-    yield f"http://127.0.0.1:{port}"
+    
+    # Use the docker bridge IP so the container can reach the host
+    # 172.17.0.1 is the default docker bridge IP on Linux GH actions
+    yield f"http://172.17.0.1:{port}"
     server.shutdown()
     server.server_close()
 
