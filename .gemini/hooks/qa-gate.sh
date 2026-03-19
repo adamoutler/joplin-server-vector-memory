@@ -40,17 +40,27 @@ if [[ "$STATE" == "$DONE_STATE_ID" ]]; then
     exit 0
   fi
 
-  # Check test results freshness (must be < 2 minutes old)
-  if [ -f "docs/qa/test-results.latest.txt" ]; then
-    FILE_AGE=$(($(date +%s) - $(stat -c %Y docs/qa/test-results.latest.txt 2>/dev/null || echo 0)))
-    if [ "$FILE_AGE" -gt 120 ]; then
-      jq -c -n --arg reason "Test results are older than 2 minutes ($FILE_AGE seconds). Please run the test suite and ensure docs/qa/test-results.latest.txt is fresh before transitioning to Done." '{"decision": "deny", "reason": $reason}'
-      exit 0
-    fi
-  else
-    jq -c -n --arg reason "No test results found at docs/qa/test-results.latest.txt. Please run tests before QA." '{"decision": "deny", "reason": $reason}'
+  # Check GitHub Actions CI Status
+  COMMIT_SHA=$(git rev-parse HEAD)
+  # Give it a moment to ensure GH API catches up if they *just* pushed
+  sleep 2
+  
+  RUN_ID=$(gh run list --commit "$COMMIT_SHA" --json databaseId -q ".[0].databaseId" 2>/dev/null)
+  
+  if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
+    jq -c -n --arg reason "No matching GitHub Actions CI run found for commit $COMMIT_SHA. Please ensure code is pushed and CI has been triggered before QA." '{"decision": "deny", "reason": $reason}'
     exit 0
   fi
+  
+  RUN_CONCLUSION=$(gh run view "$RUN_ID" --json conclusion -q ".conclusion" 2>/dev/null)
+  
+  if [ "$RUN_CONCLUSION" != "success" ]; then
+    jq -c -n --arg reason "GitHub Actions CI run $RUN_ID did not succeed (status: $RUN_CONCLUSION). Tests must pass on GitHub before transitioning to Done." '{"decision": "deny", "reason": $reason}'
+    exit 0
+  fi
+  
+  # Fetch the log to provide as definitive proof to the reality checker
+  GH_LOG=$(gh run view "$RUN_ID" --log | tail -n 1000)
 
   # Retrieve the ticket
   TICKET_JSON=$(curl -s -X GET "https://kanban.hackedyour.info/api/v1/workspaces/${PROJECT}/projects/$PROJECT_ID/issues/$WORK_ITEM_ID/" \
@@ -78,9 +88,11 @@ if [[ "$STATE" == "$DONE_STATE_ID" ]]; then
     echo "description: The discussion and history on the ticket including any attachments."
     echo "---"
     echo "${TICKET_COMMENTS}"
-    if [ -f "docs/qa/test-results.latest.txt" ]; then
-      cat <(echo -e "\n\n---\nname: Latest Test Results\ndescription: The last test results from docs/qa/test-results.latest.txt\ntime_generated: $(stat -c %y docs/qa/test-results.latest.txt 2>/dev/null || echo 'Unknown')\ncurrent_time: $(date)\n---") "docs/qa/test-results.latest.txt"
-    fi
+    echo -e "\n\n---"
+    echo "name: GitHub Actions CI Log"
+    echo "description: The build log from GitHub Actions serving as definitive proof that tests passed on commit $COMMIT_SHA."
+    echo "---"
+    echo "$GH_LOG"
   } > "$TICKET_FILE"
 
   RESULT=$(cat "$TICKET_FILE" | gemini -p "@reality-checker Please verify if work item $WORK_ITEM_ID is completed. You don't get the work items from the filesystem. Use the list_files and read_file tool to find proof. You may request any additional information you need in a specific location. Be descriptive. Otherwise, respond with NEEDS WORK." 2>&1)

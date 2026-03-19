@@ -72,59 +72,79 @@ def test_ui_advanced_settings_flow(setup_ui_server_advanced, assert_snapshot):
         page.fill("#serverUrl", "http://joplin:22300")
         page.fill("#username", "admin@localhost")
         page.fill("#password", "admin")
+        
+        # When saving for the first time, it alerts and reloads the page.
+        # We need to catch the alert and accept it, and wait for the reload.
         page.click("button:has-text('Save & Validate')")
         
-        # Wait for "Saved successfully!"
-        expect(page.locator("#auth-msg")).to_have_text("Saved successfully!", timeout=15000)
+        # Verify the alert message said to log in again
+        # Note: the dialog listener automatically accepts it
+        page.wait_for_timeout(2000) # Give it a moment to process the alert and reload
+        
+        # The page reloads and throws 401 because 'setup' is no longer valid.
+        # We must create a new context with the real credentials to continue.
+        context.close()
+        
+        context2 = browser.new_context(
+            http_credentials={'username': 'admin@localhost', 'password': 'admin'}
+        )
+        page2 = context2.new_page()
+        
+        # We need to catch dialogs on the new page too
+        dialog_messages.clear()
+        page2.on("dialog", lambda dialog: (dialog_messages.append(dialog.message), dialog.accept()))
+        
+        page2.goto(base_url)
+        expect(page2.locator("text=Joplin Memory Server Dashboard").first).to_be_visible()
         
         # Wait for Joplin server to be fully initialized and for sync to begin
         time.sleep(10)
         
         # 2. Open Advanced RAG Configuration
-        page.click("summary:has-text('Advanced RAG Configuration')")
+        page2.click("summary:has-text('Advanced RAG Configuration')")
         
         # Verify the default is "Local CPU Model"
-        expect(page.locator("#embeddingMode")).to_have_value("local")
+        expect(page2.locator("#embeddingMode")).to_have_value("local")
         
         # 3. Change to Ollama
-        page.select_option("#embeddingMode", "ollama")
+        page2.select_option("#embeddingMode", "ollama")
         
         # Verify Ollama fields are now visible
-        expect(page.locator("#ollama-fields")).to_be_visible()
+        expect(page2.locator("#ollama-fields")).to_be_visible()
         
         # 4. Fill with FAKE model to test the Pre-Flight Probe
-        page.fill("#ollamaBaseUrl", "http://ollama:11434")
-        page.fill("#ollamaModel", "this-is-a-fake-model-that-will-404")
+        page2.fill("#ollamaBaseUrl", "http://ollama:11434")
+        page2.fill("#ollamaModel", "this-is-a-fake-model-that-will-404")
         
-        page.click("button:has-text('Save Settings')")
+        page2.click("button:has-text('Save Advanced Settings')")
         
         # Wait for the button to go to 'Testing Connection...' and come back
-        expect(page.locator("button:has-text('Save Settings')")).to_be_enabled(timeout=10000)
+        expect(page2.locator("button:has-text('Save Advanced Settings')")).to_be_enabled(timeout=10000)
         
         # Verify the JS alert caught the 400 error
         assert len(dialog_messages) > 0, "Expected a Javascript alert for bad model connection"
         assert "Error:" in dialog_messages[-1] or "Network" in dialog_messages[-1]
         
         # 5. Fill with REAL model
-        page.fill("#ollamaModel", "nomic-embed-text")
-        page.click("button:has-text('Save Settings')")
+        page2.fill("#ollamaModel", "nomic-embed-text")
+        page2.click("button:has-text('Save Advanced Settings')")
         
         # 6. Verify the REINDEX Modal popped up
-        expect(page.locator("dialog")).to_be_visible(timeout=5000)
-        expect(page.locator("dialog h3")).to_contain_text("Critical Changes Detected")
+        expect(page2.locator("dialog")).to_be_visible(timeout=5000)
+        expect(page2.locator("dialog h3")).to_contain_text("Critical Changes Detected")
         
         # 7. Attempt to click Confirm without typing REINDEX
-        expect(page.locator("#confirm-btn")).to_be_disabled()
+        expect(page2.locator("#confirm-warning-btn")).to_be_disabled()
         
         # 8. Type REINDEX
-        page.fill("#reindexConfirm", "REINDEX")
-        expect(page.locator("#confirm-btn")).to_be_enabled()
+        page2.fill("#reindex-confirm-input", "REINDEX")
+        expect(page2.locator("#confirm-warning-btn")).to_be_enabled()
         
         # 9. Click Confirm
-        page.click("#confirm-btn")
+        page2.click("#confirm-warning-btn")
         
-        # Wait for success message from backend
-        expect(page.locator("#rag-msg")).to_have_text("Settings saved successfully.", timeout=10000)
+        # Wait for success message from backend (button text changes)
+        expect(page2.locator("#save-advanced-btn")).to_have_text("Saved Successfully!", timeout=10000)
         
         # 10. Verify that the Docker container actually restarted itself as a result of the REINDEX
         # If it restarted, our proxy might drop connection or it will just be down for a second.

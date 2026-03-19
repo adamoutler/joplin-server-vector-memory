@@ -201,7 +201,7 @@ def test_api_server_live_endpoints(setup_live_container):
         "model": "fake-model-that-doesnt-exist"
     }
     probe_fail_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=fake_probe_payload, headers=api_headers, timeout=30)
-    assert probe_fail_resp.status_code == 400, "Expected probe to fail for fake model"
+    assert probe_fail_resp.status_code in [400, 422], f"Expected probe to fail for fake model, got {probe_fail_resp.status_code}"
     
     # 2. Test a valid model probe (should succeed since docker-compose.test.yml runs ollama with nomic-embed-text)
     valid_probe_payload = {

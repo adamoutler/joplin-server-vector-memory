@@ -25,7 +25,14 @@ describe('Semantic Chunking for Large Notes', () => {
     });
     
     // Mock vectorDb
-    client.vectorDb = { all: (q, cb) => cb(null, []), run: (q, p, cb) => cb && cb(null), get: (q, p, cb) => cb(null, null) };
+    client.vectorDb = { 
+      all: (q, cb) => cb(null, []), 
+      run: function(q, p, cb) { 
+        if (cb) cb.call({ lastID: 1 }, null); 
+      }, 
+      get: (q, p, cb) => cb(null, null),
+      serialize: (cb) => cb()
+    };
     
     // Mock upsert method so we don't need real sqlite
     client.upsertVector = jest.fn().mockResolvedValue();

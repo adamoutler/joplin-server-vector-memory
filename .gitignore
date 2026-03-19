@@ -14,3 +14,4 @@ docs/qa/
 *.db
 get_in_progress.py
 test_qa.sh
+.venv/

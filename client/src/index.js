@@ -233,8 +233,8 @@ app.use(async (req, res, next) => {
 });
 
 let isProcessing = false;
-let syncState = { status: 'ready', progress: null, error: null };
-let embeddingState = { status: 'ready', progress: null, error: null };
+let syncState = { status: 'offline', progress: null, error: null };
+let embeddingState = { status: 'offline', progress: null, error: null };
 let syncClient = null;
 
 app.get('/node-api/resources/:id', async (req, res) => {
@@ -608,6 +608,11 @@ app.post('/auth/keys/delete', (req, res) => {
   }
 });
 
+app.post('/node-api/restart', (req, res) => {
+  res.json({ message: 'Restarting sync daemon...' });
+  setTimeout(() => process.exit(0), 500);
+});
+
 app.post('/auth/wipe', async (req, res) => {
   try {
     if (fs.existsSync(CONFIG_PATH)) {
@@ -634,8 +639,8 @@ app.post('/auth/wipe', async (req, res) => {
     // Reset memory state
     syncClient = null;
     isProcessing = false;
-    syncState = { status: 'ready', progress: null, error: null };
-    embeddingState = { status: 'ready', progress: null, error: null };
+    syncState = { status: 'offline', progress: null, error: null };
+    embeddingState = { status: 'offline', progress: null, error: null };
     globalCredentials = { password: null, masterPassword: null };
     authCache.clear();
 
@@ -665,7 +670,17 @@ async function runSyncCycle(config) {
         profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
       });
       
-      syncClient.on('syncStart', () => { syncState.status = 'syncing'; syncState.progress = null; syncState.error = null; console.log('Sync started...'); });
+      syncClient.on('syncStart', () => { 
+        syncState.status = 'syncing'; 
+        syncState.progress = null; 
+        syncState.error = null; 
+        
+        embeddingState.status = 'waiting';
+        embeddingState.progress = null;
+        embeddingState.error = null;
+        
+        console.log('Sync started...'); 
+      });
       syncClient.on('syncComplete', () => { 
         if (syncState.status !== 'error') {
           syncState.status = 'ready'; 

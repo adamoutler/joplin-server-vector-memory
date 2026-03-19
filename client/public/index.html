@@ -534,7 +534,7 @@
           const data = await res.json();
           initialState = data;
           
-          const fields = ['ollamaBaseUrl', 'ollamaModel', 'chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
+          const fields = ['chunkSize', 'chunkOverlap', 'searchTopK', 'hybridAlpha', 'syncInterval', 'syncMaxRetries'];
           fields.forEach(f => {
             const el = document.getElementById(f);
             if (el && data[f] !== undefined && data[f] !== null) {
@@ -542,10 +542,16 @@
             }
           });
 
-          // Initialize embedding mode based on whether ollamaBaseUrl has a value
+          // Initialize embedding mode based on the nested embedding object
           const modeSelect = document.getElementById('embeddingMode');
           if (modeSelect) {
-            modeSelect.value = (data.ollamaBaseUrl && data.ollamaBaseUrl.trim() !== '') ? 'ollama' : 'local';
+            if (data.embedding && data.embedding.provider === 'ollama') {
+                modeSelect.value = 'ollama';
+                document.getElementById('ollamaBaseUrl').value = data.embedding.baseUrl || '';
+                document.getElementById('ollamaModel').value = data.embedding.model || '';
+            } else {
+                modeSelect.value = 'local';
+            }
             toggleOllamaFields();
           }
 
@@ -571,9 +577,17 @@
     loadAdvancedSettings();
 
     function getFormValues() {
+      const mode = document.getElementById('embeddingMode').value;
+      const embedding = mode === 'ollama' ? {
+          provider: 'ollama',
+          baseUrl: document.getElementById('ollamaBaseUrl').value,
+          model: document.getElementById('ollamaModel').value
+      } : {
+          provider: 'internal'
+      };
+
       return {
-        ollamaBaseUrl: document.getElementById('ollamaBaseUrl').value,
-        ollamaModel: document.getElementById('ollamaModel').value,
+        embedding: embedding,
         chunkSize: parseInt(document.getElementById('chunkSize').value) || 1000,
         chunkOverlap: parseInt(document.getElementById('chunkOverlap').value) || 200,
         searchTopK: parseInt(document.getElementById('searchTopK').value) || 5,
@@ -583,16 +597,19 @@
       };
     }
 
-    advancedRagForm.addEventListener('submit', (e) => {
+    advancedRagForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const currentValues = getFormValues();
+      
+      const saveBtn = advancedRagForm.querySelector('button[type="submit"]');
+      const originalText = saveBtn.innerText;
       
       let isCriticalChanged = false;
       const criticalFieldsets = advancedRagForm.querySelectorAll('fieldset[data-critical="true"]');
       criticalFieldsets.forEach(fs => {
         const inputs = fs.querySelectorAll('input, select');
         inputs.forEach(input => {
-          if (input.id && input.id !== 'embeddingMode') {
+          if (input.id && input.id !== 'embeddingMode' && input.id !== 'ollamaBaseUrl' && input.id !== 'ollamaModel') {
             const currentVal = currentValues[input.id];
             const initialVal = initialState[input.id] !== undefined && initialState[input.id] !== null ? initialState[input.id] : '';
             if (String(currentVal) !== String(initialVal)) {
@@ -601,6 +618,48 @@
           }
         });
       });
+      
+      // Check for nested embedding changes
+      const initialProvider = initialState.embedding ? initialState.embedding.provider : 'internal';
+      if (currentValues.embedding.provider !== initialProvider) {
+          isCriticalChanged = true;
+      } else if (currentValues.embedding.provider === 'ollama') {
+          if (currentValues.embedding.baseUrl !== initialState.embedding.baseUrl || currentValues.embedding.model !== initialState.embedding.model) {
+              isCriticalChanged = true;
+          }
+      }
+
+      // If Ollama is selected, explicitly test the connection before doing anything else
+      if (currentValues.embedding.provider === 'ollama') {
+        saveBtn.innerText = 'Testing Connection...';
+        saveBtn.disabled = true;
+        try {
+            const testRes = await fetch('/api/settings/test-model', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + getToken()
+                },
+                body: JSON.stringify(currentValues.embedding)
+            });
+            if (!testRes.ok) {
+                const errData = await testRes.json();
+                let errMsg = errData.detail;
+                if (typeof errMsg === 'object') errMsg = JSON.stringify(errMsg);
+                alert(`Error: ${errMsg || 'Could not connect to Ollama model'}`);
+                saveBtn.innerText = originalText;
+                saveBtn.disabled = false;
+                return; // Abort save
+            }
+        } catch (err) {
+            alert(`Network Error: ${err.message}`);
+            saveBtn.innerText = originalText;
+            saveBtn.disabled = false;
+            return; // Abort save
+        }
+        saveBtn.innerText = originalText;
+        saveBtn.disabled = false;
+      }
 
       if (isCriticalChanged) {
         pendingAction = 'save';
