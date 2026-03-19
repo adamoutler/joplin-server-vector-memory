@@ -5,8 +5,36 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v1.0.0)'
+        required: true
+        type: string
 
 jobs:
+  commitlint:
+    name: Lint Commit Messages
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install commitlint
+        run: npm install -g @commitlint/cli @commitlint/config-conventional
+      - name: Run commitlint
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+          else
+            npx commitlint --from HEAD~1 --to HEAD --verbose
+          fi
+
   lint:
     name: Lint Code Base
     runs-on: ubuntu-latest
@@ -216,14 +244,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Get Latest Tag
-        id: get_tag
+      - name: Build an image from Dockerfile
         run: |
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "tag=${LATEST_TAG}" >> $GITHUB_OUTPUT
+          docker build -t test-image:${{ github.sha }} .
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'test-image:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -231,22 +264,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev
+          images: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=raw,value=${{ steps.get_tag.outputs.tag }},enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=sha,format=short
+            type=raw,value=dev-latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=dev-${{ github.sha }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
