@@ -42,7 +42,7 @@ def setup_container():
     ready = False
     for _ in range(60):
         try:
-            resp = requests.get("http://localhost:22301/api/ping", timeout=30)
+            resp = requests.get("http://localhost:22301/api/ping", headers={"Host": "joplin:22300"}, timeout=30)
             if resp.status_code == 200:
                 ready = True
                 break
@@ -81,13 +81,26 @@ def test_auth_marriage_and_wipe(setup_container):
     # The POST /auth endpoint does not require basic auth because it's handling the initial config save
     # Wait, the proxy middleware might intercept it! Let's check if POST /auth is authenticated.
     # We should send the setup auth headers.
-    resp = requests.post(f"{base_url}/auth", json={
-        "serverUrl": joplin_url,
-        "username": real_auth[0],
-        "password": real_auth[1]
-    }, auth=setup_auth)
-    
-    assert resp.status_code == 200, f"Auth failed: {resp.text}"
+
+    auth_success = False
+    last_err = ""
+    for _ in range(30):
+        try:
+            resp = requests.post(f"{base_url}/auth", json={
+                "serverUrl": joplin_url,
+                "username": real_auth[0],
+                "password": real_auth[1]
+            }, auth=setup_auth, timeout=5)
+
+            if resp.status_code == 200:
+                auth_success = True
+                break
+            last_err = resp.text
+        except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
+            last_err = str(e)
+        time.sleep(2)
+
+    assert auth_success, f"Auth failed after retries: {last_err}"
     data = resp.json()
     assert data.get("requireRelogin") is True
     assert "locked" in data.get("message", "").lower()
