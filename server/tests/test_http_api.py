@@ -33,7 +33,7 @@ def temp_config_and_db():
 def mock_ollama():
     with patch('src.main.get_embedding') as mock_embed:
         def side_effect(text):
-            vec = [0.0] * 384
+            vec = [0.0] * 768
             if "test query" in text.lower():
                 vec[0] = 1.0
             elif "apple" in text.lower():

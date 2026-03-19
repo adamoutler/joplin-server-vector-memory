@@ -25,7 +25,7 @@ def temp_db():
 def mock_ollama():
     with patch('src.main.get_embedding') as mock_embed:
         def side_effect(text):
-            return [0.0] * 384
+            return [0.0] * 768
         mock_embed.side_effect = side_effect
         yield mock_embed
 

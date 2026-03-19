@@ -28,7 +28,7 @@ def mock_ollama():
         # Return a simple mock embedding of 384 zeros
         # We can modify a specific index based on the prompt for testing
         def side_effect(text):
-            vec = [0.0] * 384
+            vec = [0.0] * 768
             if "test query" in text.lower():
                 vec[0] = 1.0
             elif "apple" in text.lower():
