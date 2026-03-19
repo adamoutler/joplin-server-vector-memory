@@ -200,7 +200,7 @@ def test_api_server_live_endpoints(setup_live_container):
         "baseUrl": "http://ollama:11434",
         "model": "fake-model-that-doesnt-exist"
     }
-    probe_fail_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=fake_probe_payload, headers=api_headers, timeout=30)
+    probe_fail_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=fake_probe_payload, headers=headers, timeout=30)
     assert probe_fail_resp.status_code in [400, 422], f"Expected probe to fail for fake model, got {probe_fail_resp.status_code}"
     
     # 2. Test a valid model probe (should succeed since docker-compose.test.yml runs ollama with nomic-embed-text)
@@ -209,7 +209,7 @@ def test_api_server_live_endpoints(setup_live_container):
         "baseUrl": "http://ollama:11434",
         "model": "nomic-embed-text"
     }
-    probe_success_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=valid_probe_payload, headers=api_headers, timeout=30)
+    probe_success_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=valid_probe_payload, headers=headers, timeout=30)
     assert probe_success_resp.status_code == 200, f"Expected probe to succeed, got: {probe_success_resp.text}"
     probe_data = probe_success_resp.json()
     assert probe_data.get("dimension") == 768, f"Expected dimension 768 from nomic-embed-text, got {probe_data}"
@@ -223,12 +223,23 @@ def test_api_server_live_endpoints(setup_live_container):
         },
         "reindex_approved": True
     }
-    update_resp = requests.post(f"{PROXY_URL}/api/settings", json=update_payload, headers=api_headers, timeout=30)
+    update_resp = requests.post(f"{PROXY_URL}/api/settings", json=update_payload, headers=headers, timeout=30)
     assert update_resp.status_code == 200, f"Failed to update settings: {update_resp.text}"
     
     print("[E2E] Settings updated successfully. Awaiting Node.js daemon restart and re-sync...", file=sys.stderr)
     
     # Give the Node daemon time to restart and re-sync the note with the new embedding engine
+    time.sleep(15)
+    
+    # 4. Verify search still works with the newly dimensioned database
+    search_resp_after = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "E2E"}, headers=headers, timeout=30)
+    assert search_resp_after.status_code == 200, "Search failed after re-indexing"
+    search_data_after = search_resp_after.json()
+    assert len(search_data_after) > 0, "No results returned after re-index"
+    assert search_data_after[0]["id"] == note_id, "The backend top result should still be our note after re-index"
+
+    print("[E2E] Advanced settings flow completed successfully.", file=sys.stderr)
+ngine
     time.sleep(15)
     
     # 4. Verify search still works with the newly dimensioned database
