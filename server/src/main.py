@@ -35,7 +35,7 @@ def get_local_model():
 
 
 class UpdateMode(str, Enum):
-    replace = "replace"
+    full_note_replacement = "full note replacement"
     append = "append"
 
 
@@ -427,7 +427,7 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
 def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modified_timestamp: int, summary_of_changes: str) -> dict:
     """
     Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
-    update_mode can be 'replace' or 'append'.
+    update_mode can be 'full note replacement' or 'append'.
     summary_of_changes is a description of the changes made for record keeping (not currently stored).
     """
     db = get_db_connection()
@@ -447,11 +447,11 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
 
     if update_mode == UpdateMode.append:
         new_content = current_content + "\n" + content
-    elif update_mode == UpdateMode.replace:
+    elif update_mode == UpdateMode.full_note_replacement:
         new_content = content
     else:
         db.close()
-        return {"error": "Invalid update_mode. Must be 'append' or 'replace'."}
+        return {"error": "Invalid update_mode. Must be 'append' or 'full note replacement'."}
 
     new_time = int(time.time() * 1000)
 
@@ -794,8 +794,8 @@ app = FastAPI(
     title="Joplin Server Vector Memory API",
     description="API for semantic search and memory management with Joplin",
     version="1.0.0",
-    docs_url="/docs",
-    openapi_url="/openapi.json",
+    docs_url=None,
+    openapi_url=None,
     redoc_url=None,
     lifespan=lifespan
 )
