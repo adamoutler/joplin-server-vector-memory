@@ -8,10 +8,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 client = TestClient(app)
 
+
 def test_openapi_json_is_disabled():
     """Ensure that the OpenAPI schema is disabled at /openapi.json."""
     response = client.get("/openapi.json")
     assert response.status_code == 404
+
 
 def test_fastapi_docs_are_disabled():
     """Ensure built-in FastAPI documentation endpoints are disabled at /docs and /redoc."""
