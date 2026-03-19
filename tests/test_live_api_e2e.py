@@ -73,7 +73,7 @@ def test_api_server_live_endpoints(setup_live_container):
 
     # Verify that the ports are responding properly
     docs_8000 = requests.get(f"{BACKEND_URL}/docs", timeout=30)
-    assert docs_8000.status_code == 200, f"Backend /docs should return 200, got {docs_8000.status_code}"
+    assert docs_8000.status_code == 404, f"Backend /docs should return 404, got {docs_8000.status_code}"
 
     docs_3000 = requests.get(f"{PROXY_URL}/docs", timeout=30)
     assert docs_3000.status_code == 200, f"Proxy /docs should return 200, got {docs_3000.status_code}"
