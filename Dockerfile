@@ -22,7 +22,7 @@ RUN pip install --upgrade setuptools wheel && \
 
 # Install Node dependencies
 COPY client/package*.json ./client/
-RUN cd client && npm ci && find . -type f -name "Cargo.lock" -delete
+RUN cd client && npm ci --build-from-source=sqlite3 && find . -type f -name "Cargo.lock" -delete
 
 # Copy full application code
 COPY . .
