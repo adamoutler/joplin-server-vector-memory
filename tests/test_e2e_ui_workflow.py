@@ -69,7 +69,7 @@ def test_ui_advanced_settings_flow(setup_ui_server_advanced, assert_snapshot):
         expect(page.locator("text=Joplin Memory Server Dashboard").first).to_be_visible()
         
         # 1. Fill out Initial Setup Form
-        page.fill("#serverUrl", "http://joplin:22300")
+        page.fill("#serverUrl", "http://joplin:22300/")
         page.fill("#username", "admin@localhost")
         page.fill("#password", "admin")
         
