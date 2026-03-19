@@ -114,6 +114,7 @@ app.use(async (req, res, next) => {
   }
 
   let joplinUrl = process.env.JOPLIN_SERVER_URL;
+  if (joplinUrl) joplinUrl = joplinUrl.replace(/\/+$/, '');
   let proxyConfig = null;
 
   if (fs.existsSync(CONFIG_PATH)) {
@@ -121,7 +122,7 @@ app.use(async (req, res, next) => {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       proxyConfig = JSON.parse(data);
       if (!joplinUrl && proxyConfig.joplinServerUrl) {
-        joplinUrl = proxyConfig.joplinServerUrl;
+        joplinUrl = proxyConfig.joplinServerUrl.replace(/\/+$/, '');
       }
     } catch(e) {
       // ignore parse errors
