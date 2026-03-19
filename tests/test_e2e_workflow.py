@@ -31,7 +31,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 's
 
 class MockOllamaHandler(BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path in ['/api/embeddings', '/http-api/internal/embed']:
+        if self.path in ['/api/embeddings', '/api/embed', '/http-api/internal/embed']:
             try:
                 if self.headers.get('Transfer-Encoding', '').lower() == 'chunked':
                     post_data_bytes = b""
@@ -55,7 +55,7 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                 req = json.loads(post_data) if post_data else {}
                 
                 # Check if it's a batched request or single
-                texts = req.get('texts', [])
+                texts = req.get('texts', req.get('input', []))
                 if not texts:
                     single_prompt = req.get('prompt', req.get('text', ''))
                     if single_prompt:
@@ -89,7 +89,7 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             
-            if 'internal/embed' in self.path:
+            if 'internal/embed' in self.path or 'api/embed' in self.path:
                 response = {"embeddings": all_embeddings}
             else:
                 response = {"embedding": all_embeddings[0] if all_embeddings else []}
@@ -143,33 +143,35 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
     env["JOPLIN_PASSWORD"] = "admin"
-    
+
+    # Database is stored in temp_profile/vector.sqlite
+    sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
+
     print("Running Node.js client to create, sync and generate embedding...")
     result = subprocess.run(
-        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_create_sync.js", secret_uuid],
+        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_create_sync.js", secret_uuid],
         cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
         capture_output=True,
         text=True
     )
-    
     print("Node.js output:", result.stdout)
     if result.stderr:
         print("Node.js error:", result.stderr)
         
     assert result.returncode == 0, "Node.js client script failed"
-    
+
     # Extract the created note ID from the stdout (optional, just for reference)
     created_note_id = None
     for line in result.stdout.splitlines():
         if "Created note ID:" in line:
             created_note_id = line.split("Created note ID:")[1].strip()
-            
+
     assert created_note_id is not None, "Failed to capture created note ID from Node script output"
-    
-    # Database is stored in temp_profile/vector.sqlite
-    sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
-    assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"
-    
+
+    # Copy the DB out of the container to the host machine for the python test to read
+    subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
+
+    assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
     # Query Python MCP Server
     main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
     env["SQLITE_DB_PATH"] = sqlite_db_path
@@ -278,35 +280,37 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
     env["JOPLIN_PASSWORD"] = "admin"
-    
+
+    # Database is stored in temp_profile/vector.sqlite
+    sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
+
     print("Running Node.js client for massive note injection...")
     # Increase timeout significantly as per instructions
     result = subprocess.run(
-        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid],
+        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid],
         cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
         capture_output=True,
         text=True,
         timeout=300
     )
-    
     print("Massive Node.js output:", result.stdout)
     if result.stderr:
         print("Massive Node.js error:", result.stderr)
         
     assert result.returncode == 0, "Massive Node.js client script failed"
-    
+
     # Extract the created note ID from the stdout
     created_note_id = None
     for line in result.stdout.splitlines():
         if "Created note ID:" in line:
             created_note_id = line.split("Created note ID:")[1].strip()
-            
+
     assert created_note_id is not None, "Failed to capture created note ID from Node script output"
-    
-    # Database is stored in temp_profile/vector.sqlite
-    sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
-    assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"
-    
+
+    # Copy the DB out of the container to the host machine for the python test to read
+    subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
+
+    assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
     # Query Python MCP Server
     main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
     env["SQLITE_DB_PATH"] = sqlite_db_path
