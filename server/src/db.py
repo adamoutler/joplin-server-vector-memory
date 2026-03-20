@@ -103,11 +103,16 @@ def init_db(db, explicit_dim=None):
 
 
 def reset_database(explicit_dim=None):
-    db_path = os.environ.get("SQLITE_DB_PATH", "joplin_vector.db")
-    if os.path.exists(db_path):
-        try:
-            os.remove(db_path)
-        except OSError:
-            pass  # Ignore if locked, node-js proxy will unlink it later
-    # Re-initialize
-    get_db_connection(explicit_dim)
+    db = get_db_connection(explicit_dim)
+    cursor = db.cursor()
+    try:
+        cursor.execute("DROP TABLE IF EXISTS vec_notes")
+        cursor.execute("DROP TABLE IF EXISTS notes_fts")
+        cursor.execute("DROP TABLE IF EXISTS note_metadata")
+        db.commit()
+    except sqlite3.OperationalError:
+        pass # Tables might not exist yet
+    
+    # Re-initialize the tables with the new dimensions
+    init_db(db, explicit_dim)
+    db.close()

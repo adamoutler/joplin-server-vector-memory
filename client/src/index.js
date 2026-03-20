@@ -646,11 +646,9 @@ app.post('/auth/wipe', async (req, res) => {
     embeddingState = { status: 'offline', progress: null, error: null };
     globalCredentials = { password: null, masterPassword: null };
     authCache.clear();
+    proxyConfig = null;
 
     res.json({ success: true, message: 'System completely reset.' });
-    
-    // Force exit to ensure clean slate (Docker will restart it)
-    setTimeout(() => process.exit(0), 500);
   } catch (err) {
     console.error('Failed to wipe system:', err);
     res.status(500).json({ error: 'Failed to wipe system: ' + err.message });
