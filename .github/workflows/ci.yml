@@ -277,15 +277,23 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
+      - name: Set Image Name
+        id: image-name
+        run: |
+          if [ "${{ github.event_name }}" == "push" ]; then
+            echo "name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev" >> $GITHUB_OUTPUT
+          else
+            echo "name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory" >> $GITHUB_OUTPUT
+          fi
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory
+          images: ${{ steps.image-name.outputs.name }}
           tags: |
-            type=raw,value=dev-latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=raw,value=dev-${{ github.sha }},enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest
+            type=raw,value=${{ github.sha }},enable=${{ github.event_name == 'push' }}
             type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push Docker image
