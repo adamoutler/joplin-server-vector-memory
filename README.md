@@ -6,6 +6,31 @@ An AI-native semantic search engine and memory bridge, this system acts as a sec
 
 ---
 
+## 🚀 Quick Start Guide
+
+Ready to supercharge your AI assistants? Let's get started:
+
+### Option 1: Docker Run
+
+```bash
+docker pull ghcr.io/adamoutler/joplin-server-vector-memory-dev:latest
+docker run -p3000:3000 -p8000:8000 -v data:/app/data ghcr.io/adamoutler/joplin-server-vector-memory-dev:latest
+```
+
+### Option 2: Docker Compose
+
+1. Download one of our provided docker-compose files:
+    *   **[docker-compose.yml](docs/docker-compose.yml)** (Stable)
+    *   **[docker-compose-dev.yml](docs/docker-compose-dev.yml)** (Latest Dev)
+2. Run the following command in the directory containing the downloaded file:
+    ```bash
+    docker compose up -d
+    ```
+3. **Monitor Progress:** Open `http://localhost:3000` in your browser. Log in with `setup` / `1-mcp-server` to enter your Joplin details. Watch your synchronization and embedding progress in real-time!
+4. **Connect Your AI:** Configure your favorite AI client (e.g., Gemini CLI via `.gemini/settings.json`, Claude Desktop, etc.) to point to the local FastMCP server running on port `8000`.
+
+---
+
 ## 🎯 Core Philosophy & Architecture
 
 Our primary architectural mandate is **Interoperability and Record/Convey**. By default, most AI platforms hoard your project context and learned skills within their proprietary agent memories. This system breaks that paradigm. Whether you are coding with GitHub Copilot, analyzing data with Claude Code, brainstorming via Gemini CLI, or automating with GPT Codex, this bridge allows *any* AI to interface seamlessly with your complete Joplin knowledge base. 🤝
@@ -38,34 +63,6 @@ Your privacy is paramount. We've built the system so that your credentials stay 
 *   **In-Memory Credentials:** The system is designed so that neither the Joplin Server password nor the E2EE Master Password is ever saved to the Docker volume. Passwords live strictly in volatile RAM.
 *   **Auto-Unlock via Browser:** The system intercepts your browser's native Basic Auth login to acquire the passwords securely.
 *   **User Lock & Factory Reset:** Upon entering your real Joplin Server credentials into the dashboard, the system permanently binds exclusively to that username. It forces a logout of the `setup` account, requiring you to log back in using your *real* Joplin username and password. It cannot be hijacked by other accounts. To switch users, the authenticated owner must access the "Danger Zone" in the dashboard to perform a Factory Reset, which wipes the local databases and relinquishes the lock.
-
----
-
-## 🤖 Automated CI/CD & Versioning
-
-This project uses GitHub Actions for continuous integration to ensure high reliability.
-
-*   **Auto-Versioning:** Every local commit automatically triggers a `post-commit` hook that generates and tags a semver version (e.g., `v0.1.X`) based on the commit depth.
-*   **Deployment:** Pushing to the `main` branch triggers the CI pipeline. If all tests pass, the container is automatically built and deployed to the GitHub Container Registry (`ghcr.io`) with the new version tag.
-*   **AI Feedback Loop:** The Gemini CLI is configured with a post-tool hook that intercepts `git push` commands. The AI will automatically wait for the GitHub Actions workflow to complete and read the CI results, ensuring rigorous QA without manual intervention.
-
----
-
-## 🚀 Quick Start Guide
-
-Ready to supercharge your AI assistants? Let's get started:
-
-1.  **Configure Environment:** Copy the example config file to set up your environment.
-    ```bash
-    cp .env.example .env
-    ```
-    *(Optionally edit `.env` to add your credentials, or leave it blank to use the secure Setup Mode UI.)*
-2.  **Spin Up the Infrastructure:**
-    ```bash
-    docker-compose up -d
-    ```
-3.  **Monitor Progress:** Open `http://localhost:3000` in your browser. If you didn't provide credentials in `.env`, log in with `setup` / `1-mcp-server` to enter your Joplin details. Watch your synchronization and embedding progress in real-time!
-4.  **Connect Your AI:** Configure your favorite AI client (e.g., Gemini CLI via `.gemini/settings.json`, Claude Desktop, etc.) to point to the local FastMCP server running on port `8000`.
 
 ---
 
