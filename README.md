@@ -68,9 +68,10 @@ Your privacy is paramount. We've built the system so that your credentials stay 
 
 ## 📚 What's Next? Further Resources
 
+*   **[Setup Guide](docs/SETUP.md)**: Detailed instructions for advanced configurations.
+*   **[Environment Variables](docs/ENVIRONMENT.md)**: A comprehensive reference for all headless configuration options.
 *   **[API Documentation](docs/API.md)**: Deep dive into the available MCP tools and endpoints.
 *   **[System Architecture](docs/ARCHITECTURE.md)**: Understand the data flow and component interactions.
-*   **[Setup Guide](docs/SETUP.md)**: Detailed instructions for advanced configurations.
 *   **[AI Friction Architecture](docs/AI_FRICTION_ARCHITECTURE.md)**: Learn how we design safe Agentic UX.
 
 *Welcome to the future of personal knowledge management. Your AI brain is ready!* 🧠✨
