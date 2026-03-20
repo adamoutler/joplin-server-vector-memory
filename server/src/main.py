@@ -378,9 +378,6 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
     You must then embed that ID into the `content` of this note using standard 
     Joplin markdown syntax: `[link text](:/THE_RETURNED_ID)` or `![image](:/THE_RETURNED_ID)`.
     """
-    if not title.startswith("[Agent Memory] ") and folder == "Agent Memory":
-        title = f"[Agent Memory] {title}"
-
     try:
         # 1. Relay to Joplin via Node Proxy
         res = _call_node_proxy("POST", "/node-api/notes", json_data={"title": title, "body": content, "folder": folder})
