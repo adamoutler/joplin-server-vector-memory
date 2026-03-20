@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart TB
- subgraph Web3000["Port 3000 Service"]
+ subgraph Web3000["Server Admin Interface"]
     direction LR
         P3000(("Port: 3000"))
         Auth["Basic Auth Middleware"]
