@@ -189,11 +189,11 @@ app.use(async (req, res, next) => {
       
       // Auto-unlock: If we have a proxy config but sync isn't running or errored, try to start it
       if (proxyConfig && proxyConfig.joplinServerUrl && proxyConfig.joplinUsername) {
-        if (!isProcessing && (!syncState || syncState.status === 'ready' || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
+        if (!isProcessing && (!syncState || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
              // Only auto-start if it seems like we need to (e.g. boot up state)
              // We use a small timeout to avoid blocking the auth request itself
              setTimeout(() => {
-                 if (!isProcessing && (!syncState || syncState.status === 'ready' || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
+                 if (!isProcessing && (!syncState || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
                      console.log("Auto-unlocking sync using intercepted Basic Auth credentials...");
                      startSync(proxyConfig);
                  }
