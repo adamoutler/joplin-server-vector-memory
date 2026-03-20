@@ -8,50 +8,8 @@ import subprocess
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
 
-@pytest.fixture(scope="module")
-def setup_live_container():
-    print("\\n[setup_live_container] Tearing down any existing containers...", file=sys.stderr)
-    subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
-    
-    # Run container WITHOUT env vars to ensure setup mode
-    env = os.environ.copy()
-    env.pop("JOPLIN_SERVER_URL", None)
-    env.pop("JOPLIN_USERNAME", None)
-    env.pop("JOPLIN_PASSWORD", None)
-    env.pop("JOPLIN_MASTER_PASSWORD", None)
-    
-    # Provide admin credentials for Joplin container initialization
-    env["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
-    env["JOPLIN_ADMIN_PASSWORD"] = "admin"
-    env["JOPLIN_BASE_URL"] = "http://joplin:22300"
-
-    print("[setup_live_container] Starting joplin-live-e2e cluster...", file=sys.stderr)
-    subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build"], env=env, check=True)
-    print("[setup_live_container] joplin-live-e2e cluster started.", file=sys.stderr)
-    
-    # Wait for the app container to be ready in setup mode
-    ready = False
-    for _ in range(60):
-        try:
-            resp = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=5)
-            if resp.status_code == 200:
-                ready = True
-                break
-        except (Exception, requests.exceptions.ReadTimeout):
-            pass
-        time.sleep(1)
-
-    if not ready:
-        subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "-f", DOCKER_COMPOSE_FILE, "logs", "app"])
-        subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
-        pytest.fail("App container did not start in time")
-        
-    yield
-    
-    subprocess.run(["docker", "compose", "-p", "joplin-live-e2e", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v"])
-
 @pytest.mark.enable_socket
-def test_api_server_live_endpoints(setup_live_container):
+def test_api_server_live_endpoints():
     # setup_live_container starts docker-compose.test.yml which exposes:
     # app proxy on 3001
     # app backend on 8002

@@ -8,6 +8,7 @@ import threading
 import subprocess
 import uuid
 import time
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
@@ -143,6 +144,7 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
     env["JOPLIN_PASSWORD"] = "admin"
+    env["NODE_PROXY_URL"] = "http://localhost:3001"
 
     # Database is stored in temp_profile/vector.sqlite
     sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
@@ -167,6 +169,36 @@ async def run_full_e2e_workflow(mock_ollama_server, temp_profile):
             created_note_id = line.split("Created note ID:")[1].strip()
 
     assert created_note_id is not None, "Failed to capture created note ID from Node script output"
+
+    # Initialize the Node.js proxy so it has credentials for deletion
+    print("Initializing Node.js proxy...")
+    auth_payload = {
+        "serverUrl": "http://joplin:22300",
+        "username": "admin@localhost",
+        "password": "admin",
+        "masterPassword": "test_master_password",
+        "rotate": False
+    }
+    r = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10)
+    print("Init response:", r.status_code, r.text)
+
+    # Wait for proxy to be ready and sync client initialized
+    ready = False
+    for _ in range(30):
+        try:
+            # check the status endpoint
+            r = requests.get("http://localhost:3001/status", auth=("admin@localhost", "admin"), timeout=2)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("sync", {}).get("status") == "idle" or data.get("sync", {}).get("status") == "online" or data.get("sync", {}).get("status") == "syncing":
+                   ready = True
+                   break
+        except Exception:
+            pass
+        time.sleep(1)
+        
+    if not ready:
+        print("Warning: Proxy sync client may not have initialized in time")
 
     # Copy the DB out of the container to the host machine for the python test to read
     subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
@@ -280,6 +312,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
     env["JOPLIN_PASSWORD"] = "admin"
+    env["NODE_PROXY_URL"] = "http://localhost:3001"
 
     # Database is stored in temp_profile/vector.sqlite
     sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
@@ -306,6 +339,35 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
             created_note_id = line.split("Created note ID:")[1].strip()
 
     assert created_note_id is not None, "Failed to capture created note ID from Node script output"
+
+    # Initialize the Node.js proxy so it has credentials for deletion
+    print("Initializing Node.js proxy...")
+    auth_payload = {
+        "serverUrl": "http://joplin:22300",
+        "username": "admin@localhost",
+        "password": "admin",
+        "masterPassword": "test_master_password",
+        "rotate": False
+    }
+    r = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10)
+    print("Init response:", r.status_code, r.text)
+
+    print("Restarting proxy to force it to initialize the sync client...")
+    try:
+        requests.post("http://localhost:3001/node-api/restart", timeout=5)
+    except Exception:
+        pass
+    time.sleep(3) # Wait for proxy to come back up
+    
+    # Wait for proxy to be ready
+    for _ in range(30):
+        try:
+            r = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=2)
+            if r.status_code == 200:
+                break
+        except Exception:
+            pass
+        time.sleep(1)
 
     # Copy the DB out of the container to the host machine for the python test to read
     subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)

@@ -6,13 +6,13 @@ import requests
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def ephemeral_joplin():
     env = os.environ.copy()
-    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
-    env["JOPLIN_USERNAME"] = "admin@localhost"
-    env["JOPLIN_PASSWORD"] = "admin"
-    env["JOPLIN_MASTER_PASSWORD"] = "admin"
+    env.pop("JOPLIN_SERVER_URL", None)
+    env.pop("JOPLIN_USERNAME", None)
+    env.pop("JOPLIN_PASSWORD", None)
+    env.pop("JOPLIN_MASTER_PASSWORD", None)
 
     # Down first just in case
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)

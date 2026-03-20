@@ -61,3 +61,52 @@ def assert_snapshot(pytestconfig, request, browser_name):
             pytest.fail("--> Snapshots DO NOT match!")
 
     return compare
+
+import subprocess
+import time
+import requests
+import sys
+
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+
+@pytest.fixture(autouse=True)
+def reset_docker_state():
+    """
+    Function-scoped fixture to wipe the app state and Joplin database before each test.
+    """
+    # 1. Truncate Postgres tables to clear Joplin Server data
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
+    
+    # 2. Call /auth/wipe on the Proxy to clear config, memory, and restart Node
+    try:
+        requests.post("http://localhost:3001/auth/wipe", timeout=5)
+    except Exception:
+        pass # Expected, as the Node process exits and drops the connection
+        
+    # Give the node process a moment to actually delete the file from the volume before killing the container
+    time.sleep(2)
+        
+    # Force restart app container to guarantee clean boot
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "restart", "app"])
+        
+    # 3. Wait for Node.js proxy to come back online
+    ready = False
+    last_err = ""
+    for _ in range(90):
+        try:
+            # We accept 200 (setup mode) OR 401 (needs login) because we just want to know if the web server is responsive
+            r = requests.get("http://localhost:3001/", timeout=2)
+            if r.status_code == 200 or r.status_code == 401:
+                ready = True
+                break
+            last_err = f"HTTP {r.status_code}: {r.text}"
+        except Exception as e:
+            last_err = str(e)
+            pass
+        time.sleep(1)
+        
+    if not ready:
+        res = subprocess.run(["docker", "logs", "joplin-test-env-app-1"], capture_output=True, text=True)
+        pytest.fail(f"App container failed to restart after wipe. Last error: {last_err}\nLogs:\n{res.stdout}\n{res.stderr}")    
+    # Wait an extra second for Joplin to fully realize the DB is empty/ready
+    time.sleep(1)

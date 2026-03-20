@@ -616,7 +616,9 @@ app.post('/node-api/restart', (req, res) => {
 
 app.post('/auth/wipe', async (req, res) => {
   try {
+    console.log(`Wiping system... Checking if ${CONFIG_PATH} exists...`);
     if (fs.existsSync(CONFIG_PATH)) {
+      console.log(`Deleting ${CONFIG_PATH}`);
       fs.unlinkSync(CONFIG_PATH);
     }
     
@@ -733,11 +735,10 @@ async function runSyncCycle(config) {
                   headers: { 'X-API-AUTH': sessionId },
                   redirect: 'manual'
               }).catch(() => null);
-              
-              if (syncCheckRes && !syncCheckRes.ok) {
+
+              if (syncCheckRes && !syncCheckRes.ok && syncCheckRes.status !== 404) {
                   throw new Error(`Joplin Server rejected sync access (HTTP ${syncCheckRes.status}: ${syncCheckRes.statusText}). Ensure your account has sync permissions and you have accepted the Terms of Service on the Joplin Server web UI.`);
-              }
-           }
+              }           }
        }
     }
 
