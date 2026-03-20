@@ -77,16 +77,13 @@ def reset_docker_state():
     # 1. Truncate Postgres tables to clear Joplin Server data
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
     
-    # 2. Call /auth/wipe on the Proxy to clear config, memory, and restart Node
-    try:
-        requests.post("http://localhost:3001/auth/wipe", timeout=5)
-    except Exception:
-        pass # Expected, as the Node process exits and drops the connection
+    # 2. Directly delete the configuration and database files inside the app container
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "app", "rm", "-rf", "/app/data/config.json", "/app/data/vector_memory.sqlite", "/app/data/joplin-profile"], check=False)
         
-    # Give the node process a moment to actually delete the file from the volume before killing the container
-    time.sleep(2)
+    # Give the file system a moment to sync
+    time.sleep(1)
         
-    # Force restart app container to guarantee clean boot
+    # Force restart app container to guarantee clean boot into setup mode
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "restart", "app"])
         
     # 3. Wait for Node.js proxy to come back online
