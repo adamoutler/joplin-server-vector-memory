@@ -92,7 +92,7 @@ Implement **Optimistic Concurrency Control (OCC)** and require explicit modifica
 *   **Input:**
     *   `id` (string, required)
     *   `content` (string, required)
-    *   `update_mode` (enum: `append` | `replace`, required) - Forces the AI to declare intent.
+    *   `update_mode` (enum: `append` | `full_replace`, required) - Forces the AI to declare intent.
     *   `last_modified_timestamp` (integer/string, required) - The AI must provide the exact timestamp of the note it is trying to edit.
     *   `summary_of_changes` (string, required) - Forces the AI to rationalize its edit (Chain of Thought prompt engineering built into the API).
 *   **Output Behavior:**

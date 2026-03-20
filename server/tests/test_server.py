@@ -163,7 +163,7 @@ def test_update_note_occ_failure(temp_db, mock_ollama):
     stale_timestamp = initial_timestamp - 1000
 
     # Update should fail
-    update_res = update_note(note_id, "This should fail", "full note replacement", stale_timestamp, "Test OCC")
+    update_res = update_note(note_id, "This should fail", "full_replace", stale_timestamp, "Test OCC")
     assert update_res.get(
         "error") == "Error: Note has been modified since you last read it. Retrieve the note again before updating."
 

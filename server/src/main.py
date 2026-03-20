@@ -923,7 +923,7 @@ async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Dep
 @app.post("/http-api/update",
           response_model=UpdateResponse,
           summary="Update Note",
-          description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
+          description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('full_replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
           )
 async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):
     result = update_note(
