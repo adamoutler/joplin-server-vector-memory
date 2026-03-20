@@ -111,8 +111,8 @@ def reset_database(explicit_dim=None):
         cursor.execute("DROP TABLE IF EXISTS note_metadata")
         db.commit()
     except sqlite3.OperationalError:
-        pass # Tables might not exist yet
-    
+        pass  # Tables might not exist yet
+
     # Re-initialize the tables with the new dimensions
     init_db(db, explicit_dim)
     db.close()
