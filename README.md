@@ -68,10 +68,18 @@ Your privacy is paramount. We've built the system so that your credentials stay 
 
 ## 📚 What's Next? Further Resources
 
+### Usage & Setup
 *   **[Setup Guide](docs/SETUP.md)**: Detailed instructions for advanced configurations.
 *   **[Environment Variables](docs/ENVIRONMENT.md)**: A comprehensive reference for all headless configuration options.
 *   **[API Documentation](docs/API.md)**: Deep dive into the available MCP tools and endpoints.
+
+### Architecture & Design
 *   **[System Architecture](docs/ARCHITECTURE.md)**: Understand the data flow and component interactions.
 *   **[AI Friction Architecture](docs/AI_FRICTION_ARCHITECTURE.md)**: Learn how we design safe Agentic UX.
+*   **[Local Embedding Plan](docs/local-embedding-plan.md)**: Details on our zero-configuration local AI fallback strategy.
+
+### Development & Contributing
+*   **[Kanban Tickets](docs/kanban_tickets.md)**: Current roadmap, planned features, and bug fixes.
+*   **[CI/CD AI Feedback Loop](docs/CI_CD_AI_FEEDBACK_LOOP.md)**: How our autonomous AI agents handle testing and deployment.
 
 *Welcome to the future of personal knowledge management. Your AI brain is ready!* 🧠✨
