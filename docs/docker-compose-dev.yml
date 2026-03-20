@@ -4,7 +4,7 @@ services:
   app:
     image: ghcr.io/adamoutler/joplin-server-vector-memory-dev:latest
     ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+      - "3000:3000"
       - "8000:8000"
     volumes:
       - ./data:/app/data
