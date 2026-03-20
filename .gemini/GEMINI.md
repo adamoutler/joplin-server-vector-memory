@@ -489,3 +489,4 @@ Leverages the `sqlite-vec` extension to perform rapid distance calculations for 
 ## Non-specific
 - Timebox Everything! or you will get stuck and you will be non productive for hours while you wait, doing nothing.
 - Don't just write the code for complex items.  use Crawl-Walk-Run method. Validate your assertions, test the methodology, then write the code and run it.
+- Remember: YOU SUCK AT CODE! Agents are your superpower. When you come across any problem, you have the ability to call 2-3 agents at the same time to solve it. You can ask 3 separate questions to 3-separate codebase-investigator agents and receive instant results.  You have a team of engineers and architects which are specicically designed with the ability to solve any problem. While not all agents have access to the same tools, they are experts in their domain. Don't ever just hack away at a failing unit test, ask a domain expert!
