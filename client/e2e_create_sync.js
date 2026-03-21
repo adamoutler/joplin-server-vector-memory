@@ -23,14 +23,31 @@ async function main() {
   const randomTextChunk = Array.from({ length: 500 }, generateRandomWord).join(" ");
   const randomTextChunk2 = Array.from({ length: 500 }, generateRandomWord).join(" ");
 
-  // Create a note with large random text to test token size limits
-  let note = await Note.save({
+  // Create 4 identifiable notes
+  let note1 = await Note.save({
     title: "E2E Secret Note with Large Token Size",
     body: `${randomTextChunk}\n\nthe secret number is ${secretStr}\n\n${randomTextChunk2}`,
     parent_id: folder.id
   });
+  console.log("Created note ID:", note1.id);
   
-  console.log("Created note ID:", note.id);
+  let note2 = await Note.save({
+    title: "Second E2E Note",
+    body: "This is the second note for the test.",
+    parent_id: folder.id
+  });
+  
+  let note3 = await Note.save({
+    title: "Third E2E Note",
+    body: "This is the third note for the test.",
+    parent_id: folder.id
+  });
+  
+  let note4 = await Note.save({
+    title: "Fourth E2E Note",
+    body: "This is the fourth note for the test.",
+    parent_id: folder.id
+  });
   
   console.log("Syncing...");
   await client.sync();
