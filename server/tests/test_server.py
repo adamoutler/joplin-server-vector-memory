@@ -54,6 +54,7 @@ def test_remember_and_get_note(temp_db, mock_ollama):
     assert note.get("title") == "Apple Recipe"
     assert note.get("content") == "How to make apple pie"
 
+
 def test_search_notes(temp_db, mock_ollama):
     # Add a few notes
     remember("Apple Pie", "Delicious apple pie recipe")
