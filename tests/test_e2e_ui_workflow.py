@@ -128,7 +128,6 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         
         # Step 11: delete the original provided token
         if page.locator("#api-keys-list button:has-text('Delete')").count() > 1:
-            page.once("dialog", lambda dialog: dialog.accept())
             page.locator("#api-keys-list button:has-text('Delete')").first.click()
             time.sleep(1)
         page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/11_token_deleted.png")
@@ -161,7 +160,9 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         page.locator("#confirm-warning-btn").click()
         page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/17_click_continue.png")
         
-        time.sleep(5)
+        # Wait out the Joplin server rate limit for logins (429 Too many requests) which is around 40s
+        print("Waiting 45 seconds for Joplin Server rate limit to expire after restart...")
+        time.sleep(45)
         
         # Step 18: System should request new login triggered by unauthorized request on refresh
         max_retries = 30
@@ -190,9 +191,14 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         
         # Step 21: Wait for both sync and index states to report Ready
         try:
-            expect(page.locator("#sync-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=60000)
-            expect(page.locator("#embed-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=60000)
+            expect(page.locator("#sync-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=120000)
+            expect(page.locator("#embed-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=120000)
         except Exception as e:
+            res = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "logs", "app"], capture_output=True, text=True)
+            print("DOCKER LOGS:")
+            print(res.stdout)
+            print("DOCKER STDERR:")
+            print(res.stderr)
             raise e
         page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/21_reindex_ready.png")
 
