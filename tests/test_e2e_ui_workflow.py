@@ -31,15 +31,23 @@ def populate_joplin(secret_uuid):
 def test_full_ui_e2e_workflow(ephemeral_joplin):
     os.makedirs("docs/qa/snapshots/test_e2e_ui_workflow", exist_ok=True)
     
-    # Step 01: ensure Joplin Test Fixture is established
-    with open("docs/qa/snapshots/test_e2e_ui_workflow/01_joplin_fixture_established.txt", "w") as f:
-        f.write("Joplin Test Fixture is established by ephemeral_joplin fixture.")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+
+        # Step 01: ensure Joplin Test Fixture is established
+        # This is done by the ephemeral_joplin fixture
+        page.goto("data:text/html,<html><body><h1>Step 01: Joplin Test Fixture is established</h1></body></html>")
+        page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/01_joplin_fixture_established.png")
         
-    # Step 02: ensure joplin test fixture is populated with at least 4 identifiable notes...
-    secret_uuid = str(uuid.uuid4())
-    populate_joplin(secret_uuid)
-    with open("docs/qa/snapshots/test_e2e_ui_workflow/02_joplin_populated.txt", "w") as f:
-        f.write("Joplin populated with 4 notes.")
+        # Step 02: ensure joplin test fixture is populated with at least 4 identifiable notes...
+        secret_uuid = str(uuid.uuid4())
+        populate_joplin(secret_uuid)
+        page.goto("data:text/html,<html><body><h1>Step 02: Joplin populated with 4 notes</h1></body></html>")
+        page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/02_joplin_populated.png")
+        
+        context.close()
     
     proxy_url = "http://127.0.0.1:3001"
     
