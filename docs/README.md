@@ -8,6 +8,7 @@ This system bypasses the limitations of the traditional Joplin Web Clipper API b
 
 - [Architecture Overview](ARCHITECTURE.md): Detailed breakdown of the system components and data flow.
 - [Setup Guide](SETUP.md): Step-by-step instructions for installation, configuration, and connecting AI agents.
+- [Environment Variables](ENVIRONMENT.md): A comprehensive reference for all headless configuration options.
 - [API Documentation](API.md): Comprehensive reference for the MCP capabilities and REST HTTP API.
 
 ## How It Works
