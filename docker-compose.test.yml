@@ -1,18 +1,17 @@
 version: '3.8'
-
 services:
   app:
     build:
       context: .
     ports:
-      - "3001:3000"
-      - "8002:8000"
+    - 3001:3000
+    - 8002:8000
     volumes:
-      - test_data:/app/data
+    - test_data:/app/data
     environment:
-      - OLLAMA_URL=http://ollama:11434
-      - EMBEDDING_MODEL=nomic-embed-text
-      - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
+    - OLLAMA_URL=http://ollama:11434
+    - EMBEDDING_MODEL=nomic-embed-text
+    - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     depends_on:
       ollama:
         condition: service_healthy
@@ -20,62 +19,82 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -o /dev/null http://127.0.0.1:3000 && curl -s -o /dev/null http://127.0.0.1:8000 || exit 1"]
+      test:
+      - CMD-SHELL
+      - curl -s -o /dev/null http://127.0.0.1:3000 && curl -s -o /dev/null http://127.0.0.1:8000
+        || exit 1
       interval: 5s
       timeout: 3s
       retries: 20
-
+    extra_hosts:
+    - host.docker.internal:host-gateway
   ollama:
     image: ollama/ollama:latest
     volumes:
-      - ollama_data:/root/.ollama
-    entrypoint: [ "/bin/sh", "-c", "ollama serve & (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 2; done' && ollama pull nomic-embed-text) & wait" ]
+    - ollama_data:/root/.ollama
+    entrypoint:
+    - /bin/sh
+    - -c
+    - ollama serve & (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do
+      sleep 2; done' && ollama pull nomic-embed-text) & wait
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test:
+      - CMD
+      - ollama
+      - list
       interval: 5s
       timeout: 3s
       retries: 20
-
+    extra_hosts:
+    - host.docker.internal:host-gateway
   db:
     image: postgres:16
     restart: unless-stopped
     environment:
-        - POSTGRES_PASSWORD=joplin
-        - POSTGRES_USER=joplin
-        - POSTGRES_DB=joplin
+    - POSTGRES_PASSWORD=joplin
+    - POSTGRES_USER=joplin
+    - POSTGRES_DB=joplin
     volumes:
-        - joplin_data:/var/lib/postgresql/data
+    - joplin_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U joplin -d joplin"]
+      test:
+      - CMD-SHELL
+      - pg_isready -U joplin -d joplin
       interval: 5s
       timeout: 3s
       retries: 20
-
+    extra_hosts:
+    - host.docker.internal:host-gateway
   joplin:
     image: joplin/server:latest
     depends_on:
       db:
         condition: service_healthy
     ports:
-        - "22300:22300"
+    - 22300:22300
     restart: unless-stopped
     environment:
-        - APP_PORT=22300
-        - APP_BASE_URL=http://joplin:22300
-        - DB_CLIENT=pg
-        - POSTGRES_PASSWORD=joplin
-        - POSTGRES_DATABASE=joplin
-        - POSTGRES_USER=joplin
-        - POSTGRES_PORT=5432
-        - POSTGRES_HOST=db
+    - APP_PORT=22300
+    - APP_BASE_URL=http://joplin:22300
+    - DB_CLIENT=pg
+    - POSTGRES_PASSWORD=joplin
+    - POSTGRES_DATABASE=joplin
+    - POSTGRES_USER=joplin
+    - POSTGRES_PORT=5432
+    - POSTGRES_HOST=db
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get({host: 'localhost', port: 22300, path: '/api/ping', headers: {host: 'joplin:22300'}}, (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      test:
+      - CMD-SHELL
+      - 'node -e "require(''http'').get({host: ''localhost'', port: 22300, path: ''/api/ping'',
+        headers: {host: ''joplin:22300''}}, (r) => process.exit(r.statusCode === 200
+        ? 0 : 1)).on(''error'', () => process.exit(1))"'
       interval: 5s
       timeout: 3s
       retries: 20
-
+    extra_hosts:
+    - host.docker.internal:host-gateway
 volumes:
-  ollama_data:
-  joplin_data:
-  test_data:
+  ollama_data: null
+  joplin_data: null
+  test_data: null

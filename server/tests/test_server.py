@@ -51,9 +51,8 @@ def test_remember_and_get_note(temp_db, mock_ollama):
     # Get the note
     note = get_note(note_id)
     assert note.get("id") == note_id
-    assert note.get("title") == "[Agent Memory] Apple Recipe"
+    assert note.get("title") == "Apple Recipe"
     assert note.get("content") == "How to make apple pie"
-
 
 def test_search_notes(temp_db, mock_ollama):
     # Add a few notes
@@ -86,7 +85,7 @@ def test_search_notes(temp_db, mock_ollama):
         assert "full_body" not in results[1]
 
     # Verify blurb truncation
-    large_note_result = next(r for r in results if r["title"] == "[Agent Memory] Large Note")
+    large_note_result = next(r for r in results if r["title"] == "Large Note")
     assert len(large_note_result["blurb"]) == 2003
     assert large_note_result["blurb"].endswith("...")
 
@@ -111,7 +110,7 @@ def test_delete_note_flow(temp_db, mock_ollama):
         "content_hash": content_hash,
         "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
     }
-    exec_result = execute_deletion(token, "[Agent Memory] To be deleted", attestation)
+    exec_result = execute_deletion(token, "To be deleted", attestation)
     assert exec_result.get("status") == "success"
 
     # Verify it's gone

@@ -6,7 +6,7 @@ mkdir -p docs/qa
 echo "Running E2E tests with socket enabled..." | tee docs/qa/test-results.latest.txt
 source server/venv/bin/activate
 playwright install chromium
-pytest --timeout=600 tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py server/tests/ | tee -a docs/qa/test-results.latest.txt
+pytest --timeout=600 tests/test_ephemeral_joplin.py tests/test_operational_system.py tests/test_e2e_workflow.py server/tests/ | tee -a docs/qa/test-results.latest.txt
 
 echo "Tearing down main test environment to free resources..." | tee -a docs/qa/test-results.latest.txt
 docker compose -p joplin-test-env -f docker-compose.test.yml down -v

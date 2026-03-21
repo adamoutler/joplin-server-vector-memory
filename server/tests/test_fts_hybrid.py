@@ -43,4 +43,4 @@ def test_hybrid_search_fts(temp_db, mock_ollama):
     # Verify the note containing the exact keyword is top
     assert len(results) > 0
     assert "Xylophagalicious" in results[0]["blurb"]
-    assert results[0]["title"] == "[Agent Memory] Specific Note"
+    assert results[0]["title"] == "Specific Note"

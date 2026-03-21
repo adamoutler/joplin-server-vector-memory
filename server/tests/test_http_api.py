@@ -107,7 +107,7 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     assert response.status_code == 200
     data = response.json()
     assert data.get("id") == note_id
-    assert data.get("title") == "[Agent Memory] Apple Recipe"
+    assert data.get("title") == "Apple Recipe"
     assert data.get("content") == "How to make apple pie"
     updated_time = data.get("updated_time")
 

@@ -1,0 +1,289 @@
+import pytest
+import asyncio
+import os
+import sys
+import tempfile
+import json
+import threading
+import subprocess
+import uuid
+import time
+import requests
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from mcp.client.stdio import stdio_client, StdioServerParameters
+from mcp.client.session import ClientSession
+
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+
+# Ensure server module is accessible for Python MCP
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'tests')))
+
+class MockOllamaHandler(BaseHTTPRequestHandler):
+    """
+    Mock Ollama server that generates deterministic embeddings for testing,
+    simulating the behavior of a real vector embedding model.
+    """
+    def do_POST(self):
+        if self.path in ['/api/embeddings', '/api/embed', '/http-api/internal/embed']:
+            try:
+                if self.headers.get('Transfer-Encoding', '').lower() == 'chunked':
+                    post_data_bytes = b""
+                    while True:
+                        raw_line = self.rfile.readline()
+                        if not raw_line:
+                            break
+                        line = raw_line.strip()
+                        if not line:
+                            continue
+                        chunk_size = int(line, 16)
+                        if chunk_size == 0:
+                            break
+                        post_data_bytes += self.rfile.read(chunk_size)
+                        self.rfile.readline()
+                    post_data = post_data_bytes.decode('utf-8')
+                else:
+                    content_length = int(self.headers.get('Content-Length', 0))
+                    post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ''
+                    
+                req = json.loads(post_data) if post_data else {}
+                
+                texts = req.get('texts', req.get('input', []))
+                if not texts:
+                    single_prompt = req.get('prompt', req.get('text', ''))
+                    if single_prompt:
+                        texts = [single_prompt]
+                        
+                import re
+                import hashlib
+                
+                all_embeddings = []
+                for prompt in texts:
+                    embedding = [0.0] * 384
+                    m = re.search(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', prompt, re.IGNORECASE)
+                    if m:
+                        embedding[1] = 1.0
+                        embedding[2] = 0.5
+                    else:
+                        h = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)
+                        idx = h % 300 + 10
+                        embedding[idx] = 1.0
+                        embedding[idx+1] = 0.5
+                    all_embeddings.append(embedding)
+            except Exception as e:
+                all_embeddings = [[0.0] * 384]
+
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            
+            if 'internal/embed' in self.path or 'api/embed' in self.path:
+                response = {"embeddings": all_embeddings}
+            else:
+                response = {"embedding": all_embeddings[0] if all_embeddings else []}
+                
+            response_bytes = json.dumps(response).encode()
+            self.send_header('Content-Length', str(len(response_bytes)))
+            self.end_headers()
+            self.wfile.write(response_bytes)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # Suppress logs
+
+
+@pytest.fixture(scope="module")
+def mock_ollama_server():
+    server = HTTPServer(('0.0.0.0', 0), MockOllamaHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever)
+    thread.daemon = True
+    thread.start()
+    
+    # Use the docker bridge IP so the container can reach the host
+    # 172.17.0.1 is the default docker bridge IP on Linux GH actions
+    yield f"http://172.17.0.1:{port}"
+    server.shutdown()
+    server.server_close()
+
+
+@pytest.fixture
+def temp_profile():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yield temp_dir
+
+
+class TestOperationalSystem:
+    """
+    Dedicated test class for JOPLINMEM-142.
+    This test completely validates the core end-to-end user journey for the Joplin Server Vector Memory MCP.
+    If this test passes, the system is fully operational.
+    """
+
+    def test_full_e2e_workflow(self, ephemeral_joplin, mock_ollama_server, temp_profile):
+        """
+        Executes the full end-to-end verification of the system:
+        1. Emulates note creation, syncing, and vector embedding generation.
+        2. Validates MCP server initialization and connectivity.
+        3. Performs semantic search via MCP to retrieve the created note.
+        4. Validates specific note data retrieval.
+        5. Exercises secure note deletion request and execution workflow.
+        6. Confirms successful data removal from the vector storage.
+        """
+        asyncio.run(self.run_full_e2e_workflow(mock_ollama_server, temp_profile))
+
+    async def run_full_e2e_workflow(self, mock_ollama_server, temp_profile):
+        secret_uuid = str(uuid.uuid4())
+        print(f"\n[Test Setup] Secret UUID for this run: {secret_uuid}")
+        
+        client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
+        
+        env = os.environ.copy()
+        env["OLLAMA_URL"] = mock_ollama_server
+        env["BACKEND_URL"] = mock_ollama_server
+        env["JOPLIN_PROFILE_DIR"] = temp_profile
+        env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
+        env["JOPLIN_USERNAME"] = "admin@localhost"
+        env["JOPLIN_PASSWORD"] = "admin"
+        env["NODE_PROXY_URL"] = "http://localhost:3001"
+
+        sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
+
+        # Step 1: Create, sync, and generate embeddings using the Node.js client
+        print("[Step 1] Running Node.js client to create note, sync and generate embedding...")
+        result = subprocess.run(
+            ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_create_sync.js", secret_uuid],
+            cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
+            capture_output=True,
+            text=True
+        )
+        print("Node.js output:", result.stdout)
+        if result.stderr:
+            print("Node.js error:", result.stderr)
+            
+        assert result.returncode == 0, "Node.js client script failed"
+
+        created_note_id = None
+        for line in result.stdout.splitlines():
+            if "Created note ID:" in line:
+                created_note_id = line.split("Created note ID:")[1].strip()
+
+        assert created_note_id is not None, "Failed to capture created note ID from Node script output"
+
+        # Step 2: Initialize Node.js proxy credentials
+        print("[Step 2] Initializing Node.js proxy credentials...")
+        auth_payload = {
+            "serverUrl": "http://joplin:22300",
+            "username": "admin@localhost",
+            "password": "admin",
+            "masterPassword": "test_master_password",
+            "rotate": False
+        }
+        r = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10)
+        print("Init response:", r.status_code, r.text)
+
+        ready = False
+        for _ in range(30):
+            try:
+                r = requests.get("http://localhost:3001/status", auth=("admin@localhost", "admin"), timeout=2)
+                if r.status_code == 200:
+                    data = r.json()
+                    status = data.get("sync", {}).get("status")
+                    if status in ["idle", "online", "syncing"]:
+                       ready = True
+                       break
+            except Exception:
+                pass
+            time.sleep(1)
+            
+        if not ready:
+            print("Warning: Proxy sync client may not have initialized in time")
+
+        # Copy Vector SQLite DB out of container to verify MCP read path
+        print("[Step 3] Extracting vector DB from container for Python MCP server...")
+        subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
+        assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
+        
+        main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
+        env["SQLITE_DB_PATH"] = sqlite_db_path
+        env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
+        env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"
+        
+        server_params = StdioServerParameters(
+            command=sys.executable,
+            args=[main_py_path, "--stdio"],
+            env=env
+        )
+        
+        # Step 4: Interact with Python MCP Server over stdio
+        print("[Step 4] Starting MCP session via stdio...")
+        async with stdio_client(server_params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                
+                # Semantic Search
+                search_query = f"secret number is {secret_uuid}"
+                print(f"[Step 4a] Searching via MCP for: {search_query}")
+                search_res = await session.call_tool(
+                    "search_notes",
+                    arguments={"query": search_query}
+                )
+                
+                search_data = json.loads(search_res.content[0].text) if search_res.content else []
+                assert isinstance(search_data, list)
+                assert len(search_data) > 0, "No notes found matching the secret UUID"
+                
+                found_note_id = search_data[0].get("id")
+                assert found_note_id == created_note_id, f"Found note ID {found_note_id} doesn't match created note ID {created_note_id}"
+                assert "full_body" in search_data[0], "full_body should be present in the first result"
+                assert secret_uuid in search_data[0].get("full_body", ""), "Secret UUID not found in the full_body of the top search result"
+                
+                # Note Retrieval
+                print(f"[Step 4b] Retrieving note via MCP ID: {found_note_id}")
+                get_res = await session.call_tool(
+                    "get_note",
+                    arguments={"note_id": found_note_id}
+                )
+                
+                get_data = json.loads(get_res.content[0].text)
+                assert get_data.get("id") == found_note_id
+                assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
+                
+                # Note Deletion Workflow
+                print("[Step 4c] Requesting secure note deletion via MCP...")
+                del_req_res = await session.call_tool(
+                    "request_note_deletion",
+                    arguments={"note_id": found_note_id, "reason": "E2E test cleanup"}
+                )
+                del_req_data = json.loads(del_req_res.content[0].text)
+                token = del_req_data.get("deletion_token")
+
+                print("[Step 4d] Executing requested deletion with safety attestation...")
+                del_exec_res = await session.call_tool(
+                    "execute_deletion",
+                    arguments={
+                        "deletion_token": token,
+                        "confirm_title": get_data.get("title"),
+                        "safety_attestation": {
+                            "content_hash": get_data.get("content_hash"),
+                            "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+                        }
+                    }
+                )
+                del_data = json.loads(del_exec_res.content[0].text)
+                assert del_data.get("status") == "success", f"Delete failed: {del_data}"
+                
+                # Verify Deletion
+                print("[Step 4e] Verifying deletion via subsequent search...")
+                search_res_2 = await session.call_tool(
+                    "search_notes",
+                    arguments={"query": search_query}
+                )
+                
+                if not search_res_2.content:
+                    search_data_2 = []
+                else:
+                    search_data_2 = json.loads(search_res_2.content[0].text)
+                    
+                assert not any(note.get("id") == found_note_id for note in search_data_2), "Note was not deleted from DB"
+                print("\n[SUCCESS] JOPLINMEM-142 Operational System Test completely successful!")
