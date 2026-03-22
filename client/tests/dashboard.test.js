@@ -15,6 +15,7 @@ jest.mock('fs', () => {
       readFile: jest.fn(async () => '{}')
     },
     writeFileSync: jest.fn(),
+    renameSync: jest.fn(),
     mkdirSync: jest.fn()
   };
 });
