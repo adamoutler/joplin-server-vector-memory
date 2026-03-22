@@ -1013,25 +1013,53 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
 
         new_config["embeddingDimension"] = new_dim
 
-        # Trigger DB reset
-        from src.db import reset_database
-        reset_database(new_dim)
+        # Maintenance Shutdown Procedure: 
+        # This lock-and-confirm handshake prevents catastrophic race conditions where Python resets the DB 
+        # and overwrites config.json while Node is simultaneously shutting down or restarting. 
+        # Without this, config.json gets corrupted, permanently locking users out of the UI.
+        # Do not remove this logic.
+        lock_file = "/tmp/maintenance.lock"
+        confirm_file = "/tmp/maintenance.confirm"
+        
+        # 1. Create lock
+        with open(lock_file, "w") as f:
+            f.write("lock")
 
-        # Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
+        # 2. Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
         try:
             import requests
             requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
         except Exception as e:
             logger.error(f"Failed to restart Node daemon: {e}")
 
+        # 5. Wait for confirm
+        import time
+        max_wait = 15
+        start_wait = time.time()
+        while not os.path.exists(confirm_file) and time.time() - start_wait < max_wait:
+            time.sleep(0.5)
+
+        # 6. Safely drop DB
+        from src.db import reset_database
+        reset_database(new_dim)
+
     merged_config = {**current_config, **new_config}
 
-    # Save to config.json
+    # Save to config.json atomically
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     # Make sure directory exists
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w") as f:
+    tmp_config_path = f"{config_path}.tmp"
+    with open(tmp_config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
+    os.replace(tmp_config_path, config_path)
+
+    # 7. Delete the lock file
+    if critical_changed and settings_update.reindex_approved:
+        if os.path.exists("/tmp/maintenance.lock"):
+            os.remove("/tmp/maintenance.lock")
+        if os.path.exists("/tmp/maintenance.confirm"):
+            os.remove("/tmp/maintenance.confirm")
 
     global _config_mtime
     _config_mtime = 0  # Invalidate cache

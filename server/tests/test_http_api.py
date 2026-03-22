@@ -398,3 +398,59 @@ def test_expired_token(client):
 
     os.close(fd_conf)
     os.remove(conf_path)
+
+
+def test_maintenance_handshake(client, temp_config_and_db):
+    conf_path, db_path, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+
+    update_data = {
+        "embedding": {
+            "provider": "internal"
+        },
+        "chunkSize": 3000,
+        "reindex_approved": True
+    }
+
+    import threading
+    import time
+    
+    # We will simulate entrypoint.sh creating the confirm file after a delay
+    def simulate_entrypoint():
+        lock_file = "/tmp/maintenance.lock"
+        confirm_file = "/tmp/maintenance.confirm"
+        
+        # Wait for Python to create lock file
+        for _ in range(30):
+            if os.path.exists(lock_file):
+                break
+            time.sleep(0.1)
+            
+        assert os.path.exists(lock_file)
+        
+        # Sleep a bit to prove Python is waiting
+        time.sleep(1)
+        
+        # Write confirm file
+        with open(confirm_file, "w") as f:
+            f.write("confirm")
+            
+    t = threading.Thread(target=simulate_entrypoint)
+    t.start()
+    
+    with patch("src.db.reset_database") as mock_reset:
+        with patch("requests.post"):
+            start_time = time.time()
+            response = client.post("/api/settings", json=update_data, headers=headers)
+            end_time = time.time()
+            
+            assert response.status_code == 200
+            
+            # Should have taken at least 1 second since we sleep(1) in the thread
+            assert end_time - start_time >= 1.0
+            
+    t.join()
+    
+    # Assert lock and confirm files are cleaned up
+    assert not os.path.exists("/tmp/maintenance.lock")
+    assert not os.path.exists("/tmp/maintenance.confirm")

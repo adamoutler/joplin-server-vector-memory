@@ -229,7 +229,7 @@ app.use(async (req, res, next) => {
     }
   } catch (err) {
     console.error('Joplin Server unreachable:', err);
-    process.exit(1);
+    return send401();
   }
 });
 
@@ -530,7 +530,8 @@ app.post('/auth', async (req, res) => {
   delete config.token;
   
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
+    fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
   } catch (err) {
     console.error('Failed to write config.json:', err);
   }
@@ -580,7 +581,8 @@ app.post('/auth/keys/create', (req, res) => {
   config.api_keys.push(keyObj);
   
   try {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+    fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
+    fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
     res.json({ success: true, key: keyObj });
   } catch (err) {
     res.status(500).json({ error: 'Failed to save new key' });
@@ -599,7 +601,8 @@ app.post('/auth/keys/delete', (req, res) => {
   if (config.api_keys) {
     config.api_keys = config.api_keys.filter(k => k.key !== key);
     try {
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+      fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
+    fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ error: 'Failed to delete key' });
@@ -609,6 +612,11 @@ app.post('/auth/keys/delete', (req, res) => {
   }
 });
 
+// Maintenance Shutdown Procedure: 
+// When /node-api/restart is called, Node gracefully exits. 
+// This triggers the lock-and-confirm handshake in entrypoint.sh and main.py 
+// to prevent catastrophic race conditions where Python resets the DB and overwrites config.json 
+// while Node is simultaneously shutting down. Do not remove this logic.
 app.post('/node-api/restart', (req, res) => {
   res.json({ message: 'Restarting sync daemon...' });
   setTimeout(() => process.exit(0), 500);
@@ -813,7 +821,8 @@ if (fs.existsSync(CONFIG_PATH)) {
      token: process.env.API_TOKEN || crypto.randomUUID()
    };
    try {
-     fs.writeFileSync(CONFIG_PATH, JSON.stringify(initialConfig, null, 2));
+     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(initialConfig, null, 2));
+     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
    } catch (err) {
      console.error('Failed to write config.json:', err);
    }
