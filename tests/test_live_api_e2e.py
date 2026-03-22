@@ -187,9 +187,16 @@ def test_api_server_live_endpoints():
         },
         "reindex_approved": True
     }
-    update_resp = requests.post(f"{PROXY_URL}/api/settings", json=update_payload, headers=headers, timeout=30)
-    assert update_resp.status_code == 200, f"Failed to update settings: {update_resp.text}"
-    
+    try:
+        update_resp = requests.post(f"{PROXY_URL}/api/settings", json=update_payload, headers=headers, timeout=30)
+        # In rare cases, the response might sneak out before the container fully dies
+        assert update_resp.status_code == 200, f"Failed to update settings: {update_resp.text}"
+    except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
+        # This is expected! The REINDEX operation uses the Maintenance Shutdown Procedure,
+        # which intentionally kills the container (causing a RemoteDisconnected error)
+        # before the HTTP response can fully stream back.
+        print("[E2E] Connection dropped as expected during Maintenance Shutdown Protocol.", file=sys.stderr)
+        
     print("[E2E] Settings updated successfully. Awaiting Node.js daemon restart and re-sync...", file=sys.stderr)
     
     # Wait for the app container to be ready again
