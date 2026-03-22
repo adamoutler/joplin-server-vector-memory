@@ -814,12 +814,6 @@
         return;
       }
 
-      const token = getToken();
-      if (!token) {
-        alert("Missing authentication token. Please log in first.");
-        return;
-      }
-
       const btn = document.getElementById('factory-reset-btn');
       btn.innerText = 'Wiping system...';
       btn.disabled = true;
