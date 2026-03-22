@@ -311,8 +311,8 @@ def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]
 @mcp.tool()
 def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> str:
     """
-    Uploads a binary file or resource to the server. 
-    Returns a unique Resource ID that can be referenced while updating or remembering a note. 
+    Uploads a binary file or resource to the server.
+    Returns a unique Resource ID that can be referenced while updating or remembering a note.
     To attach the file to a note, embed the returned ID into the markdown content using the syntax `[filename](:/RESOURCE_ID)` or `![filename](:/RESOURCE_ID)`.
     """
     try:
@@ -373,9 +373,9 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
 
     folder: Optional, discouraged, folder to save the note in. Defaults to "Agent Memory".
 
-    ATTACHING FILES: If you need to attach a file, script, or image to this note, 
+    ATTACHING FILES: If you need to attach a file, script, or image to this note,
     you must FIRST call the `upload_resource` tool. That tool will return an ID.
-    You must then embed that ID into the `content` of this note using standard 
+    You must then embed that ID into the `content` of this note using standard
     Joplin markdown syntax: `[link text](:/THE_RETURNED_ID)` or `![image](:/THE_RETURNED_ID)`.
     """
     try:
@@ -1013,14 +1013,14 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
 
         new_config["embeddingDimension"] = new_dim
 
-        # Maintenance Shutdown Procedure: 
-        # This lock-and-confirm handshake prevents catastrophic race conditions where Python resets the DB 
-        # and overwrites config.json while Node is simultaneously shutting down or restarting. 
+        # Maintenance Shutdown Procedure:
+        # This lock-and-confirm handshake prevents catastrophic race conditions where Python resets the DB
+        # and overwrites config.json while Node is simultaneously shutting down or restarting.
         # Without this, config.json gets corrupted, permanently locking users out of the UI.
         # Do not remove this logic.
         lock_file = "/tmp/maintenance.lock"
         confirm_file = "/tmp/maintenance.confirm"
-        
+
         # 1. Create lock
         with open(lock_file, "w") as f:
             f.write("lock")
