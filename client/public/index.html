@@ -302,9 +302,13 @@
              setVal('memoryServerAddress', data.config.memoryServerAddress);
              
              if (data.hasCredentials) {
-                 document.getElementById('auth-msg').innerText = '✅ Sync Unlocked via Browser Auth. If you use a separate E2EE Master Password, you must still enter it below.';
+                 document.getElementById('auth-msg').innerText = '✅ Sync Unlocked via Browser Auth or Active Session.';
                  document.getElementById('auth-msg').className = 'messages success';
                  document.querySelector('details').removeAttribute('open');
+                 document.getElementById('auth-form').style.display = 'none';
+             } else {
+                 document.getElementById('auth-msg').innerText = '';
+                 document.getElementById('auth-form').style.display = 'block';
              }
            }
            
@@ -387,8 +391,9 @@
             window.location.reload();
             return;
           }
-          msgEl.innerText = 'Saved successfully!';
+          msgEl.innerText = '✅ Sync Unlocked via Browser Auth or Active Session.';
           msgEl.className = 'messages success';
+          document.getElementById('auth-form').style.display = 'none';
           fetchStatus(false); // refresh status which might be syncing now
         } else {
           msgEl.innerText = 'Error: ' + data.error;
@@ -749,8 +754,8 @@
           saveBtn.disabled = false;
         }
       } catch (e) {
-        if (reindexApproved) {
-            saveBtn.innerText = 'Reindexing...';
+        if (reindexApproved || e.message === 'Failed to fetch' || e.message.includes('NetworkError')) {
+            saveBtn.innerText = 'Reindexing / Restarting...';
             saveBtn.style.backgroundColor = 'orange';
             saveBtn.style.color = 'white';
             setTimeout(() => {
