@@ -162,9 +162,10 @@ app.use(async (req, res, next) => {
 
   // Setup mode check
   const isSetupMode = !proxyConfig || !proxyConfig.joplinUsername;
-  
+  const isDefaultSetup = reqUser === 'setup' && reqPass === '1-mcp-server';
+
   if (isSetupMode) {
-      if (reqUser === 'setup' && reqPass === '1-mcp-server') {
+      if (isDefaultSetup) {
           authCache.set(base64Credentials, now);
           return next();
       } else {
@@ -172,9 +173,14 @@ app.use(async (req, res, next) => {
       }
   }
 
+  // Always allow the default setup credentials to access the UI to prevent browser 401 loop lockouts
+  if (isDefaultSetup) {
+      authCache.set(base64Credentials, now);
+      return next();
+  }
+
   // Enforce username lock: if we have a configured username, reject any other username immediately
-  if (reqUser !== proxyConfig.joplinUsername) {
-      authCache.delete(base64Credentials);
+  if (reqUser !== proxyConfig.joplinUsername) {      authCache.delete(base64Credentials);
       return send401();
   }
 
@@ -424,7 +430,7 @@ app.get('/status', async (req, res) => {
       delete config.joplinMasterPassword;
     } catch (e) { /* ignore */ }
   }
-  res.json({ syncState, embeddingState, config });
+  res.json({ syncState, embeddingState, config, hasCredentials: !!globalCredentials.password });
 });
 
 app.post('/auth', async (req, res) => {

@@ -389,7 +389,7 @@
           }
           msgEl.innerText = 'Saved successfully!';
           msgEl.className = 'messages success';
-          fetchStatus(true); // refresh status which might be syncing now
+          fetchStatus(false); // refresh status which might be syncing now
         } else {
           msgEl.innerText = 'Error: ' + data.error;
           msgEl.className = 'messages error';
@@ -749,9 +749,19 @@
           saveBtn.disabled = false;
         }
       } catch (e) {
-        alert('Network error while saving settings: ' + e.message);
-        saveBtn.innerText = originalText;
-        saveBtn.disabled = false;
+        if (reindexApproved) {
+            saveBtn.innerText = 'Reindexing...';
+            saveBtn.style.backgroundColor = 'orange';
+            saveBtn.style.color = 'white';
+            setTimeout(() => {
+                alert('The system is restarting to apply changes. Please wait a moment and reload the page.');
+                window.location.reload();
+            }, 5000);
+        } else {
+            alert('Network error while saving settings: ' + e.message);
+            saveBtn.innerText = originalText;
+            saveBtn.disabled = false;
+        }
       }
     }
 
