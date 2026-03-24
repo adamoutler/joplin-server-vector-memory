@@ -230,14 +230,16 @@ def test_settings_api(client, temp_config_and_db):
     # Make sure token was not lost
     assert saved_config["api_keys"][0]["key"] == token
 
-    # 3. Test Polymorphic Embedding Schema
+    # 3. Test Polymorphic Embedding Schema via /api/reindex
     # Switch from internal to Ollama
-    update_data["embedding"] = {
-        "provider": "ollama",
-        "baseUrl": "http://ollama-test:11434",
-        "model": "test-model"
+    reindex_data = {
+        "embedding": {
+            "provider": "ollama",
+            "baseUrl": "http://ollama-test:11434",
+            "model": "test-model"
+        },
+        "chunkSize": 3000
     }
-    update_data["reindex_approved"] = False
 
     # We need to patch the actual model probe since the server will try to reach out
     with patch("ollama.Client") as mock_ollama:
@@ -248,15 +250,14 @@ def test_settings_api(client, temp_config_and_db):
         with patch("src.db.reset_database") as mock_reset:
             # We must mock requests.post to stop it hitting Node proxy during tests
             with patch("requests.post"):
-                # Because it's a critical change (embedding provider changed), but reindex is FALSE,
-                # wait! If reindex_approved is False, the API does NOT trigger reset_database OR the probe!
-                response = client.post("/api/settings", json=update_data, headers=headers)
+                response = client.post("/api/reindex", json=reindex_data, headers=headers)
                 assert response.status_code == 200
 
                 res_data = response.json()
                 assert res_data["embedding"]["provider"] == "ollama"
                 assert res_data["embedding"]["baseUrl"] == "http://ollama-test:11434"
                 assert res_data["embedding"]["model"] == "test-model"
+                assert res_data["chunkSize"] == 3000
 
                 with open(conf_path, "r") as f:
                     saved_config = json.load(f)
@@ -265,19 +266,8 @@ def test_settings_api(client, temp_config_and_db):
                 # Since we changed it to just serialize the nested dict, it should be nested in the JSON file
                 assert saved_config["embedding"]["provider"] == "ollama"
                 assert saved_config["embedding"]["baseUrl"] == "http://ollama-test:11434"
+                assert saved_config["chunkSize"] == 3000
 
-    # 4. Update settings (critical, with reindex_approved)
-    update_data["chunkSize"] = 3000
-
-    with patch("ollama.Client") as mock_ollama:
-        mock_client = MagicMock()
-        mock_client.embeddings.return_value = {"embedding": [0.1] * 768}
-        mock_ollama.return_value = mock_client
-
-        with patch("src.db.reset_database") as mock_reset:
-            with patch("requests.post"):
-                response = client.post("/api/reindex", json=update_data, headers=headers)
-                assert response.status_code == 200
                 mock_reset.assert_called_once_with(768)
 
     # 5. Reset settings
@@ -439,7 +429,7 @@ def test_maintenance_handshake(client, temp_config_and_db):
     with patch("src.db.reset_database") as mock_reset:
         with patch("requests.post"):
             start_time = time.time()
-            response = client.post("/api/settings", json=update_data, headers=headers)
+            response = client.post("/api/reindex", json=update_data, headers=headers)
             end_time = time.time()
 
             assert response.status_code == 200
