@@ -720,19 +720,49 @@
       saveBtn.disabled = true;
 
       const payload = { ...settings };
-      if (reindexApproved) {
-        payload.reindex_approved = true;
-      }
 
       try {
-        const res = await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token
-          },
-          body: JSON.stringify(payload)
-        });
+        let res;
+        
+        const normalPayload = { ...payload };
+        delete normalPayload.embedding;
+        delete normalPayload.chunkSize;
+        delete normalPayload.chunkOverlap;
+
+        if (reindexApproved) {
+          const reindexPayload = {
+            embedding: payload.embedding,
+            chunkSize: payload.chunkSize,
+            chunkOverlap: payload.chunkOverlap
+          };
+          
+          await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(normalPayload)
+          });
+
+          res = await fetch('/api/reindex', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(reindexPayload)
+          });
+        } else {
+          res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(normalPayload)
+          });
+        }
         
         if (res.ok) {
           const data = await res.json();

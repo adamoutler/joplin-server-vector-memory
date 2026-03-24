@@ -268,7 +268,7 @@ def test_settings_api(client, temp_config_and_db):
 
     # 4. Update settings (critical, with reindex_approved)
     update_data["chunkSize"] = 3000
-    update_data["reindex_approved"] = True
+
 
     with patch("ollama.Client") as mock_ollama:
         mock_client = MagicMock()
@@ -277,7 +277,7 @@ def test_settings_api(client, temp_config_and_db):
 
         with patch("src.db.reset_database") as mock_reset:
             with patch("requests.post"):
-                response = client.post("/api/settings", json=update_data, headers=headers)
+                response = client.post("/api/reindex", json=update_data, headers=headers)
                 assert response.status_code == 200
                 mock_reset.assert_called_once_with(768)
 
@@ -408,8 +408,7 @@ def test_maintenance_handshake(client, temp_config_and_db):
         "embedding": {
             "provider": "internal"
         },
-        "chunkSize": 3000,
-        "reindex_approved": True
+        "chunkSize": 3000
     }
 
     import threading

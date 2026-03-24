@@ -623,9 +623,6 @@ class Settings(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    embedding: Optional[Union[OllamaEmbeddingSettings, InternalEmbeddingSettings]] = None
-    chunkSize: Optional[int] = None
-    chunkOverlap: Optional[int] = None
     searchTopK: Optional[int] = None
     hybridAlpha: Optional[float] = None
     syncInterval: Optional[int] = None
@@ -635,7 +632,12 @@ class SettingsUpdate(BaseModel):
     joplinPassword: Optional[str] = None
     joplinMasterPassword: Optional[str] = None
     memoryServerAddress: Optional[str] = None
-    reindex_approved: bool = False
+
+
+class ReindexRequest(BaseModel):
+    embedding: Optional[Union[OllamaEmbeddingSettings, InternalEmbeddingSettings]] = None
+    chunkSize: Optional[int] = None
+    chunkOverlap: Optional[int] = None
 
 
 class SearchRequest(BaseModel):
@@ -979,71 +981,9 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
 
     # Handle both Pydantic v1 and v2
     if hasattr(settings_update, "model_dump"):
-        new_config = settings_update.model_dump(exclude={"reindex_approved"}, exclude_none=True)
+        new_config = settings_update.model_dump(exclude_none=True)
     else:
-        new_config = settings_update.dict(exclude={"reindex_approved"}, exclude_none=True)
-
-    # Check for critical changes
-    critical_keys = ["chunkSize", "chunkOverlap"]
-    critical_changed = any(current_config.get(k) != new_config.get(k) for k in critical_keys if k in new_config)
-
-    # Check if embedding changed
-    current_embed = current_config.get("embedding", {})
-    new_embed = new_config.get("embedding", {})
-    if new_embed and current_embed != new_embed:
-        critical_changed = True
-
-    if critical_changed and settings_update.reindex_approved:
-        # Determine actual dimensionality before wiping
-        new_dim = 384
-        if new_embed.get("provider") == "ollama" and new_embed.get("baseUrl"):
-            try:
-                import ollama
-                client = ollama.Client(host=new_embed["baseUrl"])
-                # Pull the model if it doesn't exist
-                try:
-                    client.show(new_embed["model"])
-                except:
-                    client.pull(new_embed["model"])
-                # Generate a tiny embedding to measure its length
-                res = client.embeddings(model=new_embed["model"], prompt="test")
-                if "embedding" in res:
-                    new_dim = len(res["embedding"])
-            except Exception as e:
-                logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
-                raise HTTPException(status_code=400, detail=f"Failed to connect to model {new_embed.get('model')} at {new_embed.get('baseUrl')}: {str(e)}")
-
-        new_config["embeddingDimension"] = new_dim
-
-        # Maintenance Shutdown Procedure:
-        # This lock-and-confirm handshake prevents catastrophic race conditions where Python resets the DB
-        # and overwrites config.json while Node is simultaneously shutting down or restarting.
-        # Without this, config.json gets corrupted, permanently locking users out of the UI.
-        # Do not remove this logic.
-        lock_file = "/tmp/maintenance.lock"
-        confirm_file = "/tmp/maintenance.confirm"
-
-        # 1. Create lock
-        with open(lock_file, "w") as f:
-            f.write("lock")
-
-        # 2. Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
-        try:
-            import requests
-            requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
-        except Exception as e:
-            logger.error(f"Failed to restart Node daemon: {e}")
-
-        # 5. Wait for confirm
-        import time
-        max_wait = 15
-        start_wait = time.time()
-        while not os.path.exists(confirm_file) and time.time() - start_wait < max_wait:
-            time.sleep(0.5)
-
-        # 6. Safely drop DB
-        from src.db import reset_database
-        reset_database(new_dim)
+        new_config = settings_update.dict(exclude_none=True)
 
     merged_config = {**current_config, **new_config}
 
@@ -1058,16 +998,92 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
         os.fsync(f.fileno())
     os.replace(tmp_config_path, config_path)
 
+    _config_mtime = 0  # Invalidate cache
+
+    return Settings(**merged_config)
+
+
+@app.post("/api/reindex", response_model=Settings)
+async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify_token)):
+    global _config_mtime
+    _config_mtime = 0  # Force reload to prevent caching race conditions
+    current_config = _load_config_file()
+
+    if hasattr(reindex_request, "model_dump"):
+        new_config = reindex_request.model_dump(exclude_none=True)
+    else:
+        new_config = reindex_request.dict(exclude_none=True)
+
+    new_embed = new_config.get("embedding", current_config.get("embedding", {}))
+
+    # Determine actual dimensionality before wiping
+    new_dim = 384
+    if new_embed.get("provider") == "ollama" and new_embed.get("baseUrl"):
+        try:
+            import ollama
+            client = ollama.Client(host=new_embed["baseUrl"])
+            # Pull the model if it doesn't exist
+            try:
+                client.show(new_embed["model"])
+            except:
+                client.pull(new_embed["model"])
+            # Generate a tiny embedding to measure its length
+            res = client.embeddings(model=new_embed["model"], prompt="test")
+            if "embedding" in res:
+                new_dim = len(res["embedding"])
+        except Exception as e:
+            logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to connect to model {new_embed.get('model')} at {new_embed.get('baseUrl')}: {str(e)}")
+
+    new_config["embeddingDimension"] = new_dim
+
+    # Maintenance Shutdown Procedure:
+    lock_file = "/tmp/maintenance.lock"
+    confirm_file = "/tmp/maintenance.confirm"
+
+    # 1. Create lock
+    with open(lock_file, "w") as f:
+        f.write("lock")
+
+    # 2. Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
+    try:
+        import requests
+        requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
+    except Exception as e:
+        logger.error(f"Failed to restart Node daemon: {e}")
+
+    # 5. Wait for confirm
+    import time
+    max_wait = 15
+    start_wait = time.time()
+    while not os.path.exists(confirm_file) and time.time() - start_wait < max_wait:
+        time.sleep(0.5)
+
+    # 6. Safely drop DB
+    from src.db import reset_database
+    reset_database(new_dim)
+
+    merged_config = {**current_config, **new_config}
+
+    # Save to config.json atomically
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    tmp_config_path = f"{config_path}.tmp"
+    with open(tmp_config_path, "w") as f:
+        json.dump(merged_config, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_config_path, config_path)
+
     # 7. Delete the lock file
-    if critical_changed and settings_update.reindex_approved:
-        if os.path.exists("/tmp/maintenance.lock"):
-            os.remove("/tmp/maintenance.lock")
-        if os.path.exists("/tmp/maintenance.confirm"):
-            os.remove("/tmp/maintenance.confirm")
+    if os.path.exists("/tmp/maintenance.lock"):
+        os.remove("/tmp/maintenance.lock")
+    if os.path.exists("/tmp/maintenance.confirm"):
+        os.remove("/tmp/maintenance.confirm")
 
     _config_mtime = 0  # Invalidate cache
 
-    return Settings(**new_config)
+    return Settings(**merged_config)
 
 
 @app.post("/api/settings/reset", response_model=Settings)
@@ -1156,3 +1172,4 @@ if __name__ == "__main__":
         import uvicorn
         # Allow running the server locally
         uvicorn.run("main:app", host="0.0.0.0", port=8000)
+.0.0", port=8000)

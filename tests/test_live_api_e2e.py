@@ -184,11 +184,10 @@ def test_api_server_live_endpoints():
             "provider": "ollama",
             "baseUrl": "http://ollama:11434",
             "model": "nomic-embed-text"
-        },
-        "reindex_approved": True
+        }
     }
     try:
-        update_resp = requests.post(f"{PROXY_URL}/api/settings", json=update_payload, headers=headers, timeout=30)
+        update_resp = requests.post(f"{PROXY_URL}/api/reindex", json=update_payload, headers=headers, timeout=30)
         # In rare cases, the response might sneak out before the container fully dies
         assert update_resp.status_code == 200, f"Failed to update settings: {update_resp.text}"
     except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
