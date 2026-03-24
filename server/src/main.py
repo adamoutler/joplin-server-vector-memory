@@ -973,6 +973,8 @@ async def test_model_connection(request: TestModelRequest, token: str = Depends(
 
 @app.post("/api/settings", response_model=Settings)
 async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
+    global _config_mtime
+    _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()
 
     # Handle both Pydantic v1 and v2
@@ -1052,6 +1054,8 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
     tmp_config_path = f"{config_path}.tmp"
     with open(tmp_config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp_config_path, config_path)
 
     # 7. Delete the lock file
@@ -1061,7 +1065,6 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
         if os.path.exists("/tmp/maintenance.confirm"):
             os.remove("/tmp/maintenance.confirm")
 
-    global _config_mtime
     _config_mtime = 0  # Invalidate cache
 
     return Settings(**new_config)
@@ -1081,8 +1084,12 @@ async def reset_settings(token: str = Depends(verify_token)):
 
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w") as f:
+    tmp_config_path = f"{config_path}.tmp"
+    with open(tmp_config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_config_path, config_path)
 
     global _config_mtime
     _config_mtime = 0  # Invalidate cache
