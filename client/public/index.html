@@ -60,6 +60,7 @@
       <div class="status-block">
         <h2 style="margin: 0;">Sync Status: <span id="sync-status-text" class="status-offline">Offline</span></h2>
         <div id="sync-progress-text" class="progress-detail"></div>
+        <button type="button" id="trigger-sync-btn" style="margin-top: 1rem; background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; display: none;">Force Sync Now</button>
       </div>
       <div class="status-block">
         <h2 style="margin: 0; font-size: 1.1rem; color: #555;">Embedding Status: <span id="embed-status-text" class="status-offline">Offline</span></h2>
@@ -256,6 +257,15 @@
         syncEl.innerText = syncState.status;
         syncEl.className = 'status-' + syncState.status;
         
+        const hasCredentials = data.hasCredentials;
+        if (hasCredentials) {
+          document.getElementById('auth-form').style.display = 'none';
+          document.getElementById('trigger-sync-btn').style.display = 'inline-block';
+        } else {
+          document.getElementById('auth-form').style.display = 'block';
+          document.getElementById('trigger-sync-btn').style.display = 'none';
+        }
+        
         const syncProgEl = document.getElementById('sync-progress-text');
         if (syncState.status === 'syncing' && syncState.progress) {
           const p = syncState.progress;
@@ -366,6 +376,23 @@
     }
     setInterval(() => fetchStatus(false), 5000);
     fetchStatus(true);
+
+    document.getElementById('trigger-sync-btn').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      e.target.innerText = 'Initiating...';
+      try {
+        const res = await fetch('/sync', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+          alert('Sync trigger failed: ' + (data.error || 'Unknown error'));
+        }
+      } catch(err) {
+        alert('Network error while triggering sync.');
+      }
+      e.target.disabled = false;
+      e.target.innerText = 'Force Sync Now';
+      fetchStatus(false);
+    });
 
     document.getElementById('auth-form').addEventListener('submit', async (e) => {
       e.preventDefault();

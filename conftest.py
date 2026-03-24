@@ -29,7 +29,7 @@ def ephemeral_joplin():
     for _ in range(max_retries):
         try:
             # Check Joplin
-            resp1 = requests.get("http://joplin:22300/api/ping", timeout=2)
+            resp1 = requests.get("http://localhost:22300/api/ping", timeout=2)
             # Check Node Proxy
             resp2 = requests.get("http://localhost:3001/status", timeout=2)
             # Check FastAPI backend

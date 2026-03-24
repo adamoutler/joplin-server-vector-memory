@@ -115,15 +115,16 @@ describe('Dashboard Endpoints', () => {
   });
 
   test('GET /status returns progress object when syncing', async () => {
+    const adminAuthHeader = 'Basic ' + Buffer.from('admin:password123').toString('base64');
     fs.existsSync.mockReturnValue(true);
     fs.promises.readFile.mockResolvedValue(JSON.stringify({
-      joplinUsername: 'setup',
-      joplinPassword: '1-mcp-server'
+      joplinUsername: 'admin',
+      joplinPassword: 'password123'
     }));
 
     const response = await request(app)
       .post('/auth')
-      .set('Authorization', authHeader)
+      .set('Authorization', adminAuthHeader)
       .send({
         serverUrl: 'http://testserver',
         username: 'admin',
@@ -138,11 +139,39 @@ describe('Dashboard Endpoints', () => {
     if (mockHandlers.syncStart) mockHandlers.syncStart();
     if (mockHandlers.progress) mockHandlers.progress({ phase: 'embedding', current: 5, total: 10, percent: 50 });
 
-    const statusResponse = await request(app).get('/status').set('Authorization', authHeader);
+    const statusResponse = await request(app).get('/status').set('Authorization', adminAuthHeader);
     expect(statusResponse.status).toBe(200);
     expect(statusResponse.body.syncState).toHaveProperty('status', 'syncing');
     expect(statusResponse.body.embeddingState).toHaveProperty('progress');
     expect(statusResponse.body.embeddingState.progress).toEqual({ phase: 'embedding', current: 5, total: 10, percent: 50 });
+  });
+
+  test('POST /sync triggers sync if configured', async () => {
+    fs.existsSync.mockReturnValue(true);
+    fs.promises.readFile.mockResolvedValue(JSON.stringify({
+      joplinServerUrl: 'http://testserver',
+      joplinUsername: 'admin@localhost',
+      joplinPassword: 'password123'
+    }));
+
+    const adminAuthHeader = 'Basic ' + Buffer.from('admin@localhost:password123').toString('base64');
+    
+    // First setup global credentials memory by authenticating once
+    await request(app)
+      .get('/status')
+      .set('Authorization', adminAuthHeader);
+
+    const response = await request(app)
+      .post('/sync')
+      .set('Authorization', adminAuthHeader);
+      
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    
+    // Wait slightly for setTimeout to trigger mockHandlers
+    await new Promise(r => setTimeout(r, 150));
+    
+    expect(mockHandlers.syncStart).toBeDefined();
   });
 
   test('GET /status uses cached authentication if Joplin Server fails subsequently', async () => {

@@ -173,12 +173,6 @@ app.use(async (req, res, next) => {
       }
   }
 
-  // Always allow the default setup credentials to access the UI to prevent browser 401 loop lockouts
-  if (isDefaultSetup) {
-      authCache.set(base64Credentials, now);
-      return next();
-  }
-
   // Enforce username lock: if we have a configured username, reject any other username immediately
   if (reqUser !== proxyConfig.joplinUsername) {      authCache.delete(base64Credentials);
       return send401();
@@ -445,6 +439,27 @@ app.get('/status', async (req, res) => {
   res.json({ syncState, embeddingState, config, hasCredentials: !!globalCredentials.password });
 });
 
+app.post('/sync', async (req, res) => {
+  let config = {};
+  if (fs.existsSync(CONFIG_PATH)) {
+    try {
+      const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
+      config = JSON.parse(data);
+    } catch (e) { /* ignore */ }
+  }
+  
+  if (!config.joplinServerUrl || !config.joplinUsername) {
+    return res.status(400).json({ error: 'System not fully configured yet.' });
+  }
+
+  if (isProcessing) {
+    return res.status(409).json({ error: 'Sync already in progress.' });
+  }
+
+  setTimeout(() => runSyncCycle(config).catch(e => console.error('Manual sync failed:', e)), 100);
+  res.json({ success: true, message: 'Sync cycle initiated.' });
+});
+
 app.post('/auth', async (req, res) => {
   const { serverUrl, username, password, masterPassword, memoryServerAddress, rotate } = req.body;
   
@@ -460,9 +475,8 @@ app.post('/auth', async (req, res) => {
     return res.status(400).json({ error: 'Missing credentials' });
   }
 
-  let isUsernameChange = false;
   if (config.joplinUsername && config.joplinUsername !== username) {
-      isUsernameChange = true;
+      return res.status(400).json({ error: 'Username cannot be changed after initial setup. Please perform a Factory Reset to switch accounts.' });
   }
 
   // Ping and credential validation
@@ -524,19 +538,6 @@ app.post('/auth', async (req, res) => {
 
   globalCredentials.password = password;
   globalCredentials.masterPassword = masterPassword;
-
-  if (isUsernameChange) {
-      console.log('Username changed. Wiping local databases...');
-      const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
-      const sqliteDbPath = path.join(DATA_DIR, 'vector_memory.sqlite');
-      try {
-          if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
-          if (fs.existsSync(sqliteDbPath)) fs.unlinkSync(sqliteDbPath);
-          console.log('Local databases wiped successfully.');
-      } catch (err) {
-          console.error('Failed to wipe databases on username change:', err);
-      }
-  }
 
   config = {
     ...config,    joplinServerUrl: serverUrl, 
@@ -642,11 +643,7 @@ app.post('/node-api/restart', (req, res) => {
 
 app.post('/auth/wipe', async (req, res) => {
   try {
-    console.log(`Wiping system... Checking if ${CONFIG_PATH} exists...`);
-    if (fs.existsSync(CONFIG_PATH)) {
-      console.log(`Deleting ${CONFIG_PATH}`);
-      fs.unlinkSync(CONFIG_PATH);
-    }
+    console.log(`Wiping system... Cleaning data directory ${DATA_DIR}...`);
     
     // Stop the background sync loop
     if (syncIntervalId) {
@@ -654,27 +651,23 @@ app.post('/auth/wipe', async (req, res) => {
       syncIntervalId = null;
     }
     
-    // Nuke the database and profile
-    const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
-    if (fs.existsSync(profileDir)) {
-      fs.rmSync(profileDir, { recursive: true, force: true });
+    // Nuke everything in DATA_DIR
+    if (fs.existsSync(DATA_DIR)) {
+      const files = fs.readdirSync(DATA_DIR);
+      for (const file of files) {
+        const fullPath = path.join(DATA_DIR, file);
+        try {
+          fs.rmSync(fullPath, { recursive: true, force: true });
+        } catch (e) {
+          console.error(`Failed to delete ${fullPath}:`, e);
+        }
+      }
     }
+
+    res.json({ success: true, message: 'System completely reset. Rebooting...' });
     
-    const dbPath = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'vector_memory.sqlite');
-    if (fs.existsSync(dbPath)) {
-      fs.unlinkSync(dbPath);
-    }
-
-    // Reset memory state
-    syncClient = null;
-    isProcessing = false;
-    syncState = { status: 'offline', progress: null, error: null };
-    embeddingState = { status: 'offline', progress: null, error: null };
-    globalCredentials = { password: null, masterPassword: null };
-    authCache.clear();
-    proxyConfig = null;
-
-    res.json({ success: true, message: 'System completely reset.' });
+    // Reboot container after short delay to let response send
+    setTimeout(() => process.exit(0), 500);
   } catch (err) {
     console.error('Failed to wipe system:', err);
     res.status(500).json({ error: 'Failed to wipe system: ' + err.message });
