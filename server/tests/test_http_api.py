@@ -269,7 +269,6 @@ def test_settings_api(client, temp_config_and_db):
     # 4. Update settings (critical, with reindex_approved)
     update_data["chunkSize"] = 3000
 
-
     with patch("ollama.Client") as mock_ollama:
         mock_client = MagicMock()
         mock_client.embeddings.return_value = {"embedding": [0.1] * 768}
