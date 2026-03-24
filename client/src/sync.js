@@ -247,6 +247,20 @@ class JoplinSyncClient extends EventEmitter {
         throw new Error(`Sync failed: ${this._lastSyncErrors[0]}`);
       }
     } catch (err) {
+      const errMsg = err.message || String(err);
+      if (errMsg.includes('SQLITE_CORRUPT') || errMsg.includes('SQLITE_FULL') || errMsg.includes('SQLITE_IOERR') || errMsg.includes('database disk image is malformed')) {
+        console.error('Fatal database error during sync. Wiping databases and restarting...', err);
+        const fs = require('fs');
+        const path = require('path');
+        try {
+            if (fs.existsSync(this.profileDir)) fs.rmSync(this.profileDir, { recursive: true, force: true });
+            const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
+            if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
+        } catch(e) {
+            console.error('Failed to wipe databases:', e);
+        }
+        process.exit(1);
+      }
       this.emit('syncError', err);
       throw err;
     } finally {
@@ -348,6 +362,7 @@ class JoplinSyncClient extends EventEmitter {
       } catch (rollbackErr) {
         console.error('Failed to rollback transaction:', rollbackErr);
       }
+      this._handleVectorDbFatalError(err);
       throw err;
     }
   }
@@ -393,6 +408,7 @@ class JoplinSyncClient extends EventEmitter {
       } catch (rollbackErr) {
         console.error('Failed to rollback transaction:', rollbackErr);
       }
+      this._handleVectorDbFatalError(err);
       throw err;
     }
   }
@@ -416,6 +432,19 @@ class JoplinSyncClient extends EventEmitter {
     };
   }
 
+  _handleVectorDbFatalError(error) {
+      console.warn('Fatal database state detected. Treating vector database as ephemeral: Wiping DB and forcing restart.', error);
+      const fs = require('fs');
+      const path = require('path');
+      const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
+      try {
+          if (this.vectorDb) this.vectorDb.close();
+          if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
+      } catch (e) { /* ignore cleanup error */ }
+      setTimeout(() => process.exit(1), 1000);
+      throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
+  }
+
   async generateEmbeddings() {
     this.emit('embeddingStart');
 
@@ -430,7 +459,7 @@ class JoplinSyncClient extends EventEmitter {
           if (err) return reject(err);
           resolve(rows || []);
         });
-      });
+      }).catch(err => this._handleVectorDbFatalError(err));
       
       const vectorIdToTime = new Map();
       vectorMeta.forEach(row => vectorIdToTime.set(row.note_id, row.updated_time || 0));
@@ -443,12 +472,17 @@ class JoplinSyncClient extends EventEmitter {
           console.log(`Note ${vId} was deleted, removing from vector DB...`);
           await new Promise((resolve, reject) => {
             this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [vId], (err, row) => {
-              if (err || !row) return resolve();
-              this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], () => {
-                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], resolve);
+              if (err) return reject(err);
+              if (!row) return resolve();
+              this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], (err2) => {
+                if (err2) return reject(err2);
+                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {
+                  if (err3) return reject(err3);
+                  resolve();
+                });
               });
             });
-          });
+          }).catch(err => this._handleVectorDbFatalError(err));
         }
       }
       
@@ -545,19 +579,7 @@ class JoplinSyncClient extends EventEmitter {
                 });
               }
            } catch (error) {
-              if (error.message && (error.message.includes('Dimension mismatch') || error.message.includes('transaction') || error.message.includes('memory'))) {
-                console.warn('Fatal database state detected. Treating vector database as ephemeral: Wiping DB and forcing restart.');
-                const fs = require('fs');
-                const path = require('path');
-                const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
-                try {
-                  if (this.vectorDb) this.vectorDb.close();
-                  if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
-                } catch (e) { /* ignore cleanup error */ }
-                setTimeout(() => process.exit(0), 1000);
-                throw new Error(`Self-healing triggered: Vector database connection was poisoned.`, { cause: error });
-              }
-              throw new Error(`Bulk database insertion failed critically: ${error.message}`, { cause: error });
+              this._handleVectorDbFatalError(error);
            } finally {
               processedCount += batch.length; // use batch.length so empty notes are counted
               this.emit('progress', { phase: 'embedding', current: processedCount, total: notesToProcess.length, percent: Math.round((processedCount / notesToProcess.length) * 100) });

@@ -36,6 +36,21 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// Ensure clean state if no lock file exists (Claim 2: Orphaned Database Wipe)
+if (!fs.existsSync(CONFIG_PATH)) {
+  console.log('No lock file (config.json) found on startup. Ensuring clean state...');
+  const files = fs.readdirSync(DATA_DIR);
+  for (const file of files) {
+    if (file === 'config.json' || file === 'config.json.tmp') continue;
+    const fullPath = path.join(DATA_DIR, file);
+    try {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+    } catch (e) {
+      console.error(`Failed to clean orphaned file ${fullPath}:`, e);
+    }
+  }
+}
+
 app.get('/llms.txt', (req, res) => {
   const hostUrl = `${req.protocol}://${req.get('host')}`;
   res.type('text/plain').send(`# For Humans
@@ -535,9 +550,27 @@ app.post('/auth', async (req, res) => {
   }
 
   const isMarriage = !config.joplinUsername;
+  
+  let isServerUrlChange = false;
+  if (config.joplinServerUrl && config.joplinServerUrl !== serverUrl) {
+      isServerUrlChange = true;
+  }
 
   globalCredentials.password = password;
   globalCredentials.masterPassword = masterPassword;
+
+  if (isServerUrlChange && !isMarriage) {
+      console.log('Sync server URL changed. Wiping local databases...');
+      const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
+      const sqliteDbPath = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'vector_memory.sqlite');
+      try {
+          if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
+          if (fs.existsSync(sqliteDbPath)) fs.unlinkSync(sqliteDbPath);
+          console.log('Local databases wiped successfully due to URL change.');
+      } catch (err) {
+          console.error('Failed to wipe databases on URL change:', err);
+      }
+  }
 
   config = {
     ...config,    joplinServerUrl: serverUrl, 
@@ -788,6 +821,12 @@ async function runSyncCycle(config) {
            embeddingState.status = 'error';
            embeddingState.error = 'Cycle failed: ' + err.message;
         }
+    }
+    
+    // Check if it's a fatal sync error that requires a restart
+    if (err.message && err.message.includes('Sync failed')) {
+        console.error('Fatal sync error detected. Restarting container to recover...', err);
+        process.exit(1);
     }
   } finally {
     isProcessing = false;
