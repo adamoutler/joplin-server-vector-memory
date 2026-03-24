@@ -140,6 +140,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
           cache-dependency-path: './server/requirements.txt'
+          allow-prereleases: true
 
       - name: Add joplin alias to localhost
         run: sudo echo "127.0.0.1 joplin" | sudo tee -a /etc/hosts
