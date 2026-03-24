@@ -21,7 +21,7 @@ Runs unit and integration tests for the JavaScript/Node.js client daemon.
 *   Generates and uploads JUnit test result XML artifacts.
 
 ### C. Python Tests (`test-python`)
-A comprehensive testing suite for the Python FastMCP server and end-to-end integration. Runs across Python 3.14 and 3.15.
+A comprehensive testing suite for the Python FastMCP server and end-to-end integration. Runs across Python 3.11 and 3.12.
 *   **Unit Tests**: Core server logic, configuration, OpenAPI, and database schema tests.
 *   **Core API & E2E**: Spins up an ephemeral Joplin instance via Docker Compose (`docker-compose.test.yml`) and tests the complete lifecycle (syncing, vectorizing, MCP endpoints).
 *   **Live API**: Tests against the active endpoints.
