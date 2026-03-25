@@ -21,11 +21,11 @@ services:
     healthcheck:
       test:
       - CMD-SHELL
-      - curl -s -o /dev/null http://127.0.0.1:3000 && curl -s -o /dev/null http://127.0.0.1:8000
-        || exit 1
+      - curl -s -o /dev/null http://127.0.0.1:3000 && curl -s -o /dev/null http://127.0.0.1:8000 || exit 1
       interval: 5s
-      timeout: 3s
+      timeout: 5s
       retries: 20
+      start_period: 30s
     extra_hosts:
     - host.docker.internal:host-gateway
   ollama:
