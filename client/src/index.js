@@ -559,7 +559,10 @@ app.post('/auth', async (req, res) => {
   const isMarriage = !config.joplinUsername;
   
   let isServerUrlChange = false;
-  if (config.joplinServerUrl && config.joplinServerUrl !== serverUrl) {
+  const cleanOldUrl = (config.joplinServerUrl || '').replace(/\/+$/, '');
+  const cleanNewUrl = (serverUrl || '').replace(/\/+$/, '');
+  
+  if (cleanOldUrl && cleanOldUrl !== cleanNewUrl) {
       isServerUrlChange = true;
   }
 
@@ -574,6 +577,12 @@ app.post('/auth', async (req, res) => {
           if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
           if (fs.existsSync(sqliteDbPath)) fs.unlinkSync(sqliteDbPath);
           console.log('Local databases wiped successfully due to URL change.');
+          
+          // Clear the in-memory sync client so it re-initializes with the new databases
+          if (syncClient && syncClient.db) {
+              try { syncClient.db.close(); } catch(e) {}
+          }
+          syncClient = null;
       } catch (err) {
           console.error('Failed to wipe databases on URL change:', err);
       }
