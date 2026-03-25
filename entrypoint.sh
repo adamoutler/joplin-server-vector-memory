@@ -28,10 +28,18 @@ if [ -f "$LOCK_FILE" ]; then
     echo "Maintenance lock detected. Writing confirm file and waiting for Python to finish..."
     touch "$CONFIRM_FILE"
     
-    # Wait for Python to delete the lock file
-    while [ -f "$LOCK_FILE" ]; do
+    # Wait for Python to delete the lock file (with timeout)
+    WAIT_TIME=0
+    while [ -f "$LOCK_FILE" ] && [ $WAIT_TIME -lt 40 ]; do
         sleep 0.5
+        WAIT_TIME=$((WAIT_TIME+1))
     done
+    
+    if [ -f "$LOCK_FILE" ]; then
+        echo "Maintenance timed out! Forcing restart..."
+        rm -f "$LOCK_FILE"
+        rm -f "$CONFIRM_FILE"
+    fi
     
     echo "Maintenance complete. Restarting container..."
     exit 1

@@ -1045,43 +1045,45 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
     with open(lock_file, "w") as f:
         f.write("lock")
 
-    # 2. Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
     try:
-        import requests
-        requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
-    except Exception as e:
-        logger.error(f"Failed to restart Node daemon: {e}")
+        # 2. Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
+        try:
+            import requests
+            requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
+        except Exception as e:
+            logger.error(f"Failed to restart Node daemon: {e}")
 
-    # 5. Wait for confirm
-    import time
-    max_wait = 15
-    start_wait = time.time()
-    while not os.path.exists(confirm_file) and time.time() - start_wait < max_wait:
-        time.sleep(0.5)
+        # 5. Wait for confirm
+        import time
+        max_wait = 15
+        start_wait = time.time()
+        while not os.path.exists(confirm_file) and time.time() - start_wait < max_wait:
+            time.sleep(0.5)
 
-    # 6. Safely drop DB
-    from src.db import reset_database
-    reset_database(new_dim)
+        # 6. Safely drop DB
+        from src.db import reset_database
+        reset_database(new_dim)
 
-    merged_config = {**current_config, **new_config}
+        merged_config = {**current_config, **new_config}
 
-    # Save to config.json atomically
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    tmp_config_path = f"{config_path}.tmp"
-    with open(tmp_config_path, "w") as f:
-        json.dump(merged_config, f, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp_config_path, config_path)
+        # Save to config.json atomically
+        config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        tmp_config_path = f"{config_path}.tmp"
+        with open(tmp_config_path, "w") as f:
+            json.dump(merged_config, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_config_path, config_path)
 
-    # 7. Delete the lock file
-    if os.path.exists("/tmp/maintenance.lock"):
-        os.remove("/tmp/maintenance.lock")
-    if os.path.exists("/tmp/maintenance.confirm"):
-        os.remove("/tmp/maintenance.confirm")
-
-    _config_mtime = 0  # Invalidate cache
+        _config_mtime = 0  # Invalidate cache
+        
+    finally:
+        # 7. Delete the lock file
+        if os.path.exists("/tmp/maintenance.lock"):
+            os.remove("/tmp/maintenance.lock")
+        if os.path.exists("/tmp/maintenance.confirm"):
+            os.remove("/tmp/maintenance.confirm")
 
     return Settings(**merged_config)
 
