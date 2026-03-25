@@ -130,6 +130,12 @@ app.use(async (req, res, next) => {
     return next();
   }
 
+  // Exempt the POST /auth endpoint so users can log in via the HTML form
+  // even if their browser has cached invalid Basic Auth credentials.
+  if (req.path === '/auth' && req.method === 'POST') {
+    return next();
+  }
+
   let joplinUrl = process.env.JOPLIN_SERVER_URL;
   if (joplinUrl) joplinUrl = joplinUrl.replace(/\/+$/, '');
   let proxyConfig = null;
@@ -146,7 +152,8 @@ app.use(async (req, res, next) => {
     }
   }
 
-  const send401 = () => {
+  const send401 = (reason) => {
+    console.log(`[Auth Middleware] Rejecting request to ${req.path} - Reason: ${reason}`);
     if (req.path === '/' || req.path === '/index.html') {
       res.setHeader('WWW-Authenticate', 'Basic realm="Joplin Sync Client"');
     }
@@ -155,12 +162,12 @@ app.use(async (req, res, next) => {
 
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    return send401();
+    return send401("Missing Authorization header");
   }
 
   const match = authHeader.match(/^Basic\s+(.*)$/i);
   if (!match) {
-    return send401();
+    return send401("Invalid Authorization header format");
   }
 
   const base64Credentials = match[1];
@@ -180,22 +187,26 @@ app.use(async (req, res, next) => {
   // Setup mode check
   const isSetupMode = !proxyConfig || !proxyConfig.joplinUsername;
   const isDefaultSetup = reqUser === 'setup' && reqPass === '1-mcp-server';
+  
+  console.log(`[Auth Middleware] Path: ${req.path}, isSetupMode: ${isSetupMode}, reqUser: ${reqUser}, reqPass: ${reqPass === '1-mcp-server' ? '(default)' : '(hidden)'}`);
 
   if (isSetupMode) {
       if (isDefaultSetup) {
           authCache.set(base64Credentials, now);
           return next();
       } else {
-          return send401();
+          return send401("Setup mode active, but credentials do not match default setup");
       }
   }
 
   // Enforce username lock: if we have a configured username, reject any other username immediately
-  if (reqUser !== proxyConfig.joplinUsername) {      authCache.delete(base64Credentials);
-      return send401();
+  if (reqUser !== proxyConfig.joplinUsername) {      
+      authCache.delete(base64Credentials);
+      return send401(`User lock mismatch. Expected: ${proxyConfig.joplinUsername}, Got: ${reqUser}`);
   }
 
   const onAuthSuccess = () => {
+      console.log(`[Auth Middleware] Authentication successful for ${reqUser}`);
       authCache.set(base64Credentials, now);
       globalCredentials.password = reqPass;
       
@@ -227,10 +238,11 @@ app.use(async (req, res, next) => {
       return onAuthSuccess();
     } else {
       authCache.delete(base64Credentials);
-      return send401();
+      return send401("Password mismatch with local memory/env/config");
     }
   }
 
+  console.log(`[Auth Middleware] Password not in memory. Relaying to Joplin Server at ${joplinUrl}/api/sessions for validation...`);
   try {
     const response = await fetch(`${joplinUrl}/api/sessions`, {
       method: 'POST',
@@ -238,15 +250,19 @@ app.use(async (req, res, next) => {
       body: JSON.stringify({ email: reqUser, password: reqPass })
     });
 
+    console.log(`[Auth Middleware] Joplin Server responded with HTTP ${response.status}`);
     if (response.ok) {
+      console.log(`[Auth Middleware] Credentials verified by Joplin Server successfully.`);
       return onAuthSuccess();
     } else {
+      const responseBody = await response.text();
+      console.error(`[Auth Middleware] Joplin Server rejected credentials. HTTP ${response.status}. Body: ${responseBody}`);
       authCache.delete(base64Credentials);
-      return send401();
+      return send401(`Joplin Server rejected credentials with HTTP ${response.status}`);
     }
   } catch (err) {
-    console.error('Joplin Server unreachable:', err);
-    return send401();
+    console.error(`[Auth Middleware] Joplin Server unreachable at ${joplinUrl}:`, err);
+    return send401("Joplin Server unreachable during validation relay");
   }
 });
 
@@ -839,10 +855,10 @@ async function runSyncCycle(config) {
         }
     }
     
-    // Check if it's a fatal sync error that requires a restart
+    // Avoid restarting the container for generic sync errors as it wipes in-memory credentials.
+    // Fatal SQLite corruption errors are handled natively in sync.js with process.exit.
     if (err.message && err.message.includes('Sync failed')) {
-        console.error('Fatal sync error detected. Restarting container to recover...', err);
-        process.exit(1);
+        console.error('Sync cycle encountered an error. Will retry on next interval.', err.message);
     }
   } finally {
     isProcessing = false;

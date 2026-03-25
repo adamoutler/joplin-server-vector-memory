@@ -258,12 +258,25 @@
         syncEl.className = 'status-' + syncState.status;
         
         const hasCredentials = data.hasCredentials;
+        const isMarriage = !data.config || !data.config.joplinUsername;
+        
         if (hasCredentials) {
           document.getElementById('auth-form').style.display = 'none';
           document.getElementById('trigger-sync-btn').style.display = 'inline-block';
-        } else {
+        } else if (isMarriage) {
+          // Unmarried, show the full setup form
           document.getElementById('auth-form').style.display = 'block';
           document.getElementById('trigger-sync-btn').style.display = 'none';
+        } else {
+          // Married but no credentials (e.g. after a reboot)
+          // Hide the form, tell the user to reload to trigger Basic Auth
+          document.getElementById('auth-form').style.display = 'none';
+          document.getElementById('trigger-sync-btn').style.display = 'none';
+          if (!window.hasAlertedSession) {
+              window.hasAlertedSession = true;
+              alert("Session state reset (e.g. after a restart). The page will now reload to securely authenticate your credentials.");
+              window.location.reload();
+          }
         }
         
         const syncProgEl = document.getElementById('sync-progress-text');
