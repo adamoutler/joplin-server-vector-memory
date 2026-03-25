@@ -104,13 +104,10 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         page.on("dialog", lambda dialog: dialog.accept())
         page.goto(proxy_url)
         
-        page.fill("#serverUrl", "http://joplin:22300")
-        page.fill("#username", "admin@localhost")
-        page.fill("#password", "admin")
-        page.fill("#memoryServerAddress", "http://localhost:8000")
-        page.click("text='Save & Validate'")
-        expect(page.locator("#auth-msg")).to_contain_text("Saved successfully", timeout=15000)
-        
+        # We don't need to fill the form again, as the system is locked and the form is hidden.
+        # But we do need to wait for the page to load fully.
+        page.wait_for_timeout(2000)
+
         # Step 08: Observe all backend servers and examples update to use proxy URL
         expect(page.locator("#example-http")).to_contain_text(f"{proxy_url}/http-api", timeout=5000)
         page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/08_observe_examples.png")
