@@ -1077,7 +1077,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
         os.replace(tmp_config_path, config_path)
 
         _config_mtime = 0  # Invalidate cache
-        
+
     finally:
         # 7. Delete the lock file
         if os.path.exists("/tmp/maintenance.lock"):
