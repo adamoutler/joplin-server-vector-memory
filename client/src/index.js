@@ -894,8 +894,3 @@ if (require.main === module) {
 }
 
 module.exports = app;
-ning on port ${PORT}`);
-  });
-}
-
-module.exports = app;
