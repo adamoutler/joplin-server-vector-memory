@@ -13,27 +13,8 @@ on:
         type: string
 
 jobs:
-  commitlint:
-    name: Lint Commit Messages
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'push'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install commitlint
-        run: npm install -g @commitlint/cli @commitlint/config-conventional
-      - name: Run commitlint
-        run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
-          else
-            npx commitlint --from HEAD~1 --to HEAD --verbose
-          fi
+  # Commit linting is explicitly forbidden in this yaml pipeline.
+  # It should be handled locally via a commit-msg / pre-commit hook instead.
 
   lint:
     name: Lint Code Base

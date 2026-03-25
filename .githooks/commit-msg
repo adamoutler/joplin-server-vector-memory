@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# commit-msg hook
+# Checks commit message length without external dependencies
+
+COMMIT_MSG_FILE=$1
+
+# Read the commit message
+SUBJECT=$(sed -n '1p' "$COMMIT_MSG_FILE")
+
+# Check subject line length
+SUBJECT_LEN=${#SUBJECT}
+if [ "$SUBJECT_LEN" -gt 72 ]; then
+    echo "Error: Commit subject line must not exceed 72 characters (currently $SUBJECT_LEN)."
+    echo "Subject: $SUBJECT"
+    exit 1
+fi
+
+exit 0
