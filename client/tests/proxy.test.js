@@ -9,7 +9,10 @@ jest.mock('fs', () => {
     existsSync: jest.fn(() => false),
     promises: {
       readFile: jest.fn(async () => '{}')
-    }
+    },
+    mkdirSync: jest.fn(),
+    readdirSync: jest.fn(() => []),
+    rmSync: jest.fn()
   };
 });
 

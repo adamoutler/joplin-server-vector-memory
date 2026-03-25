@@ -20,15 +20,14 @@ def test_api_server_live_endpoints():
     max_retries = 60
     for i in range(max_retries):
         try:
-            r1 = requests.get(f"{BACKEND_URL}/docs", timeout=5)
-            r2 = requests.get(f"{PROXY_URL}/docs", timeout=5)
-            r3 = requests.get(f"{PROXY_URL}/", timeout=5)
-            if r1.status_code == 200 and r2.status_code == 200 and r3.status_code in [200, 401]:
+            r1 = requests.get(f"{BACKEND_URL}/docs", timeout=2)
+            r2 = requests.get(f"{PROXY_URL}/docs", timeout=2)
+            r3 = requests.get(f"{PROXY_URL}/", timeout=2)
+            if r1.status_code in [200, 404] and r2.status_code in [200, 404] and r3.status_code in [200, 401]:
                 break
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
             pass
-        time.sleep(1)
-    # Verify that the ports are responding properly
+        time.sleep(1)    # Verify that the ports are responding properly
     docs_8000 = requests.get(f"{BACKEND_URL}/docs", timeout=30)
     assert docs_8000.status_code == 404, f"Backend /docs should return 404, got {docs_8000.status_code}"
 
