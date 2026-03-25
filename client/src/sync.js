@@ -57,7 +57,7 @@ class JoplinSyncClient extends EventEmitter {
     BaseModel.setDb(this.db);
 
     // Initialize vector db
-    const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, 'vector.sqlite');
+    const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
     this.vectorDb = new sqlite3.Database(vectorDbPath);
     sqliteVec.load(this.vectorDb);
 

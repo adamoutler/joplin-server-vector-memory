@@ -67,6 +67,10 @@ def _load_config_file() -> dict:
                 _config_mtime = mtime
     except Exception as e:
         logger.error(f"Error reading config.json: {e}")
+        # If the file exists but we failed to read it, do NOT return an empty dict, 
+        # otherwise we will wipe the user's settings during a REINDEX merge.
+        if os.path.exists(config_path):
+            raise HTTPException(status_code=500, detail="Critical Configuration Error: Lock file is corrupted or unreadable.")
     return _config_cache
 
 

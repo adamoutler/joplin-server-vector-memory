@@ -37,7 +37,7 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 // Ensure clean state if no lock file exists (Claim 2: Orphaned Database Wipe)
-if (!fs.existsSync(CONFIG_PATH)) {
+if (!fs.existsSync(CONFIG_PATH) && !fs.existsSync(CONFIG_PATH + '.tmp')) {
   console.log('No lock file (config.json) found on startup. Ensuring clean state...');
   const files = fs.readdirSync(DATA_DIR);
   for (const file of files) {
@@ -49,6 +49,8 @@ if (!fs.existsSync(CONFIG_PATH)) {
       console.error(`Failed to clean orphaned file ${fullPath}:`, e);
     }
   }
+} else if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(CONFIG_PATH + '.tmp')) {
+  console.warn('Startup: Found config.json.tmp but no config.json. An atomic write may have been interrupted. Waiting for manual recovery.');
 }
 
 app.get('/llms.txt', (req, res) => {
@@ -449,7 +451,10 @@ app.get('/status', async (req, res) => {
       // omit sensitive data
       delete config.joplinPassword;
       delete config.joplinMasterPassword;
-    } catch (e) { /* ignore */ }
+    } catch (e) { 
+      console.error('Failed to parse config.json in /status endpoint.', e);
+      config = { error: 'Configuration file is corrupted.' };
+    }
   }
   res.json({ syncState, embeddingState, config, hasCredentials: !!globalCredentials.password });
 });
@@ -477,15 +482,17 @@ app.post('/sync', async (req, res) => {
 
 app.post('/auth', async (req, res) => {
   const { serverUrl, username, password, masterPassword, memoryServerAddress, rotate } = req.body;
-  
+
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       config = JSON.parse(data);
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      console.error('CRITICAL: Failed to parse config.json in /auth endpoint.', e);
+      return res.status(500).json({ error: 'Critical Configuration Error. The lock file is corrupted. Please Factory Reset.' });
+    }
   }
-
   if (!serverUrl || !username || !password) {
     return res.status(400).json({ error: 'Missing credentials' });
   }
@@ -883,6 +890,11 @@ if (fs.existsSync(CONFIG_PATH)) {
 if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
+  });
+}
+
+module.exports = app;
+ning on port ${PORT}`);
   });
 }
 
