@@ -320,11 +320,11 @@ def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]
 
 
 @mcp.tool(name="resources.upload")
-def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> str:
+def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> dict:
     """
     Uploads a binary file or resource to the server.
-    Returns a unique Resource ID that can be referenced while updating or remembering a note.
-    To attach the file to a note, embed the returned ID into the markdown content using the syntax `[filename](:/RESOURCE_ID)` or `![filename](:/RESOURCE_ID)`.
+    Returns {"resource_id": "string", "markdown_link": "string"}.
+    To attach the file to a note, embed the returned markdown_link into the note content.
     """
     try:
         payload = {
@@ -336,10 +336,17 @@ def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> s
 
         res = _call_node_proxy("POST", "/node-api/resources", json_data=payload)
         if res.status_code == 200:
-            return json.dumps(res.json())
-        return f"Error uploading resource: {res.text}"
+            data = res.json()
+            resource_id = data.get("id")
+            is_image = mime_type and mime_type.startswith("image/")
+            prefix = "!" if is_image else ""
+            return {
+                "resource_id": resource_id,
+                "markdown_link": f"{prefix}[{filename}](:/{resource_id})"
+            }
+        return {"error": f"Error uploading resource: {res.text}"}
     except Exception as e:
-        return f"Error: {e}"
+        return {"error": str(e)}
 
 
 @mcp.tool(name="notes.get")
@@ -497,7 +504,7 @@ _deletion_tokens = {}
 def request_note_deletion(note_id: str, reason: str) -> dict:
     """
     Request the deletion of a note. This is step 1 of 2.
-    Returns a token required for step 2.
+    Returns {"deletion_token": "string", "note_title": "string"}.
     """
     db = get_db_connection()
     cursor = db.cursor()
@@ -519,12 +526,8 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
     }
 
     return {
-        "status": "pending",
-        "message": "Deletion requested. To complete deletion, call execute_deletion with this token, the exact note title, and the required safety attestation.",
         "deletion_token": token,
-        "note_id": note_id,
-        "confirm_title": title,
-        "expires_in_seconds": 300
+        "note_title": title
     }
 
 

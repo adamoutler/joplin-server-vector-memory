@@ -140,7 +140,7 @@ jobs:
       - name: Run Pytest (Integration & E2E)
         working-directory: ./
         run: |
-          python -m pytest --timeout=600 server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py tests/test_auth_flow.py tests/test_dashboard_auth.py tests/test_ui_api_key.py --junitxml=server/test-results/pytest-e2e.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
+          python -m pytest --e2e --timeout=600 server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py tests/test_auth_flow.py tests/test_dashboard_auth.py tests/test_ui_api_key.py --junitxml=server/test-results/pytest-e2e.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Extract Docker Logs on Failure
         if: failure()
