@@ -1,0 +1,4 @@
+Codebase investigation confirmed that all state logic and credentials requirements are met by the system.
+Tests failed originally because the test script requested 'localhost' instead of the mapped docker container 'joplin-server', causing the upstream Joplin Server to reject the connection with HTTP 404.
+The bash script test_restart_auth.sh was fixed, and the full E2E run of `pytest tests/test_restart_auth.py` successfully completed, simulating exactly the restart and re-auth conditions.
+Commit e70611c contains the test fix. No app code modifications were necessary as the manual HTTP Auth fallback against the `joplinUrl` is already implemented correctly in the Node.js proxy authMiddleware.
