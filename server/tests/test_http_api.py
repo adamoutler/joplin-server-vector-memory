@@ -294,7 +294,7 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
 
     def get_free_port():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(('0.0.0.0', 0)) # codeql[py/bind-socket-all-network-interfaces]
+        s.bind(('0.0.0.0', 0))  # codeql[py/bind-socket-all-network-interfaces]
         port = s.getsockname()[1]
         s.close()
         return port
