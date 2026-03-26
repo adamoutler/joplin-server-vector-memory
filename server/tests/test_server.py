@@ -146,7 +146,26 @@ def test_update_note_success(temp_db, mock_ollama):
 
     # Verify the update
     updated_note = get_note(note_id)
-    assert "Appended content" in updated_note.get("content")
+    assert "Initial content\n\nAppended content" in updated_note.get("content")
+    assert updated_note.get("updated_time") >= timestamp
+
+def test_update_note_prepend(temp_db, mock_ollama):
+    # Remember a note
+    result = remember("Update Prepend Test", "Initial content")
+    assert result.get("status") == "success"
+    note_id = result.get("id")
+
+    # Get the note and its timestamp
+    note = get_note(note_id)
+    timestamp = note.get("updated_time")
+
+    # Update the note (prepend)
+    update_res = update_note(note_id, "Prepended content", "prepend", timestamp, "Test prepend")
+    assert update_res.get("status") == "success"
+
+    # Verify the update
+    updated_note = get_note(note_id)
+    assert "Prepended content\n\nInitial content" in updated_note.get("content")
     assert updated_note.get("updated_time") >= timestamp
 
 

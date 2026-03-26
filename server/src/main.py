@@ -42,6 +42,7 @@ def get_local_model():
 class UpdateMode(str, Enum):
     full_note_replacement = "full note replacement"
     append = "append"
+    prepend = "prepend"
 
 
 # Configure logging
@@ -461,12 +462,14 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
         return {"error": "Error: Note has been modified since you last read it. Retrieve the note again before updating."}
 
     if update_mode == UpdateMode.append:
-        new_content = current_content + "\n" + content
+        new_content = current_content + "\n\n" + content
+    elif update_mode == UpdateMode.prepend:
+        new_content = content + "\n\n" + current_content
     elif update_mode == UpdateMode.full_note_replacement:
         new_content = content
     else:
         db.close()
-        return {"error": "Invalid update_mode. Must be 'append' or 'full note replacement'."}
+        return {"error": "Invalid update_mode. Must be 'append', 'prepend', or 'full note replacement'."}
 
     new_time = int(time.time() * 1000)
 
@@ -1188,3 +1191,4 @@ if __name__ == "__main__":
         import uvicorn
         # Allow running the server locally
         uvicorn.run("main:app", host="0.0.0.0", port=8000)
+
