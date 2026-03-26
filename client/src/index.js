@@ -33,6 +33,26 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
+const { Mutex } = require('async-mutex');
+const nodeApiMutex = new Mutex();
+
+app.use('/node-api', async (req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    const release = await nodeApiMutex.acquire();
+    let released = false;
+    const safeRelease = () => {
+      if (!released) {
+        released = true;
+        release();
+      }
+    };
+    res.on('finish', safeRelease);
+    res.on('close', safeRelease);
+    res.on('error', safeRelease);
+  }
+  next();
+});
+
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
