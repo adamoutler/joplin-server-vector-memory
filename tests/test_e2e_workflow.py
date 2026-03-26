@@ -226,7 +226,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
             print(f"Searching via MCP for: {search_query}")
             
             search_res = await session.call_tool(
-                "search_notes",
+                "notes.search",
                 arguments={"query": search_query}
             )
             
@@ -251,7 +251,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
             
             # Read the note via get_note
             get_res = await session.call_tool(
-                "get_note",
+                "notes.get",
                 arguments={"note_id": found_note_id}
             )
             
