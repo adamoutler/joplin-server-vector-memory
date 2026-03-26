@@ -181,7 +181,7 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
     return requests.request(method, url, auth=auth)
 
 
-@mcp.tool()
+@mcp.tool(name="notes.search")
 def search_notes(query: str) -> list[dict]:
     """
     Search notes semantically using the provided query.
@@ -280,7 +280,7 @@ def search_notes(query: str) -> list[dict]:
         return []
 
 
-@mcp.tool()
+@mcp.tool(name="resources.get")
 def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]:
     """
     Get the contents of a specific resource (image, script, PDF, etc) attached to a note.
@@ -312,7 +312,7 @@ def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(name="resources.upload")
 def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> str:
     """
     Uploads a binary file or resource to the server.
@@ -335,7 +335,7 @@ def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> s
         return f"Error: {e}"
 
 
-@mcp.tool()
+@mcp.tool(name="notes.get")
 def get_note(note_id: str) -> dict:
     """
     Get the full content of a specific note by ID.
@@ -369,7 +369,7 @@ def get_note(note_id: str) -> dict:
     return {"error": "Note not found"}
 
 
-@mcp.tool()
+@mcp.tool(name="notes.remember")
 def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
     """
     Remember a new note by storing its title and content.
@@ -424,7 +424,7 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
         return {"error": str(e)}
 
 
-@mcp.tool()
+@mcp.tool(name="notes.update")
 def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modified_timestamp: int, summary_of_changes: str) -> dict:
     """
     Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
@@ -486,7 +486,7 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
 _deletion_tokens = {}
 
 
-@mcp.tool()
+@mcp.tool(name="notes.request_deletion")
 def request_note_deletion(note_id: str, reason: str) -> dict:
     """
     Request the deletion of a note. This is step 1 of 2.
@@ -521,7 +521,7 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
     }
 
 
-@mcp.tool()
+@mcp.tool(name="notes.execute_deletion")
 def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation: dict) -> dict:
     """
     Execute the deletion of a note. This is step 2 of 2.
