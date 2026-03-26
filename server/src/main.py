@@ -530,7 +530,7 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
 
     return {
         "deletion_token": token,
-        "note_title": title
+        "confirm_title": title
     }
 
 
@@ -987,7 +987,7 @@ async def test_model_connection(request: TestModelRequest, token: str = Depends(
             raise ValueError("Response did not contain an embedding array.")
     except Exception as e:
         logger.error(f"Model test failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Failed to connect to or pull model '{request.model}' from '{request.baseUrl}': {str(e)}")
+        raise HTTPException(status_code=400, detail="Failed to connect to or pull the specified model from the provided base URL. See server logs for details.")
 
 
 @app.post("/api/settings", response_model=Settings)
@@ -1050,7 +1050,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
                 new_dim = len(res["embedding"])
         except Exception as e:
             logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
-            raise HTTPException(status_code=400, detail=f"Failed to connect to model {new_embed.get('model')} at {new_embed.get('baseUrl')}: {str(e)}")
+            raise HTTPException(status_code=400, detail="Failed to connect to the specified model at the provided base URL. See server logs for details.")
 
     new_config["embeddingDimension"] = new_dim
 

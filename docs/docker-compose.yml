@@ -4,16 +4,16 @@ services:
   app:
     image: ghcr.io/adamoutler/joplin-server-vector-memory:latest
     ports:
-      - "3000:3000"
-      - "8000:8000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
     environment:
-      - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
-      - JOPLIN_USERNAME=${JOPLIN_USERNAME}
-      - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
-      - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
-      - OLLAMA_URL=${OLLAMA_URL}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      # - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
+      # - JOPLIN_USERNAME=${JOPLIN_USERNAME}
+      # - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
+      # - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
+      # - OLLAMA_URL=${OLLAMA_URL}
+      # - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     restart: unless-stopped

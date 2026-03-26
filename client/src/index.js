@@ -6,6 +6,7 @@ for (const key in process.env) {
 }
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -13,6 +14,15 @@ const { JoplinSyncClient } = require('./sync');
 
 const app = express();
 app.use(cors());
+
+const limiter = rateLimit({
+  windowMs: 1000, // 1 second window
+  max: 10, // limit each IP to 10 requests per windowMs (equivalent to 1 per 100ms)
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
 
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const BACKEND_URL = process.env.BACKEND_URL || 'http://127.0.0.1:8000';
@@ -163,7 +173,7 @@ app.use(async (req, res, next) => {
   }
 
   let joplinUrl = process.env.JOPLIN_SERVER_URL;
-  if (joplinUrl) joplinUrl = joplinUrl.replace(/\/+$/, '');
+  if (joplinUrl) joplinUrl = joplinUrl.replace(/\/$/, '');
   let proxyConfig = null;
 
   if (fs.existsSync(CONFIG_PATH)) {
@@ -171,7 +181,7 @@ app.use(async (req, res, next) => {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       proxyConfig = JSON.parse(data);
       if (!joplinUrl && proxyConfig.joplinServerUrl) {
-        joplinUrl = proxyConfig.joplinServerUrl.replace(/\/+$/, '');
+        joplinUrl = proxyConfig.joplinServerUrl.replace(/\/$/, '');
       }
     } catch(e) {
       // ignore parse errors
@@ -539,6 +549,17 @@ app.post('/auth', async (req, res) => {
     return res.status(400).json({ error: 'Missing credentials' });
   }
 
+  let cleanServerUrl;
+  try {
+    const parsed = new URL(serverUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+    cleanServerUrl = parsed.toString().replace(/\/$/, '');
+  } catch (err) {
+    return res.status(400).json({ error: 'Invalid Joplin Server URL format or protocol.' });
+  }
+
   if (config.joplinUsername && config.joplinUsername !== username) {
       return res.status(400).json({ error: 'Username cannot be changed after initial setup. Please perform a Factory Reset to switch accounts.' });
   }
@@ -559,7 +580,7 @@ app.post('/auth', async (req, res) => {
     };
     
     // Attempt a basic check against the server to see if it's reachable
-    const checkRes = await fetchWithTimeout(`${serverUrl}/api/ping`).catch(() => fetchWithTimeout(`${serverUrl}/login`)).catch(() => fetchWithTimeout(serverUrl));
+    const checkRes = await fetchWithTimeout(`${cleanServerUrl}/api/ping`).catch(() => fetchWithTimeout(`${cleanServerUrl}/login`)).catch(() => fetchWithTimeout(cleanServerUrl));
     
     if (!checkRes || !checkRes.ok) {
       if (checkRes && checkRes.status !== 404 && checkRes.status !== 401 && checkRes.status !== 403) {
@@ -570,8 +591,7 @@ app.post('/auth', async (req, res) => {
     }
 
     // Now validate the actual credentials
-    const cleanUrl = serverUrl.replace(/\/+$/, '');
-    const sessionRes = await fetchWithTimeout(`${cleanUrl}/api/sessions`, {
+    const sessionRes = await fetchWithTimeout(`${cleanServerUrl}/api/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: username, password })
@@ -601,8 +621,8 @@ app.post('/auth', async (req, res) => {
   const isMarriage = !config.joplinUsername;
   
   let isServerUrlChange = false;
-  const cleanOldUrl = (config.joplinServerUrl || '').replace(/\/+$/, '');
-  const cleanNewUrl = (serverUrl || '').replace(/\/+$/, '');
+  const cleanOldUrl = (config.joplinServerUrl || '').replace(/\/$/, '');
+  const cleanNewUrl = (serverUrl || '').replace(/\/$/, '');
   
   if (cleanOldUrl && cleanOldUrl !== cleanNewUrl) {
       isServerUrlChange = true;
@@ -820,7 +840,17 @@ async function runSyncCycle(config) {
     
     // Explicitly validate sync access before starting to catch 403s immediately
     if (config.joplinServerUrl) {
-       const joplinUrl = config.joplinServerUrl.replace(/\/+$/, '');
+       let joplinUrl;
+       try {
+         const parsed = new URL(config.joplinServerUrl);
+         if (!['http:', 'https:'].includes(parsed.protocol)) {
+           throw new Error('Invalid protocol');
+         }
+         joplinUrl = parsed.toString().replace(/\/$/, '');
+       } catch (err) {
+         throw new Error('Invalid Joplin Server URL format or protocol in config.');
+       }
+       
        const syncPass = config.joplinPassword || globalCredentials.password;
        if (syncPass) {
            const sessionRes = await fetch(`${joplinUrl}/api/sessions`, {

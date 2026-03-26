@@ -14,7 +14,7 @@ Ready to supercharge your AI assistants? Let's get started:
 
 ```bash
 docker pull ghcr.io/adamoutler/joplin-server-vector-memory-dev:latest
-docker run -p3000:3000 -p8000:8000 -v data:/app/data ghcr.io/adamoutler/joplin-server-vector-memory-dev:latest
+docker run -p 127.0.0.1:3000:3000 -p 127.0.0.1:8000:8000 -v data:/app/data ghcr.io/adamoutler/joplin-server-vector-memory-dev:latest
 ```
 
 ### Option 2: Docker Compose

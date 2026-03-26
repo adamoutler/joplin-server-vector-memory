@@ -4,8 +4,8 @@ services:
     build:
       context: .
     ports:
-    - 3001:3000
-    - 8002:8000
+    - "127.0.0.1:3001:3000"
+    - "127.0.0.1:8002:8000"
     volumes:
     - test_data:/app/data
     environment:

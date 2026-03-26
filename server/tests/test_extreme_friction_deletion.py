@@ -33,7 +33,7 @@ def test_extreme_friction_invalid_token(temp_db, mock_ollama):
     note = get_note(note_id)
 
     req_result = request_note_deletion(note_id, "Test")
-    assert req_result["status"] == "pending"
+    assert "deletion_token" in req_result
 
     attestation = {
         "content_hash": note["content_hash"],

@@ -5,15 +5,15 @@ services:
     build:
       context: .
     ports:
-      - "3002:3000"
-      - "8003:8000"
+      - "127.0.0.1:3002:3000"
+      - "127.0.0.1:8003:8000"
     volumes:
       - test_data:/app/data
     environment:
-      - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
-      - JOPLIN_USERNAME=${JOPLIN_USERNAME}
-      - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
-      - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
+      # - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
+      # - JOPLIN_USERNAME=${JOPLIN_USERNAME}
+      # - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
+      # - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
       - OLLAMA_URL=http://ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite

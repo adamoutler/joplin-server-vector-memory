@@ -8,6 +8,8 @@ on:
         required: false
         type: string
 
+permissions: read-all
+
 jobs:
   # Commit linting is explicitly forbidden in this yaml pipeline.
   # It should be handled locally via a commit-msg / pre-commit hook instead.

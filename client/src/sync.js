@@ -19,7 +19,7 @@ class JoplinSyncClient extends EventEmitter {
     super();
     this.profileDir = options.profileDir || '/tmp/joplin-client';
     this.serverUrl = options.serverUrl || process.env.JOPLIN_SERVER_URL;
-    if (this.serverUrl) this.serverUrl = this.serverUrl.replace(/\/+$/, '');
+    if (this.serverUrl) this.serverUrl = this.serverUrl.replace(/\/$/, '');
     this.username = options.username || process.env.JOPLIN_USERNAME;
     this.password = options.password || process.env.JOPLIN_PASSWORD;
     this.masterPassword = options.masterPassword || process.env.JOPLIN_MASTER_PASSWORD;
