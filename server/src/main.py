@@ -1,7 +1,3 @@
-import os
-for key, value in list(os.environ.items()):
-    if isinstance(value, str) and value.strip() == "":
-        del os.environ[key]
 
 from typing import Literal
 import fastmcp
@@ -26,6 +22,10 @@ from enum import Enum
 from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents
 from typing import Union, List, Optional
 from sentence_transformers import SentenceTransformer
+
+for key, value in list(os.environ.items()):
+    if isinstance(value, str) and value.strip() == "":
+        del os.environ[key]
 
 # Load the local model lazily to save memory if Ollama is used
 _local_model = None
