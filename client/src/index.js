@@ -848,7 +848,7 @@ async function runSyncCycle(config) {
          }
          joplinUrl = parsed.toString().replace(/\/$/, '');
        } catch (err) {
-         throw new Error('Invalid Joplin Server URL format or protocol in config.');
+         throw new Error('Invalid Joplin Server URL format or protocol in config.', { cause: err });
        }
        
        const syncPass = config.joplinPassword || globalCredentials.password;
