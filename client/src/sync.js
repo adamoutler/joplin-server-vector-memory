@@ -345,7 +345,7 @@ class JoplinSyncClient extends EventEmitter {
       for (let i = 0; i < notes.length; i++) {
         const note = notes[i];
         const embedding = embeddings[i];
-        const eStr = new Float32Array(embedding);
+        const eStr = Buffer.from(new Float32Array(embedding).buffer);
         
         const row = await getAsync(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [note.id]);
         
@@ -395,7 +395,7 @@ class JoplinSyncClient extends EventEmitter {
     try {
       await runAsync('BEGIN IMMEDIATE TRANSACTION', []);
       const row = await getAsync(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId]);
-      const eStr = new Float32Array(embedding);
+      const eStr = Buffer.from(new Float32Array(embedding).buffer);
 
       if (row) {
         const rowid = row.rowid;

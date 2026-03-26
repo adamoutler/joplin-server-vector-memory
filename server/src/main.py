@@ -266,12 +266,14 @@ def search_notes(query: str) -> list[dict]:
                 note_id = note_id.replace("-", "")
 
             # Create a simple blurb
-            content = data["content"]
+            content = data.get("content") or ""
             blurb = content[:2000] + "..." if len(content) > 2000 else content
+
+            title = data.get("title") or "Untitled"
 
             note_dict = {
                 "id": note_id,
-                "title": data["title"],
+                "title": title,
                 "blurb": blurb,
                 "distance": rrf_scores[rowid]  # We return RRF score here as 'distance'
             }
@@ -352,7 +354,7 @@ def get_note(note_id: str) -> dict:
     db.close()
 
     if row:
-        content = row[2]
+        content = row[2] or ""
         content_hash = "sha256:" + hashlib.sha256(content.encode('utf-8')).hexdigest()
 
         resources = []
