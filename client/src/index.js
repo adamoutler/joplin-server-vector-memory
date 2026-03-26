@@ -114,10 +114,10 @@ Use the gathered details to configure your connection.
 
 ## 3. Capabilities
 Once connected, you can:
-- \`search_notes\`: Search notes semantically using a query.
-- \`get_note\`: Fetch full note content by ID.
-- \`remember\`: Save a new note into the memory bank.
-- \`delete_note\`: Delete a note by ID.
+- \`notes.search\`: Search notes semantically using a query.
+- \`notes.get\`: Fetch full note content by ID.
+- \`notes.remember\`: Save a new note into the memory bank.
+- \`notes.request_deletion\`: Delete a note by ID.
 `);
 });
 
