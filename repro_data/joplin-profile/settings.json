@@ -1,0 +1,7 @@
+{
+	"$schema": "https://joplinapp.org/schema/settings.json",
+	"sync.target": 9,
+	"sync.9.path": "http://joplin-server:22300",
+	"sync.9.username": "admin@localhost",
+	"sync.resourceDownloadMode": "always"
+}
