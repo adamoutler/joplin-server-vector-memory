@@ -7,9 +7,9 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version (e.g. v1.0.0)'
-        required: true
+      version_override:
+        description: 'Optional: Release version override (e.g. 1.0.0). If blank, uses automatic 0.1.<count>'
+        required: false
         type: string
 
 jobs:
@@ -193,7 +193,7 @@ jobs:
     needs: [test-node, test-python]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - name: Checkout Code
@@ -226,24 +226,46 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
-      - name: Set Image Name
-        id: image-name
+      - name: Calculate Version
+        id: version
         run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            echo "name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev" >> $GITHUB_OUTPUT
+          COUNT=$(git rev-list --count HEAD)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          AUTO_VERSION="0.1.${COUNT}"
+          OVERRIDE="${{ github.event.inputs.version_override }}"
+          if [ -n "$OVERRIDE" ]; then
+            FINAL_VERSION="$OVERRIDE"
           else
-            echo "name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory" >> $GITHUB_OUTPUT
+            FINAL_VERSION="$AUTO_VERSION"
+          fi
+          echo "version=${FINAL_VERSION}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Set Image Name and Environment
+        id: config
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "image_name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "image_name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.image-name.outputs.name }}
+          images: ${{ steps.config.outputs.image_name }}
           tags: |
             type=raw,value=latest
-            type=raw,value=${{ github.sha }},enable=${{ github.event_name == 'push' }}
-            type=raw,value=${{ github.event.inputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=v${{ steps.version.outputs.version }}-${{ steps.version.outputs.short_sha }},enable=${{ steps.config.outputs.is_release == 'false' }}
+            type=raw,value=v${{ steps.version.outputs.version }},enable=${{ steps.config.outputs.is_release == 'true' }}
+          labels: |
+            org.opencontainers.image.title=Joplin Server Vector Memory
+            org.opencontainers.image.description=${{ steps.config.outputs.is_release == 'true' && 'Production release' || 'Development build' }} for v${{ steps.version.outputs.version }}
+            org.opencontainers.image.version=v${{ steps.version.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -255,3 +277,15 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        if: steps.config.outputs.is_release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}" || true
+          git push origin "v${{ steps.version.outputs.version }}" || true
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "Release v${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            --notes "Production Docker Image: \`ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:v${{ steps.version.outputs.version }}\`"
