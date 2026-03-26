@@ -1,10 +1,12 @@
-name: CI Pipeline
+name: Production Release Pipeline
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'Optional: Release version override (e.g. 1.0.0). If blank, uses automatic 0.1.<count>'
+        required: false
+        type: string
 
 jobs:
   # Commit linting is explicitly forbidden in this yaml pipeline.
@@ -131,6 +133,10 @@ jobs:
         run: |
           python -m pytest --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_extreme_friction_deletion.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
 
+      - name: Run Pytest (Integration & E2E)
+        working-directory: ./
+        run: |
+          python -m pytest --e2e --timeout=600 server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py tests/test_auth_flow.py tests/test_dashboard_auth.py tests/test_ui_api_key.py --junitxml=server/test-results/pytest-e2e.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
       - name: Extract Docker Logs on Failure
         if: failure()
@@ -179,7 +185,7 @@ jobs:
           files: "artifacts/**/*.xml"
 
   build-container:
-    name: Build and Push Dev Container
+    name: Build and Push Production Container
     needs: [test-node, test-python]
     runs-on: ubuntu-latest
     permissions:
@@ -197,41 +203,64 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        if: github.event_name == 'push'
 
       - name: Calculate Version
         id: version
         run: |
           COUNT=$(git rev-list --count HEAD)
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "version=0.1.${COUNT}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          AUTO_VERSION="0.1.${COUNT}"
+          OVERRIDE="${{ github.event.inputs.version_override }}"
+          if [ -n "$OVERRIDE" ]; then
+            FINAL_VERSION="$OVERRIDE"
+          else
+            FINAL_VERSION="$AUTO_VERSION"
+          fi
+          echo "version=${FINAL_VERSION}" >> $GITHUB_OUTPUT
           
-          # Generate basic release notes for the step summary
-          echo "## Dev Build Release Notes" >> $GITHUB_STEP_SUMMARY
-          echo "Version: \`0.1.${COUNT}-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Recent Changes:" >> $GITHUB_STEP_SUMMARY
-          git log -n 5 --pretty=format:"* %s (%h)" >> $GITHUB_STEP_SUMMARY
+          # Generate release notes
+          echo "## Production Release Notes" > release_notes.md
+          echo "Version: \`${FINAL_VERSION}\`" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### Changes in this release:" >> release_notes.md
+          
+          # Try to get changes since last tag, fallback to last 10 commits if no tags exist
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            git log ${LAST_TAG}..HEAD --pretty=format:"* %s (%h)" >> release_notes.md
+          else
+            git log -n 10 --pretty=format:"* %s (%h)" >> release_notes.md
+          fi
+          
+          cat release_notes.md >> $GITHUB_STEP_SUMMARY
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev
+          images: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory
           tags: |
             type=raw,value=latest
             type=raw,value=v${{ steps.version.outputs.version }}
           labels: |
-            org.opencontainers.image.title=Joplin Server Vector Memory (Dev)
-            org.opencontainers.image.description=Development build for v${{ steps.version.outputs.version }}
+            org.opencontainers.image.title=Joplin Server Vector Memory
+            org.opencontainers.image.description=Production release for v${{ steps.version.outputs.version }}
             org.opencontainers.image.version=v${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
@@ -240,8 +269,16 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}" || true
+          git push origin "v${{ steps.version.outputs.version }}" || true
+          gh release create "v${{ steps.version.outputs.version }}"             --title "Release v${{ steps.version.outputs.version }}"             --notes-file release_notes.md
