@@ -1,3 +1,9 @@
+// Clean up whitespace-only environment variables
+for (const key in process.env) {
+  if (typeof process.env[key] === 'string' && process.env[key].trim() === '') {
+    delete process.env[key];
+  }
+}
 const { shimInit } = require('@joplin/lib/shim-init-node');
 const Setting = require('@joplin/lib/models/Setting').default;
 const JoplinDatabase = require('@joplin/lib/JoplinDatabase').default;

@@ -1,3 +1,8 @@
+import os
+for key, value in list(os.environ.items()):
+    if isinstance(value, str) and value.strip() == "":
+        del os.environ[key]
+
 from typing import Literal
 import fastmcp
 from contextlib import asynccontextmanager
