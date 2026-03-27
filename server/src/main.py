@@ -909,8 +909,12 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):
     }
 )
 async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):
-    result = remember(request.title, request.content, request.folder)
-    return result
+    try:
+        result = remember(request.title, request.content, request.folder)
+        return result
+    except Exception as e:
+        logger.error(f"Error in api_remember: {e}")
+        raise HTTPException(status_code=500, detail="An internal error occurred during remember.")
 
 
 @app.post(
@@ -945,14 +949,18 @@ async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Dep
           description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('full_replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
           )
 async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):
-    result = update_note(
-        note_id=request.note_id,
-        content=request.content,
-        update_mode=request.update_mode,
-        last_modified_timestamp=request.last_modified_timestamp,
-        summary_of_changes=request.summary_of_changes
-    )
-    return result
+    try:
+        result = update_note(
+            note_id=request.note_id,
+            content=request.content,
+            update_mode=request.update_mode,
+            last_modified_timestamp=request.last_modified_timestamp,
+            summary_of_changes=request.summary_of_changes
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error in api_update: {e}")
+        raise HTTPException(status_code=500, detail="An internal error occurred during update.")
 
 
 @app.get("/api/settings", response_model=Settings)

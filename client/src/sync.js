@@ -236,7 +236,7 @@ class JoplinSyncClient extends EventEmitter {
     
     const interceptLog = (...args) => {
         const msg = args.map(a => typeof a === 'object' && a instanceof Error ? (a.stack || a.message) : String(a)).join(' ');
-        if (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError') || msg.includes('errors:')) {
+        if (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError') || msg.toLowerCase().includes('error')) {
             this._lastSyncErrors.push(msg);
         }
     };
@@ -250,7 +250,7 @@ class JoplinSyncClient extends EventEmitter {
       await this.synchronizer.start();
       
       if (this._lastSyncErrors && this._lastSyncErrors.length > 0) {
-        throw new Error(`Sync failed: ${this._lastSyncErrors[0]}`);
+        throw new Error(`Sync failed:\n${this._lastSyncErrors.join('\n')}`);
       }
     } catch (err) {
       const errMsg = err.message || String(err);

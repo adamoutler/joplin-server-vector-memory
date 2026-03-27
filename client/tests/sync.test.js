@@ -201,8 +201,8 @@ describe('JoplinSyncClient', () => {
     const errorMock = jest.fn();
     client.on('syncError', errorMock);
 
-    await expect(client.sync()).rejects.toThrow('Sync failed: Forbidden');
-    expect(errorMock).toHaveBeenCalledWith(new Error('Sync failed: Forbidden'));
+    await expect(client.sync()).rejects.toThrow('Sync failed:\nForbidden');
+    expect(errorMock).toHaveBeenCalledWith(new Error('Sync failed:\nForbidden'));
   });
 
   it('should emit decryptStart and decryptComplete on decrypt', async () => {
@@ -239,7 +239,7 @@ describe('JoplinSyncClient', () => {
         // It returns normally without throwing
       });
 
-      await expect(client.sync()).rejects.toThrow('Sync failed: 14:02:35: Synchronizer: JoplinError: Forbidden');
+      await expect(client.sync()).rejects.toThrow('Sync failed:\n14:02:35: Synchronizer: JoplinError: Forbidden');
     });
 
     it('should intercept console.warn containing 403 and throw it as a sync failure', async () => {
@@ -249,7 +249,7 @@ describe('JoplinSyncClient', () => {
         console.warn('GET api/items/root:/info.json:/content: Forbidden (403): {"error":"Forbidden"}');
       });
 
-      await expect(client.sync()).rejects.toThrow('Sync failed: GET api/items/root:/info.json:/content: Forbidden (403): {"error":"Forbidden"}');
+      await expect(client.sync()).rejects.toThrow('Sync failed:\nGET api/items/root:/info.json:/content: Forbidden (403): {"error":"Forbidden"}');
     });
 
     it('should ignore regular console logs that do not indicate a catastrophic error', async () => {
@@ -509,3 +509,7 @@ describe('JoplinSyncClient', () => {
     });
   });
 });
+
+
+
+
