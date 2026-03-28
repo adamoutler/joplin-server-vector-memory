@@ -157,6 +157,9 @@ class JoplinSyncClient extends EventEmitter {
     BaseItem.loadClass('MasterKey', require('@joplin/lib/models/MasterKey').default);
     BaseItem.loadClass('Revision', require('@joplin/lib/models/Revision').default);
 
+    const RevisionService = require('@joplin/lib/services/RevisionService').default;
+    BaseItem.revisionService_ = RevisionService.instance();
+
     const SyncTargetJoplinServer = require('@joplin/lib/SyncTargetJoplinServer').default;
     SyncTargetRegistry.addClass(SyncTargetJoplinServer);
     const SyncTargetWebDAV = require('@joplin/lib/SyncTargetWebDAV');
