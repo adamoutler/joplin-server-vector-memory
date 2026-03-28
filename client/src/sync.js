@@ -159,6 +159,16 @@ class JoplinSyncClient extends EventEmitter {
 
     const RevisionService = require('@joplin/lib/services/RevisionService').default;
     BaseItem.revisionService_ = RevisionService.instance();
+    
+    // Monkey-patch revisionService getter to ensure it's never "not set" 
+    // due to Node module caching edge cases or Joplin internals.
+    const originalRevisionService = BaseItem.revisionService;
+    BaseItem.revisionService = function() {
+        if (!this.revisionService_) {
+            this.revisionService_ = require('@joplin/lib/services/RevisionService').default.instance();
+        }
+        return this.revisionService_;
+    };
 
     const SyncTargetJoplinServer = require('@joplin/lib/SyncTargetJoplinServer').default;
     SyncTargetRegistry.addClass(SyncTargetJoplinServer);
@@ -192,12 +202,19 @@ class JoplinSyncClient extends EventEmitter {
     return this.db;
   }
 
-  async sync() {
+    async sync() {
     if (!this.synchronizer) {
       throw new Error('Synchronizer not initialized');
     }
 
     try {
+      // Defensive initialization: ensure services are present before deep sync operations 
+      // where Joplin models might try to use them and fail.
+      const BaseItem = require('@joplin/lib/models/BaseItem').default;
+      if (!BaseItem.revisionService_) {
+          BaseItem.revisionService_ = require('@joplin/lib/services/RevisionService').default.instance();
+      }
+
       const existingSyncItems = await this.db.selectOne('SELECT count(*) as c FROM sync_items');
       const isFullSync = !existingSyncItems || existingSyncItems.c === 0;
 
