@@ -29,15 +29,27 @@ def init_db(db, explicit_dim=None):
             note_id TEXT UNIQUE,
             title TEXT,
             content TEXT,
+            parent_id TEXT,
             updated_time INTEGER DEFAULT 0
         )
     """)
 
-    # Migration for updated_time
+    # Create folders table for recursive scoping
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS folders (
+            id TEXT PRIMARY KEY,
+            title TEXT,
+            parent_id TEXT
+        )
+    """)
+
+    # Migration for updated_time and parent_id
     cursor.execute("PRAGMA table_info(note_metadata)")
     columns = [col[1] for col in cursor.fetchall()]
     if 'updated_time' not in columns:
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0")
+    if 'parent_id' not in columns:
+        cursor.execute("ALTER TABLE note_metadata ADD COLUMN parent_id TEXT")
 
     dim = explicit_dim
     if not dim:

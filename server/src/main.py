@@ -11,11 +11,14 @@ import ollama
 import json
 import logging
 import os
+import math
 import hashlib
 import secrets
 import time
 import base64
 import requests
+import dateparser
+import datetime
 from src.db import get_db_connection
 from sqlite_vec import serialize_float32
 from enum import Enum
@@ -102,6 +105,7 @@ def get_config() -> dict:
         "joplin_server_url": config.get("joplinServerUrl", config.get("JOPLIN_SERVER_URL", os.environ.get("JOPLIN_SERVER_URL", ""))),
         "joplin_username": config.get("joplinUsername", config.get("JOPLIN_USERNAME", os.environ.get("JOPLIN_USERNAME", ""))),
         "joplin_password": config.get("joplinPassword", config.get("JOPLIN_PASSWORD", os.environ.get("JOPLIN_PASSWORD", ""))),
+        "hybridAlpha": config.get("hybridAlpha", 0.5),
     }
 
 
@@ -187,46 +191,93 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
     return requests.request(method, url, auth=auth)
 
 
+def parse_temporal_date(date_str: str) -> Optional[int]:
+    """
+    Parses a human-readable date string into a millisecond timestamp.
+    Returns None if parsing fails.
+    """
+    if not date_str:
+        return None
+    try:
+        dt = dateparser.parse(date_str, settings={'RELATIVE_BASE': datetime.datetime.now()})
+        if dt:
+            return int(dt.timestamp() * 1000)
+    except Exception as e:
+        logger.warning(f"Failed to parse date string '{date_str}': {e}")
+    return None
+
+
 @mcp.tool(name="notes.search")
-def search_notes(query: str) -> list[dict]:
+def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[dict]:
     """
     Search notes semantically using the provided query.
-    Returns the top 5 notes with their ID, Title, and a Blurb.
+    Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
+    alpha: Hybrid search balance (1.0 = pure vector, 0.0 = pure FTS). 
+           If None, uses 'hybridAlpha' from settings.
+    target_date: Optional, a date string like '3 years ago' for temporal weighting.
+    date_weight: Optional, weight for the temporal boost [0.0 to 1.0].
+    folder: Optional folder ID to scope the search.
+    recursive: If True, includes notes from all subfolders of the specified folder.
     """
     try:
+        if alpha is None:
+            alpha = float(get_config().get("hybridAlpha", 0.5))
+
         # nomic-embed-text requires the search_query: prefix
         embedding = get_embedding(f"search_query: {query}")
         db = get_db_connection()
         cursor = db.cursor()
 
+        # Determine how many candidates to fetch from each source to ensure good RRF results
+        max_candidates = max(page * limit, 20)
+
         # 1. Vector Search using CTE MATCH pattern
         cursor.execute("""
-            WITH knn_matches AS (
+            WITH RECURSIVE subfolders AS (
+                SELECT id FROM folders WHERE id = ?
+                UNION ALL
+                SELECT f.id FROM folders f
+                JOIN subfolders s ON f.parent_id = s.id
+            ),
+            knn_matches AS (
                 SELECT rowid, distance
                 FROM vec_notes
-                WHERE embedding MATCH ? AND k = 5
+                WHERE embedding MATCH ? AND k = ?
             )
-            SELECT m.rowid, m.note_id, m.title, m.content, k.distance
+            SELECT m.rowid, m.note_id, m.title, m.content, k.distance, m.updated_time, m.parent_id
             FROM knn_matches k
             JOIN note_metadata m ON m.rowid = k.rowid
+            WHERE (? IS NULL OR (
+                (? = 0 AND m.parent_id = ?) OR
+                (? = 1 AND m.parent_id IN (SELECT id FROM subfolders))
+            ))
             ORDER BY k.distance
-        """, (serialize_float32(embedding),))
+        """, (folder, serialize_float32(embedding), max_candidates, folder, 1 if recursive else 0, folder, 1 if recursive else 0))
         vec_results = cursor.fetchall()
 
         # 2. FTS Search for exact keywords
-        # Sanitize query for FTS phrase search to prevent syntax errors
         sanitized_query = query.replace('"', '""')
         fts_query = f'"{sanitized_query}"'
 
         try:
             cursor.execute("""
-                SELECT m.rowid, m.note_id, m.title, m.content, bm25(notes_fts) as score
+                WITH RECURSIVE subfolders AS (
+                    SELECT id FROM folders WHERE id = ?
+                    UNION ALL
+                    SELECT f.id FROM folders f
+                    JOIN subfolders s ON f.parent_id = s.id
+                )
+                SELECT m.rowid, m.note_id, m.title, m.content, bm25(notes_fts) as score, m.updated_time, m.parent_id
                 FROM notes_fts f
                 JOIN note_metadata m ON m.rowid = f.rowid
                 WHERE notes_fts MATCH ?
+                  AND (? IS NULL OR (
+                    (? = 0 AND m.parent_id = ?) OR
+                    (? = 1 AND m.parent_id IN (SELECT id FROM subfolders))
+                  ))
                 ORDER BY score
-                LIMIT 5
-            """, (fts_query,))
+                LIMIT ?
+            """, (folder, fts_query, folder, 1 if recursive else 0, folder, 1 if recursive else 0, max_candidates))
             fts_results = cursor.fetchall()
         except Exception as e:
             logger.warning(
@@ -240,25 +291,41 @@ def search_notes(query: str) -> list[dict]:
         notes_data = {}
 
         for rank, row in enumerate(vec_results):
-            rowid, note_id, title, content, distance = row
+            rowid, note_id, title, content, distance, updated_time, parent_id = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
-                notes_data[rowid] = {"id": note_id, "title": title, "content": content}
-            rrf_scores[rowid] += 1.0 / (rank + 60)
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id}
+            rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
 
         for rank, row in enumerate(fts_results):
-            rowid, note_id, title, content, score = row
+            rowid, note_id, title, content, score, updated_time, parent_id = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
-                notes_data[rowid] = {"id": note_id, "title": title, "content": content}
-            rrf_scores[rowid] += 1.0 / (rank + 60)
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id}
+            rrf_scores[rowid] += (1.0 - alpha) * (1.0 / (rank + 60))
+
+        # 4. Temporal Boost
+        target_ms = parse_temporal_date(target_date) if target_date else None
+        if target_ms is not None and date_weight > 0:
+            import math
+            # Scale for decay: 30 days in milliseconds
+            SCALE_MS = 30 * 24 * 60 * 60 * 1000
+            for rowid in rrf_scores:
+                updated_time = notes_data[rowid]["updated_time"]
+                # Exponential decay: decay = exp(-abs(target - updated) / SCALE)
+                decay = math.exp(-abs(target_ms - updated_time) / SCALE_MS)
+                rrf_scores[rowid] *= (1.0 + date_weight * decay)
 
         # Sort by RRF score descending
         sorted_rowids = sorted(rrf_scores.keys(), key=lambda r: rrf_scores[r], reverse=True)
-        top_rowids = sorted_rowids[:5]
+        
+        # Paginate results
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        paged_rowids = sorted_rowids[start_idx:end_idx]
 
         notes = []
-        for i, rowid in enumerate(top_rowids):
+        for i, rowid in enumerate(paged_rowids):
             data = notes_data[rowid]
             note_id = data["id"]
             if isinstance(note_id, bytes):
@@ -276,9 +343,11 @@ def search_notes(query: str) -> list[dict]:
                 "id": note_id,
                 "title": title,
                 "blurb": blurb,
-                "distance": rrf_scores[rowid]  # We return RRF score here as 'distance'
+                "distance": rrf_scores[rowid],  # We return RRF score here as 'distance'
+                "folder_id": data.get("parent_id")
             }
-            if i == 0:
+            # Only include full_body for the absolute top result (rank 1)
+            if page == 1 and i == 0:
                 note_dict["full_body"] = content
 
             notes.append(note_dict)
@@ -403,7 +472,9 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
         if res.status_code != 200:
             return {"error": f"Failed to create note in Joplin: {res.text}"}
 
-        note_id = res.json().get("id")
+        note_data = res.json()
+        note_id = note_data.get("id")
+        parent_id = note_data.get("parent_id")
         if not note_id:
             return {"error": "Failed to get note ID from Joplin."}
 
@@ -415,8 +486,8 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
 
         updated_time = int(time.time() * 1000)  # Joplin uses ms typically, but we should match what sync.js uses
         cursor.execute(
-            "INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)",
-            (note_id, title, content, updated_time)
+            "INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id) VALUES (?, ?, ?, ?, ?)",
+            (note_id, title, content, updated_time, parent_id)
         )
         rowid = cursor.lastrowid
 
@@ -659,6 +730,13 @@ class ReindexRequest(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str = Field(..., description="The semantic search query.", examples=["how to cook pasta"])
+    alpha: Optional[float] = Field(None, description="Hybrid search balance (1.0 = pure vector, 0.0 = pure FTS).", ge=0.0, le=1.0)
+    target_date: Optional[str] = Field(None, description="A date string like '3 years ago' or 'last week' for temporal weighting.")
+    date_weight: float = Field(0.0, description="Weight to apply to the temporal boost. Range: [0.0, 1.0].")
+    page: int = Field(1, description="The page number for pagination.", ge=1)
+    limit: int = Field(5, description="The number of results per page.", ge=1, le=100)
+    folder: Optional[str] = Field(None, description="The folder ID to scope the search to.", examples=["folder_123"])
+    recursive: bool = Field(False, description="Whether to include subfolders in the search.")
 
 
 class SearchResponseItem(BaseModel):
@@ -666,6 +744,7 @@ class SearchResponseItem(BaseModel):
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
     blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
     distance: float = Field(..., description="Cosine Distance", examples=[0.123])
+    folder_id: Optional[str] = Field(None, description="The ID of the folder the note is in.", examples=["folder_123"])
     full_body: Optional[str] = Field(None, description="Full content of the note (only included for the top result)", examples=[
                                      "# Pasta Recipe\n\nBoil water..."])
 
@@ -865,7 +944,16 @@ def internal_embed(request: InternalEmbedRequest):
     }
 )
 async def api_search(request: SearchRequest, token: str = Depends(verify_token)):
-    results = search_notes(request.query)
+    results = search_notes(
+        query=request.query,
+        page=request.page,
+        limit=request.limit,
+        alpha=request.alpha,
+        target_date=request.target_date,
+        date_weight=request.date_weight,
+        folder=request.folder,
+        recursive=request.recursive
+    )
     return results
 
 
@@ -1063,52 +1151,30 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
     new_config["embeddingDimension"] = new_dim
 
     # Maintenance Shutdown Procedure:
-    lock_file = "/tmp/maintenance.lock"
-    confirm_file = "/tmp/maintenance.confirm"
+    # 1. Safely drop DB
+    from src.db import reset_database
+    reset_database(new_dim)
 
-    # 1. Create lock
-    with open(lock_file, "w") as f:
-        f.write("lock")
+    merged_config = {**current_config, **new_config}
 
+    # Save to config.json atomically
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    tmp_config_path = f"{config_path}.tmp"
+    with open(tmp_config_path, "w") as f:
+        json.dump(merged_config, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp_config_path, config_path)
+
+    _config_mtime = 0  # Invalidate cache
+
+    # 2. Tell the Node.js daemon to re-sync so it picks up the wipe and regenerates everything
     try:
-        # 2. Tell the Node.js daemon to restart so it drops ghost file handles and re-syncs
-        try:
-            import requests
-            requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
-        except Exception as e:
-            logger.error(f"Failed to restart Node daemon: {e}")
-
-        # 5. Wait for confirm
-        import time
-        max_wait = 15
-        start_wait = time.time()
-        while not os.path.exists(confirm_file) and time.time() - start_wait < max_wait:
-            time.sleep(0.5)
-
-        # 6. Safely drop DB
-        from src.db import reset_database
-        reset_database(new_dim)
-
-        merged_config = {**current_config, **new_config}
-
-        # Save to config.json atomically
-        config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
-        tmp_config_path = f"{config_path}.tmp"
-        with open(tmp_config_path, "w") as f:
-            json.dump(merged_config, f, indent=2)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp_config_path, config_path)
-
-        _config_mtime = 0  # Invalidate cache
-
-    finally:
-        # 7. Delete the lock file
-        if os.path.exists("/tmp/maintenance.lock"):
-            os.remove("/tmp/maintenance.lock")
-        if os.path.exists("/tmp/maintenance.confirm"):
-            os.remove("/tmp/maintenance.confirm")
+        import requests
+        requests.post("http://127.0.0.1:3000/sync", timeout=2)
+    except Exception as e:
+        logger.error(f"Failed to signal Node daemon to sync: {e}")
 
     return Settings(**merged_config)
 

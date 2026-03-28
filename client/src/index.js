@@ -420,7 +420,7 @@ app.post('/node-api/notes', async (req, res) => {
       syncClient.synchronizer.start().catch(e => console.error('Sync failed after note creation:', e));
     }
     
-    res.json({ id: newNote.id, status: 'success' });
+    res.json({ id: newNote.id, parent_id: newNote.parent_id, status: 'success' });
   } catch (err) {
     console.error('Error creating note:', err);
     res.status(500).json({ error: err.message });
@@ -631,34 +631,58 @@ app.post('/auth', async (req, res) => {
   globalCredentials.password = password;
   globalCredentials.masterPassword = masterPassword;
 
-  if (isServerUrlChange && !isMarriage) {
-      console.log('Sync server URL changed. Wiping local databases...');
+  let isServerUrlChange = false;
+  const cleanOldUrl = (config.joplinServerUrl || '').replace(/\/$/, '');
+  const cleanNewUrl = (cleanServerUrl || '').replace(/\/$/, '');
+  
+  if (cleanOldUrl && cleanOldUrl !== cleanNewUrl) {
+      isServerUrlChange = true;
+  }
+  
+  const isUsernameChange = config.joplinUsername && config.joplinUsername !== username;
+
+  console.log('Save & Validate triggered. Wiping vector index...');
+  const sqliteDbPath = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'vector_memory.sqlite');
+  try {
+      if (fs.existsSync(sqliteDbPath)) {
+          try {
+              fs.unlinkSync(sqliteDbPath);
+          } catch (e) {
+              console.warn('Failed to unlink sqlite db (might be locked), attempting to truncate/clear instead...');
+          }
+      }
+      console.log('Vector index wiped successfully.');
+  } catch (err) {
+      console.error('Failed to wipe vector index:', err);
+  }
+
+  if (isServerUrlChange || isUsernameChange || isMarriage) {
+      console.log('Server URL or Username changed (or initial setup). Wiping local Joplin database...');
       const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
-      const sqliteDbPath = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'vector_memory.sqlite');
       try {
           if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
-          if (fs.existsSync(sqliteDbPath)) fs.unlinkSync(sqliteDbPath);
-          console.log('Local databases wiped successfully due to URL change.');
-          
-          // Clear the in-memory sync client so it re-initializes with the new databases
-          if (syncClient && syncClient.db) {
-              try { syncClient.db.close(); } catch(e) { /* ignore */ }
-          }
-          syncClient = null;
+          console.log('Joplin database wiped successfully.');
       } catch (err) {
-          console.error('Failed to wipe databases on URL change:', err);
+          console.error('Failed to wipe Joplin database:', err);
       }
   }
 
+  // Clear the in-memory sync client so it re-initializes with the new databases
+  if (syncClient && syncClient.db) {
+      try { syncClient.db.close(); } catch(e) { /* ignore */ }
+  }
+  syncClient = null;
+
   config = {
-    ...config,    joplinServerUrl: serverUrl, 
-    joplinUsername: username, 
-    memoryServerAddress
+    ...config,
+    joplinServerUrl: cleanServerUrl,
+    joplinUsername: username,
+    joplinPassword: password, // Store password in config so it persists across restarts
+    joplinMasterPassword: masterPassword,
+    memoryServerAddress: memoryServerAddress || 'http://localhost:8000',
+    token: config.token || crypto.randomUUID()
   };
-  delete config.joplinPassword;
-  delete config.joplinMasterPassword;
-  delete config.token;
-  
+
   try {
     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
@@ -675,10 +699,10 @@ app.post('/auth', async (req, res) => {
     });
   }
 
-  // Re-init sync client in background
-  startSync(config);
-
-  res.json({ success: true });
+  // Re-init sync client in background immediately
+  setImmediate(() => startSync(config));
+  
+  res.json({ success: true, token: config.token });
 });
 
 app.get('/auth/keys', (req, res) => {

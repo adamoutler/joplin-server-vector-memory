@@ -70,8 +70,9 @@ class JoplinSyncClient extends EventEmitter {
     // Create tables in vector db
     await new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
-        this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, updated_time INTEGER DEFAULT 0)`, err => {
+        this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, updated_time INTEGER DEFAULT 0)`, err => {
           if (err) return reject(err);
+          this.vectorDb.run(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`, err => err && reject(err));
           this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
           this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => err && reject(err));
           this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); END;`, err => err && reject(err));
@@ -230,8 +231,9 @@ class JoplinSyncClient extends EventEmitter {
           
           await new Promise((resolve, reject) => {
             this.vectorDb.serialize(() => {
-              this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, updated_time INTEGER DEFAULT 0)`, err => {
+              this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, updated_time INTEGER DEFAULT 0)`, err => {
                 if (err) return reject(err);
+                this.vectorDb.run(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`, err => err && reject(err));
                 this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
                 this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => err && reject(err));
                 this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); END;`, err => err && reject(err));
@@ -371,11 +373,11 @@ class JoplinSyncClient extends EventEmitter {
         
         if (row) {
           const rowid = row.rowid;
-          await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [note.title, note.body, note.updated_time, rowid]);
+          await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ? WHERE rowid = ?`, [note.title, note.body, note.updated_time, note.parent_id, rowid]);
           await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
           await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
         } else {
-          const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [note.id, note.title, note.body, note.updated_time]);
+          const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id) VALUES (?, ?, ?, ?, ?)`, [note.id, note.title, note.body, note.updated_time, note.parent_id]);
           const rowid = result.lastID;
           await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
         }
@@ -393,7 +395,7 @@ class JoplinSyncClient extends EventEmitter {
     }
   }
 
-  async upsertVector(noteId, title, content, embedding, updatedTime) {
+  async upsertVector(noteId, title, content, embedding, updatedTime, parentId) {
     const runAsync = (query, params) => new Promise((resolve, reject) => {
       this.vectorDb.run(query, params, function(err) {
         if (err) reject(err);
@@ -419,11 +421,11 @@ class JoplinSyncClient extends EventEmitter {
 
       if (row) {
         const rowid = row.rowid;
-        await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ? WHERE rowid = ?`, [title, content, updatedTime, rowid]);
+        await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ? WHERE rowid = ?`, [title, content, updatedTime, parentId, rowid]);
         await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
         await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
       } else {
-        const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time) VALUES (?, ?, ?, ?)`, [noteId, title, content, updatedTime]);
+        const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id) VALUES (?, ?, ?, ?, ?)`, [noteId, title, content, updatedTime, parentId]);
         const rowid = result.lastID;
         await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
       }
@@ -476,10 +478,26 @@ class JoplinSyncClient extends EventEmitter {
 
     const config = await this.getConfig();
 
-    try {      // 1. Fetch current decrypted notes from Joplin DB
-      const notes = await this.db.selectAll('SELECT id, title, body, updated_time FROM notes WHERE encryption_applied = 0');
+    try {
+      // 1. Sync folders first to enable recursive scoping
+      const joplinFolders = await this.db.selectAll('SELECT id, title, parent_id FROM folders');
+      await new Promise((resolve, reject) => {
+          this.vectorDb.serialize(() => {
+              this.vectorDb.run('BEGIN TRANSACTION');
+              this.vectorDb.run('DELETE FROM folders');
+              const stmt = this.vectorDb.prepare('INSERT INTO folders (id, title, parent_id) VALUES (?, ?, ?)');
+              for (const f of joplinFolders) {
+                  stmt.run([f.id, f.title, f.parent_id]);
+              }
+              stmt.finalize();
+              this.vectorDb.run('COMMIT', (err) => err ? reject(err) : resolve());
+          });
+      });
+
+      // 2. Fetch current decrypted notes from Joplin DB
+      const notes = await this.db.selectAll('SELECT id, title, body, updated_time, parent_id FROM notes WHERE encryption_applied = 0');
       
-      // 2. Fetch existing metadata from Vector DB
+      // 3. Fetch existing metadata from Vector DB
       const vectorMeta = await new Promise((resolve, reject) => {
         this.vectorDb.all(`SELECT note_id, updated_time FROM note_metadata`, (err, rows) => {
           if (err) return reject(err);
