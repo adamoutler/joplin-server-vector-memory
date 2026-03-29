@@ -830,11 +830,8 @@ class UpdateResponse(BaseModel):
 
 security = HTTPBearer()
 
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def check_token_validity(token: str) -> bool:
     import datetime
-    token = credentials.credentials
-    is_valid = False
     try:
         config = _load_config_file()
         api_keys = config.get("api_keys", [])
@@ -844,21 +841,22 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
             if key_obj.get("key") == token:
                 expires_at = key_obj.get("expires_at")
                 if expires_at is None:
-                    is_valid = True
-                    break
+                    return True
                 try:
                     expires_date = datetime.datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
                     if expires_date.tzinfo is None:
                         expires_date = expires_date.replace(tzinfo=datetime.timezone.utc)
                     if expires_date > current_time:
-                        is_valid = True
-                        break
+                        return True
                 except Exception as parse_err:
                     logger.error(f"Error parsing token expiration: {parse_err}")
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
+    return False
 
-    if not is_valid:
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    if not check_token_validity(token):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
@@ -1225,6 +1223,31 @@ class ForceAcceptJSONMiddleware:
 
             # Map exact /http-api/mcp based on method for Gemini CLI compatibility
             if original_path.startswith("/http-api/mcp"):
+                auth_header = ""
+                for k, v in scope.get("headers", []):
+                    if k.lower() == b"authorization":
+                        auth_header = v.decode("utf-8")
+                        break
+                
+                token = ""
+                if auth_header.startswith("Bearer "):
+                    token = auth_header[len("Bearer "):]
+                
+                if not check_token_validity(token):
+                    await send({
+                        "type": "http.response.start",
+                        "status": 401,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"www-authenticate", b"Bearer")
+                        ]
+                    })
+                    await send({
+                        "type": "http.response.body",
+                        "body": b'{"detail":"Unauthorized"}'
+                    })
+                    return
+
                 # If it's explicitly one of the mounted sub-apps, leave it alone
                 if not any(original_path.startswith(p) for p in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]):
                     # It's a bare /http-api/mcp or a subpath like /http-api/mcp/messages
