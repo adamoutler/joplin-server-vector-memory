@@ -631,14 +631,6 @@ app.post('/auth', async (req, res) => {
   globalCredentials.password = password;
   globalCredentials.masterPassword = masterPassword;
 
-  let isServerUrlChange = false;
-  const cleanOldUrl = (config.joplinServerUrl || '').replace(/\/$/, '');
-  const cleanNewUrl = (cleanServerUrl || '').replace(/\/$/, '');
-  
-  if (cleanOldUrl && cleanOldUrl !== cleanNewUrl) {
-      isServerUrlChange = true;
-  }
-  
   const isUsernameChange = config.joplinUsername && config.joplinUsername !== username;
 
   console.log('Save & Validate triggered. Wiping vector index...');
