@@ -11,7 +11,6 @@ import ollama
 import json
 import logging
 import os
-import math
 import hashlib
 import secrets
 import time
@@ -318,7 +317,7 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
 
         # Sort by RRF score descending
         sorted_rowids = sorted(rrf_scores.keys(), key=lambda r: rrf_scores[r], reverse=True)
-        
+
         # Paginate results
         start_idx = (page - 1) * limit
         end_idx = start_idx + limit
@@ -830,6 +829,7 @@ class UpdateResponse(BaseModel):
 
 security = HTTPBearer()
 
+
 def check_token_validity(token: str) -> bool:
     import datetime
     try:
@@ -853,6 +853,7 @@ def check_token_validity(token: str) -> bool:
     except Exception as e:
         logger.error(f"Error reading config for auth: {e}")
     return False
+
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
@@ -1228,11 +1229,11 @@ class ForceAcceptJSONMiddleware:
                     if k.lower() == b"authorization":
                         auth_header = v.decode("utf-8")
                         break
-                
+
                 token = ""
                 if auth_header.startswith("Bearer "):
                     token = auth_header[len("Bearer "):]
-                
+
                 if not check_token_validity(token):
                     await send({
                         "type": "http.response.start",
