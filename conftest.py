@@ -53,17 +53,11 @@ def ephemeral_joplin():
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--e2e", action="store_true", default=False, help="run e2e tests"
+        "--e2e", action="store_true", default=False, help="run e2e tests (now enabled by default, this flag is a no-op)"
     )
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "e2e: mark test as e2e")
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--e2e"):
-        # --e2e given in cli: do not skip e2e tests
-        return
-    skip_e2e = pytest.mark.skip(reason="need --e2e option to run")
-    for item in items:
-        if "e2e" in item.nodeid.lower() or item.get_closest_marker("e2e"):
-            item.add_marker(skip_e2e)
+    pass

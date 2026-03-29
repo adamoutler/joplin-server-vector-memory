@@ -15,6 +15,7 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.1",
     "http-proxy-middleware": "^3.0.5",
+    "path-to-regexp": "^8.4.0",
     "sqlite-vec": "^0.1.7-alpha.2"
   },
   "devDependencies": {

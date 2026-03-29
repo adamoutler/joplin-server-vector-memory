@@ -21,9 +21,18 @@ describe('Incremental Backoff for Ollama Initialization', () => {
       all: (q, cb) => cb(null, []), 
       run: function(q, p, cb) { 
         if (cb) cb.call({ lastID: 1 }, null); 
+        else if (typeof p === 'function') p.call({ lastID: 1 }, null);
       }, 
       get: (q, p, cb) => cb(null, null),
-      serialize: (cb) => cb()
+      serialize: (cb) => cb(),
+      prepare: function() {
+        return {
+          run: function(p, cb) {
+            if (cb) cb.call({ lastID: 1 }, null);
+          },
+          finalize: function() {}
+        };
+      }
     };
     
     // Mock upsert method so we don't need real sqlite

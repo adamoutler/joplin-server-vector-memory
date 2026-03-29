@@ -101,6 +101,18 @@ jest.mock('sqlite3', () => ({
         callback.call({ lastID: 1 }, null);
       }
     }
+    prepare(query) {
+      return {
+        run: function(params, callback) {
+          if (typeof params === 'function') {
+            params.call({ lastID: 1 }, null);
+          } else if (callback) {
+            callback.call({ lastID: 1 }, null);
+          }
+        },
+        finalize: function() {}
+      };
+    }
     get(query, params, callback) {
       if (typeof params === 'function') {
         params(null, null);
