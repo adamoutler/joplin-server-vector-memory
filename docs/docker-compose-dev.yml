@@ -7,7 +7,7 @@ services:
       - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
       - "127.0.0.1:8000:8000"
     volumes:
-      - ./data:/app/data
+      - joplin-data:/app/data
     environment:
       # - JOPLIN_SERVER_URL=${JOPLIN_SERVER_URL}
       # - JOPLIN_USERNAME=${JOPLIN_USERNAME}
@@ -17,3 +17,6 @@ services:
       # - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     restart: unless-stopped
+
+volumes:
+  joplin-data:
