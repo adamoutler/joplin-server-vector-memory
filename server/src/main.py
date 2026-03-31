@@ -207,7 +207,7 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
 
 
 @mcp.tool(name="notes_search")
-def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[dict]:
+def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[dict]:
     """
     Search notes semantically using the provided query.
     Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
@@ -255,8 +255,7 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
         vec_results = cursor.fetchall()
 
         # 2. FTS Search for exact keywords
-        sanitized_query = query.replace('"', '""')
-        fts_query = f'"{sanitized_query}"'
+        fts_query = ' '.join(f'"{word}"' for word in query.replace('"', '""').split())
 
         try:
             cursor.execute("""
