@@ -1150,6 +1150,27 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
     new_config["embeddingDimension"] = new_dim
 
     # Maintenance Shutdown Procedure:
+    import os
+    import time
+    lock_file = "/tmp/maintenance.lock"
+    confirm_file = "/tmp/maintenance.confirm"
+
+    with open(lock_file, "w") as f:
+        f.write("maintenance")
+
+    # Tell the Node.js daemon to restart, which exits process, triggering entrypoint.sh handshake
+    try:
+        import requests
+        requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
+    except Exception as e:
+        logger.error(f"Failed to signal Node daemon to restart: {e}")
+
+    # Wait for entrypoint.sh to confirm
+    for _ in range(50):
+        if os.path.exists(confirm_file):
+            break
+        time.sleep(0.1)
+
     # 1. Safely drop DB
     from src.db import reset_database
     reset_database(new_dim)
@@ -1168,12 +1189,13 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
 
     _config_mtime = 0  # Invalidate cache
 
-    # 2. Tell the Node.js daemon to re-sync so it picks up the wipe and regenerates everything
     try:
-        import requests
-        requests.post("http://127.0.0.1:3000/sync", timeout=2)
-    except Exception as e:
-        logger.error(f"Failed to signal Node daemon to sync: {e}")
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+        if os.path.exists(confirm_file):
+            os.remove(confirm_file)
+    except:
+        pass
 
     return Settings(**merged_config)
 

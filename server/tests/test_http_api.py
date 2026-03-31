@@ -299,7 +299,7 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
         s.close()
         return port
     port = get_free_port()
-    conf_path, db_path, _ = temp_config_and_db
+    conf_path, db_path, token = temp_config_and_db
     env = os.environ.copy()
     env["SQLITE_DB_PATH"] = db_path
     env["CONFIG_PATH"] = conf_path
@@ -341,7 +341,10 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
             "id": 1
         }
 
-        headers = {"Accept": "application/json"}
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
 
         # Test 1: no trailing slash, no redirect
         response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless",
