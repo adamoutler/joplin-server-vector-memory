@@ -225,7 +225,7 @@ class TestOperationalSystem:
                 search_query = f"secret number is {secret_uuid}"
                 print(f"[Step 4a] Searching via MCP for: {search_query}")
                 search_res = await session.call_tool(
-                    "notes.search",
+                    "notes_search",
                     arguments={"query": search_query}
                 )
                 
@@ -241,7 +241,7 @@ class TestOperationalSystem:
                 # Note Retrieval
                 print(f"[Step 4b] Retrieving note via MCP ID: {found_note_id}")
                 get_res = await session.call_tool(
-                    "notes.get",
+                    "notes_get",
                     arguments={"note_id": found_note_id}
                 )
                 
@@ -252,7 +252,7 @@ class TestOperationalSystem:
                 # Note Deletion Workflow
                 print("[Step 4c] Requesting secure note deletion via MCP...")
                 del_req_res = await session.call_tool(
-                    "notes.request_deletion",
+                    "notes_request_deletion",
                     arguments={"note_id": found_note_id, "reason": "E2E test cleanup"}
                 )
                 del_req_data = json.loads(del_req_res.content[0].text)
@@ -260,7 +260,7 @@ class TestOperationalSystem:
 
                 print("[Step 4d] Executing requested deletion with safety attestation...")
                 del_exec_res = await session.call_tool(
-                    "notes.execute_deletion",
+                    "notes_execute_deletion",
                     arguments={
                         "deletion_token": token,
                         "confirm_title": get_data.get("title"),
@@ -276,7 +276,7 @@ class TestOperationalSystem:
                 # Verify Deletion
                 print("[Step 4e] Verifying deletion via subsequent search...")
                 search_res_2 = await session.call_tool(
-                    "notes.search",
+                    "notes_search",
                     arguments={"query": search_query}
                 )
                 
