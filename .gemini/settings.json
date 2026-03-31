@@ -1,0 +1,65 @@
+{
+  "mcpServers": {
+    "kanban": {
+      "url": "https://kanban.hackedyour.info/mcp/agent/api-key/mcp",
+      "headers": {
+        "Authorization": "Bearer ${KANBAN_API_KEY}",
+        "X-Workspace-slug": "joplin-server-vector-memory"
+      }
+    }
+  },
+
+  "hooks": {
+    "BeforeTool": [
+      {
+        "matcher": ".*(run_shell_command|Bash|shell).*",
+        "hooks": [
+          {
+            "name": "prevent-curl-bypass",
+            "type": "command",
+            "command": "./.gemini/hooks/prevent-curl-bypass.sh",
+            "description": "Prevents the AI from bypassing the verification pipeline by closing Kanban tickets via CLI tools like curl or gh.",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": ".*(mcp_kanban_transition_ticket|mcp_kanban_complete_work).*",
+        "hooks": [
+          {
+            "name": "qa-gate",
+            "type": "command",
+            "command": "./.gemini/hooks/qa-gate.sh",
+            "description": "Prevents the AI Orchestrator from directly closing tickets to enforce the verification pipeline.",
+            "timeout": 180000
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": ".*(run_shell_command|Bash|shell).*",
+        "hooks": [
+          {
+            "name": "git-push-after",
+            "type": "command",
+            "command": "./.gemini/hooks/git-push-after.sh",
+            "description": "Automatically watches GitHub Actions workflows after a git push",
+            "timeout": 600000
+          }
+        ]
+      },
+      {
+        "matcher": ".*(mcp_kanban_transition_ ticket|mcp_kanban_complete_work|mcp_kan ban_update_ticket).*",
+        "hooks": [
+          {
+            "name": "remind-comment",
+            "type": "command",
+            "command": "echo '{\"message\": \"REMINDER: If you just updated the ticket, do not forget to add a comment detailing your changes using mcp_kanban_update_ticket or another tool.\"}'",
+            "description": "Reminds the AI to add a comment after updating a ticket."
+          }
+        ]
+      }
+    ]
+  }
+}
