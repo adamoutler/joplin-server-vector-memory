@@ -454,11 +454,11 @@ def test_mcp_notes_search(client, temp_config_and_db, mock_ollama):
     # Note 1 has both words but NOT explicitly adjacent
     client.post("/http-api/remember", json={"title": "Protocol Doc",
                 "content": "This is a document about Samsung. It mentions SIPC later on."}, headers=headers)
-    
+
     # Note 2 has only one word
     client.post("/http-api/remember", json={"title": "TV Guide",
                 "content": "This is a document about Samsung TVs."}, headers=headers)
-                
+
     # Note 3 is just filler to test limits
     for i in range(25):
         client.post("/http-api/remember", json={"title": f"Filler {i}",
@@ -466,13 +466,13 @@ def test_mcp_notes_search(client, temp_config_and_db, mock_ollama):
 
     # Instead of hanging TestClient over ASGI submounts, call the underlying function!
     from src.main import search_notes
-    
+
     # Search for "samsung SIPC". The tool should parse it to ("samsung" "SIPC") and apply Limit=5
     results = search_notes("samsung SIPC", page=1, limit=5, alpha=0.5, target_date=None, date_weight=0.0, folder=None, recursive=False)
-    
+
     # test limit
     assert len(results) == 5
-    
+
     # Check if our target document is found
     titles = [item["title"] for item in results]
     assert any("Protocol" in t for t in titles)
