@@ -87,6 +87,23 @@ if (!fs.existsSync(CONFIG_PATH) && !fs.existsSync(CONFIG_PATH + '.tmp')) {
   }
 } else if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(CONFIG_PATH + '.tmp')) {
   console.warn('Startup: Found config.json.tmp but no config.json. An atomic write may have been interrupted. Waiting for manual recovery.');
+} else if (fs.existsSync(CONFIG_PATH)) {
+  // Scrub any legacy joplinPassword that was previously stored on disk.
+  // Passwords must never be persisted to config.json; they live only in volatile memory.
+  try {
+    const raw = fs.readFileSync(CONFIG_PATH, 'utf8');
+    const cfg = JSON.parse(raw);
+    if ('joplinPassword' in cfg || 'joplinMasterPassword' in cfg) {
+      console.log('Startup: Scrubbing legacy password fields from config.json...');
+      delete cfg.joplinPassword;
+      delete cfg.joplinMasterPassword;
+      fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(cfg, null, 2));
+      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+      console.log('Startup: Password fields removed from config.json.');
+    }
+  } catch (e) {
+    console.error('Startup: Failed to scrub legacy password from config.json:', e);
+  }
 }
 
 app.get('/llms.txt', (req, res) => {
@@ -665,12 +682,15 @@ app.post('/auth', async (req, res) => {
   }
   syncClient = null;
 
+  // Passwords are intentionally NOT written to disk. They live only in volatile
+  // memory (globalCredentials) and are discarded on container restart. The user
+  // must re-authenticate after each restart. (See: states.md Credentials Contract)
+  delete config.joplinPassword;
+  delete config.joplinMasterPassword;
   config = {
     ...config,
     joplinServerUrl: cleanServerUrl,
     joplinUsername: username,
-    joplinPassword: password, // Store password in config so it persists across restarts
-    joplinMasterPassword: masterPassword,
     memoryServerAddress: memoryServerAddress || 'http://localhost:8000',
     token: config.token || crypto.randomUUID()
   };
@@ -950,17 +970,19 @@ async function startSync(config) {
   const pollInterval = parseInt(process.env.SYNC_INTERVAL_MS) || 60000;
   syncIntervalId = setInterval(() => runSyncCycle(config), pollInterval);
 }
-// Start on boot if config exists
+// On boot, the container enters "Waiting for credentials" state if married.
+// Passwords are never stored on disk, so sync cannot auto-start on restart.
+// The onAuthSuccess() handler will auto-start sync once the user authenticates
+// via Basic Auth. Only the username/server URL marriage is preserved across restarts.
 if (fs.existsSync(CONFIG_PATH)) {
   fs.promises.readFile(CONFIG_PATH, 'utf8').then(data => {
     try {
       const config = JSON.parse(data);
-      if (config.joplinServerUrl && config.joplinUsername && config.joplinPassword) {
-        // Use setImmediate to let the server start first
-        setImmediate(() => startSync(config));
+      if (config.joplinServerUrl && config.joplinUsername) {
+        console.log(`Startup: Container is married to ${config.joplinUsername}. Waiting for user to authenticate to start sync.`);
       }
     } catch(e) {
-      console.error('Failed to auto-start sync:', e);
+      console.error('Failed to read config on boot:', e);
     }
   }).catch(e => {
     console.error('Failed to read config on boot:', e);

@@ -41,3 +41,28 @@ Not Available -> Indexing -> Ready
 * A change occurred - remove entire db and resync
 **Index**
 * A change occurred - remove entire vectordb and resync
+
+
+## Credentials Contract
+
+This contract defines exactly what is persisted to disk vs. what lives in volatile memory only.
+Violating this contract is a security regression. See `code-logic.md` item #13 and #15.
+
+| Field | Storage | Notes |
+|---|---|---|
+| `joplinUsername` (email) | `config.json` (disk) | Acts as the marriage lock. Persists across all restarts. Cannot be changed without a factory wipe. |
+| `joplinServerUrl` | `config.json` (disk) | Required to know where to relay credentials for validation on restart. |
+| `joplinPassword` | `globalCredentials` (RAM only) | **NEVER written to disk.** Discarded on container restart. |
+| `joplinMasterPassword` | `globalCredentials` (RAM only) | **NEVER written to disk.** Discarded on container restart. |
+| `api_keys` | `config.json` (disk) | Bearer tokens for the MCP interface. No password material. |
+
+### What Happens on Container Restart
+
+1. Container starts. `globalCredentials` is empty (volatile memory is cleared).
+2. `config.json` is read. If `joplinPassword` or `joplinMasterPassword` fields are found (legacy), they are immediately scrubbed and the file is rewritten.
+3. Because `joplinUsername` exists in `config.json`, the system enters **"Waiting for credentials"** state. Sync does **not** auto-start.
+4. User opens the dashboard. Browser prompts for Basic Auth (`WWW-Authenticate: Basic realm=...`).
+5. User enters their Joplin Server username and password.
+6. Auth middleware checks: username matches the marriage lock. Password is relayed to Joplin Server (`/api/sessions`) for real-time validation.
+7. On success: password is stored in `globalCredentials` (RAM). `onAuthSuccess()` fires and auto-starts sync.
+8. Container is now in normal operation. Steps 1-3 repeat on next restart.

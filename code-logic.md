@@ -46,10 +46,16 @@
 
 12. **While user is specified in a lock file, login requires the correct user and correct password.**
     - **Validation:** TRUE
-    - **Details:** Verified. The credentials intercepted by Basic Auth are securely relayed to the remote Joplin Server to validate the session for every request.k file, the user's password is not stored on the system, instead it is verified in real time with the joplin server, in order to grant access to the status page.**
-    - **Validation:** TRUE
-    - **Details:** The password is stored only in volatile memory (`globalCredentials`) and is explicitly omitted from `config.json`. If missing from RAM, it relies on real-time `/api/sessions` validation against the Joplin Server.
+    - **Details:** Verified. The credentials intercepted by Basic Auth are securely relayed to the remote Joplin Server to validate the session for every request.
 
-13. **Accessing the status page should trigger a sync, and retain the user's password from the login operation to use for syncing to joplin server.**
+13. **While there is a lock file, the user's password is not stored on the system, instead it is verified in real time with the joplin server, in order to grant access to the status page.**
+    - **Validation:** TRUE
+    - **Details:** The password is stored only in volatile memory (`globalCredentials`) and is explicitly omitted from `config.json`. If missing from RAM, it relies on real-time `/api/sessions` validation against the Joplin Server. On container restart, `globalCredentials` is cleared and the system enters "Waiting for credentials" state until the user authenticates again via Basic Auth.
+
+14. **Accessing the status page should trigger a sync, and retain the user's password from the login operation to use for syncing to joplin server.**
     - **Validation:** FALSE
     - **Details:** While the user's password IS retained in memory after login, accessing the status page (`/status` endpoint) is purely passive and does not proactively trigger a sync. A Kanban ticket has been created to implement explicit sync triggering upon UI access.
+
+15. **The password is NEVER written to `config.json` under any circumstances.**
+    - **Validation:** TRUE
+    - **Details:** The `/auth` endpoint explicitly deletes `joplinPassword` and `joplinMasterPassword` from the config object before writing it to disk. Additionally, the startup routine scrubs any legacy password fields that may exist in an older `config.json`. Only `joplinServerUrl` and `joplinUsername` (the marriage lock) are persisted. This ensures that a compromised `config.json` file cannot be used to gain access to the Joplin Server.
