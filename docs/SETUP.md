@@ -92,3 +92,22 @@ Update your `settings.json` (e.g., `.gemini/settings.json`) with the following:
 ## 4. Testing the Setup
 
 You can view the interactive Swagger API documentation by navigating to `http://localhost:3000/docs`. From there, you can authorize using your Bearer token and test out endpoints such as `POST /http-api/search` manually to verify embeddings are working correctly.
+
+## 5. Advanced Nginx Proxy Configuration
+
+If you are securely exposing the MCP backend to external agents via a subpath on a domain (e.g., `https://example.com/mcp/`) using Nginx Proxy Manager or standard Nginx, you can use the following custom location block under the "Advanced" settings. 
+
+```nginx
+location ^~ /mcp/ {
+    rewrite ^/mcp/(.*)$ /$1 break;
+    proxy_pass http://192.168.1.101:8000;
+    proxy_set_header Connection '';
+    proxy_http_version 1.1;
+    chunked_transfer_encoding off;
+    proxy_buffering off;
+    proxy_cache off;
+}
+```
+
+> [!NOTE]
+> This specific configuration prevents Nginx from aggressively buffering the streams and stripping SSE events, which is critical for making sure the AI agents receive instant responses.

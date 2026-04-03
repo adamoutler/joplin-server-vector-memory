@@ -30,6 +30,7 @@ def init_db(db, explicit_dim=None):
             title TEXT,
             content TEXT,
             parent_id TEXT,
+            folder_path TEXT,
             updated_time INTEGER DEFAULT 0
         )
     """)
@@ -50,6 +51,8 @@ def init_db(db, explicit_dim=None):
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0")
     if 'parent_id' not in columns:
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN parent_id TEXT")
+    if 'folder_path' not in columns:
+        cursor.execute("ALTER TABLE note_metadata ADD COLUMN folder_path TEXT")
 
     dim = explicit_dim
     if not dim:

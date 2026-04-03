@@ -207,7 +207,7 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
 
 
 @mcp.tool(name="notes_search")
-def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[dict]:
+def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[dict]:
     """
     Search notes semantically using the provided query.
     Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
@@ -227,6 +227,16 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
         db = get_db_connection()
         cursor = db.cursor()
 
+        resolved_folder_id = None
+        if folder:
+            cursor.execute("SELECT id FROM folders WHERE id = ? OR title = ? COLLATE NOCASE LIMIT 1", (folder, folder))
+            row = cursor.fetchone()
+            if row:
+                resolved_folder_id = row[0]
+            else:
+                db.close()
+                return [{"error": f"Folder '{folder}' not found. Try searching without folder scope."}]
+
         # Determine how many candidates to fetch from each source to ensure good RRF results
         max_candidates = max(page * limit, 20)
 
@@ -243,7 +253,7 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
                 FROM vec_notes
                 WHERE embedding MATCH ? AND k = ?
             )
-            SELECT m.rowid, m.note_id, m.title, m.content, k.distance, m.updated_time, m.parent_id
+            SELECT m.rowid, m.note_id, m.title, m.content, k.distance, m.updated_time, m.parent_id, m.folder_path
             FROM knn_matches k
             JOIN note_metadata m ON m.rowid = k.rowid
             WHERE (? IS NULL OR (
@@ -251,7 +261,7 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
                 (? = 1 AND m.parent_id IN (SELECT id FROM subfolders))
             ))
             ORDER BY k.distance
-        """, (folder, serialize_float32(embedding), max_candidates, folder, 1 if recursive else 0, folder, 1 if recursive else 0))
+        """, (resolved_folder_id, serialize_float32(embedding), max_candidates, resolved_folder_id, 1 if recursive else 0, resolved_folder_id, 1 if recursive else 0))
         vec_results = cursor.fetchall()
 
         # 2. FTS Search for exact keywords
@@ -265,7 +275,7 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
                     SELECT f.id FROM folders f
                     JOIN subfolders s ON f.parent_id = s.id
                 )
-                SELECT m.rowid, m.note_id, m.title, m.content, bm25(notes_fts) as score, m.updated_time, m.parent_id
+                SELECT m.rowid, m.note_id, m.title, m.content, bm25(notes_fts) as score, m.updated_time, m.parent_id, m.folder_path
                 FROM notes_fts f
                 JOIN note_metadata m ON m.rowid = f.rowid
                 WHERE notes_fts MATCH ?
@@ -275,7 +285,7 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
                   ))
                 ORDER BY score
                 LIMIT ?
-            """, (folder, fts_query, folder, 1 if recursive else 0, folder, 1 if recursive else 0, max_candidates))
+            """, (resolved_folder_id, fts_query, resolved_folder_id, 1 if recursive else 0, resolved_folder_id, 1 if recursive else 0, max_candidates))
             fts_results = cursor.fetchall()
         except Exception as e:
             logger.warning(
@@ -289,17 +299,17 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
         notes_data = {}
 
         for rank, row in enumerate(vec_results):
-            rowid, note_id, title, content, distance, updated_time, parent_id = row
+            rowid, note_id, title, content, distance, updated_time, parent_id, folder_path = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
-                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id}
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
             rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
 
         for rank, row in enumerate(fts_results):
-            rowid, note_id, title, content, score, updated_time, parent_id = row
+            rowid, note_id, title, content, score, updated_time, parent_id, folder_path = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
-                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id}
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
             rrf_scores[rowid] += (1.0 - alpha) * (1.0 / (rank + 60))
 
         # 4. Temporal Boost
@@ -342,7 +352,8 @@ def search_notes(query: str, page: int = 1, limit: int = 15, alpha: Optional[flo
                 "title": title,
                 "blurb": blurb,
                 "distance": rrf_scores[rowid],  # We return RRF score here as 'distance'
-                "folder_id": data.get("parent_id")
+                "folder_id": data.get("parent_id"),
+                "folder_path": data.get("folder_path")
             }
             # Only include full_body for the absolute top result (rank 1)
             if page == 1 and i == 0:
@@ -543,6 +554,13 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
     new_time = int(time.time() * 1000)
 
     try:
+        # 1. Relay to Joplin via Node Proxy
+        res = _call_node_proxy("PUT", f"/node-api/notes/{note_id}", json_data={"body": new_content})
+        if res.status_code != 200:
+            db.close()
+            return {"error": f"Failed to update note in Joplin: {res.text}"}
+
+        # 2. Update local SQLite
         embedding = get_embedding(f"{title}\n{new_content}")
 
         cursor.execute(
@@ -743,6 +761,7 @@ class SearchResponseItem(BaseModel):
     blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
     distance: float = Field(..., description="Cosine Distance", examples=[0.123])
     folder_id: Optional[str] = Field(None, description="The ID of the folder the note is in.", examples=["folder_123"])
+    folder_path: Optional[str] = Field(None, description="The human readable path of the folder.", examples=["Work/Recipes"])
     full_body: Optional[str] = Field(None, description="Full content of the note (only included for the top result)", examples=[
                                      "# Pasta Recipe\n\nBoil water..."])
 

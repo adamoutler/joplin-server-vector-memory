@@ -70,7 +70,7 @@ class JoplinSyncClient extends EventEmitter {
     // Create tables in vector db
     await new Promise((resolve, reject) => {
       this.vectorDb.serialize(() => {
-        this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, updated_time INTEGER DEFAULT 0)`, err => {
+        this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, folder_path TEXT, updated_time INTEGER DEFAULT 0)`, err => {
           if (err) return reject(err);
           this.vectorDb.run(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`, err => err && reject(err));
           this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
@@ -231,7 +231,7 @@ class JoplinSyncClient extends EventEmitter {
           
           await new Promise((resolve, reject) => {
             this.vectorDb.serialize(() => {
-              this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, updated_time INTEGER DEFAULT 0)`, err => {
+              this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, folder_path TEXT, updated_time INTEGER DEFAULT 0)`, err => {
                 if (err) return reject(err);
                 this.vectorDb.run(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`, err => err && reject(err));
                 this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
@@ -340,6 +340,34 @@ class JoplinSyncClient extends EventEmitter {
     }
     this.emit('decryptComplete');
   }
+
+  buildFolderPathLookup(folders) {
+    const folderMap = new Map();
+    for (const folder of folders) {
+      folderMap.set(folder.id, folder);
+    }
+    const pathCache = new Map();
+    const getPath = (id) => {
+      if (!id) return '';
+      if (pathCache.has(id)) return pathCache.get(id);
+      const folder = folderMap.get(id);
+      if (!folder) return '';
+      let p;
+      if (folder.parent_id) {
+        const parentPath = getPath(folder.parent_id);
+        p = parentPath ? `${parentPath}/${folder.title}` : folder.title;
+      } else {
+        p = folder.title;
+      }
+      pathCache.set(id, p);
+      return p;
+    };
+    for (const folder of folders) {
+      getPath(folder.id);
+    }
+    return pathCache;
+  }
+
   async bulkUpsertVectors(notes, embeddings) {
     const runAsync = (query, params) => new Promise((resolve, reject) => {
       this.vectorDb.run(query, params, function(err) {
@@ -373,11 +401,11 @@ class JoplinSyncClient extends EventEmitter {
         
         if (row) {
           const rowid = row.rowid;
-          await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ? WHERE rowid = ?`, [note.title, note.body, note.updated_time, note.parent_id, rowid]);
+          await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ?, folder_path = ? WHERE rowid = ?`, [note.title, note.body, note.updated_time, note.parent_id, note.folder_path, rowid]);
           await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
           await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
         } else {
-          const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id) VALUES (?, ?, ?, ?, ?)`, [note.id, note.title, note.body, note.updated_time, note.parent_id]);
+          const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id, folder_path) VALUES (?, ?, ?, ?, ?, ?)`, [note.id, note.title, note.body, note.updated_time, note.parent_id, note.folder_path]);
           const rowid = result.lastID;
           await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
         }
@@ -395,7 +423,7 @@ class JoplinSyncClient extends EventEmitter {
     }
   }
 
-  async upsertVector(noteId, title, content, embedding, updatedTime, parentId) {
+  async upsertVector(noteId, title, content, embedding, updatedTime, parentId, folderPath) {
     const runAsync = (query, params) => new Promise((resolve, reject) => {
       this.vectorDb.run(query, params, function(err) {
         if (err) reject(err);
@@ -421,11 +449,11 @@ class JoplinSyncClient extends EventEmitter {
 
       if (row) {
         const rowid = row.rowid;
-        await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ? WHERE rowid = ?`, [title, content, updatedTime, parentId, rowid]);
+        await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ?, folder_path = ? WHERE rowid = ?`, [title, content, updatedTime, parentId, folderPath, rowid]);
         await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
         await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
       } else {
-        const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id) VALUES (?, ?, ?, ?, ?)`, [noteId, title, content, updatedTime, parentId]);
+        const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id, folder_path) VALUES (?, ?, ?, ?, ?, ?)`, [noteId, title, content, updatedTime, parentId, folderPath]);
         const rowid = result.lastID;
         await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
       }
@@ -494,6 +522,8 @@ class JoplinSyncClient extends EventEmitter {
           });
       });
 
+      const folderPathCache = this.buildFolderPathLookup(joplinFolders);
+
       // 2. Fetch current decrypted notes from Joplin DB
       const notes = await this.db.selectAll('SELECT id, title, body, updated_time, parent_id FROM notes WHERE encryption_applied = 0');
       
@@ -558,7 +588,9 @@ class JoplinSyncClient extends EventEmitter {
 
         for (const note of batch) {
           if (!note.body) continue;
-          let rawText = `Title: ${note.title}\n\n${note.body}`;
+          const folderPath = folderPathCache.get(note.parent_id) || '';
+          note.folder_path = folderPath;
+          let rawText = `Folder: ${folderPath}\nTitle: ${note.title}\n\n${note.body}`;
           const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
           if (rawText.length > CHUNK_LIMIT) {
               let chunk = rawText.substring(0, CHUNK_LIMIT);
