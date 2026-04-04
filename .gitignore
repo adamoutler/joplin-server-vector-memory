@@ -15,3 +15,5 @@ docs/qa/
 get_in_progress.py
 test_qa.sh
 .venv/
+tmp-open-webui/
+.gemini/*.swp
