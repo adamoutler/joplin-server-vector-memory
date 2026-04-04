@@ -339,9 +339,7 @@ describe('JoplinSyncClient', () => {
         expect.stringContaining('/http-api/internal/embed'),
         expect.objectContaining({
           method: 'POST',
-          body: JSON.stringify({
-            texts: ['search_document: Title: Note 1\n\nThis is note 1']
-          })
+          body: JSON.stringify({ texts: ["search_document: Folder: \nTitle: Note 1\n\nThis is note 1"] })
         })
       );
 

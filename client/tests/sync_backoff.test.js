@@ -85,7 +85,7 @@ describe('Incremental Backoff for Ollama Initialization', () => {
     // Check that it eventually generated the embedding
     expect(embedCount).toBe(1);
     expect(client.bulkUpsertVectors).toHaveBeenCalledWith(
-      [{ id: 'note1', title: 'Test Note', body: 'Test Body', updated_time: 12345, encryption_applied: 0 }],
+      [{ id: 'note1', title: 'Test Note', body: 'Test Body', updated_time: 12345, folder_path: '', encryption_applied: 0 }],
       [[0.1, 0.2, 0.3]]
     );
     
