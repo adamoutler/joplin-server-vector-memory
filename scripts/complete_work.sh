@@ -22,7 +22,7 @@ set -euo pipefail
 
 WORKSPACE="joplin-server-vector-memory"
 API_BASE="https://kanban.hackedyour.info/api/v1/workspaces/${WORKSPACE}"
-GEMINI_MODEL="${GEMINI_MODEL:gemini-2.5-flash}"  # Optional: set env var to override model
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"  # Optional: set env var to override model
 
 # =============================================================================
 # Argument Parsing
