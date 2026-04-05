@@ -473,8 +473,21 @@
         const copyBtn = document.createElement('button');
         copyBtn.innerText = 'Copy';
         copyBtn.onclick = async () => {
-          await navigator.clipboard.writeText(k.key);
-          copyBtn.innerText = 'Copied!';
+          try {
+            if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+              await navigator.clipboard.writeText(k.key);
+            } else {
+              input.select();
+              document.execCommand('copy');
+              if (window.getSelection) {
+                window.getSelection().removeAllRanges();
+              }
+            }
+            copyBtn.innerText = 'Copied!';
+          } catch(err) {
+            console.error('Copy failed', err);
+            copyBtn.innerText = 'Error';
+          }
           setTimeout(() => copyBtn.innerText = 'Copy', 2000);
         };
         

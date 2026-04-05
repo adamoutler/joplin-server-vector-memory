@@ -18,6 +18,7 @@ describe('Frontend token copy functionality', () => {
         writeText: jest.fn().mockResolvedValue()
       }
     });
+    window.isSecureContext = true;
     
     window.fetch = jest.fn().mockResolvedValue({
       ok: true,
