@@ -72,3 +72,24 @@ When the `/events` endpoint returns items, filter them for `item_type === 1` (No
 - [ ] `generateEmbeddings` is refactored to support targeted updates for specific note IDs.
 - [ ] Sync and embedding generation are skipped entirely if no Note-related events are found during a poll.
 - [ ] Deletion events properly remove records from the SQLite vector database.
+
+---
+
+# Ticket 3: Security Audit: Internal Node API Auth Bypass (79b430a0-656f-4c3a-8b4f-987173015ade)
+
+## Objective
+Perform a detailed security inspection and audit of the internal-only routes (`/node-api/*`) and the authentication bypass mechanisms in `client/src/index.js` to ensure they are not vulnerable to exploitation. Implement hardening measures to strictly prevent external access.
+
+## Implementation Strategy
+* Identify path-matching bypass vulnerabilities related to Express.js normalization and case-sensitivity.
+* Implement an Express.js router-level middleware `app.use('/node-api', ...)` prior to Basic Auth evaluation.
+* Strictly enforce that `req.socket.remoteAddress` is a local loopback IP (`127.0.0.1`, `::1`, etc.).
+* Block unauthorized requests with a `403 Forbidden` response.
+* Document the security findings and mitigations in `docs/security_audit_internal_api.md`.
+
+## Acceptance Criteria
+- [x] Security audit completed and documented in `docs/security_audit_internal_api.md`.
+- [x] Path normalization bypasses fixed via robust `app.use('/node-api')` routing.
+- [x] Only traffic originating from `localhost` is permitted to access `/node-api/*`.
+- [x] Test execution passes, and QA artifacts (screenshots and `test-results.json`) are provided.
+- [x] Commits pushed to the repository.
