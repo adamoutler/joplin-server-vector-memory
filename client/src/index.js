@@ -179,7 +179,13 @@ let globalCredentials = {
 
 app.use(async (req, res, next) => {
   // Allow internal API calls from the Python MCP server without basic auth
-  if (req.path.startsWith('/node-api/')) {
+  if (req.path.startsWith('/node-api/') || req.path === '/node-api') {
+    const remoteIp = req.socket.remoteAddress;
+    const isLocalhost = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+    if (!isLocalhost) {
+      console.warn(`[Security] Blocked unauthorized access to internal API from ${remoteIp}`);
+      return res.status(403).json({ error: 'Forbidden: Internal API is restricted to localhost' });
+    }
     return next();
   }
 
