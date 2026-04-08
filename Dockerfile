@@ -1,7 +1,7 @@
 FROM node:20-bookworm
 
 # Install Python and SQLite build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
