@@ -173,6 +173,10 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
     return embeddings if is_batch else embeddings[0]
 
 
+import threading
+
+_node_proxy_write_lock = threading.Lock()
+
 def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests.Response:
     config = get_config()
     username = config.get("joplin_username", "")
@@ -183,11 +187,20 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
     # However, keeping auth here is fine just in case.
     auth = (username, password) if username and password else None
 
-    if method.upper() == "GET":
-        return requests.get(url, auth=auth)
-    elif method.upper() == "POST":
-        return requests.post(url, json=json_data, auth=auth)
-    return requests.request(method, url, auth=auth)
+    is_mutating = method.upper() in ["POST", "PUT", "DELETE", "PATCH"]
+    
+    if is_mutating:
+        _node_proxy_write_lock.acquire()
+        
+    try:
+        if method.upper() == "GET":
+            return requests.get(url, auth=auth)
+        elif method.upper() == "POST":
+            return requests.post(url, json=json_data, auth=auth)
+        return requests.request(method, url, auth=auth)
+    finally:
+        if is_mutating:
+            _node_proxy_write_lock.release()
 
 
 def parse_temporal_date(date_str: str) -> Optional[int]:
@@ -906,9 +919,6 @@ app = FastAPI(
     title="Joplin Server Vector Memory API",
     description="API for semantic search and memory management with Joplin",
     version="1.0.0",
-    docs_url=None,
-    openapi_url=None,
-    redoc_url=None,
     lifespan=lifespan
 )
 
