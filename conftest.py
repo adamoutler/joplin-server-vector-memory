@@ -6,6 +6,7 @@ import requests
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
+
 @pytest.fixture(scope="session", autouse=True)
 def ephemeral_joplin():
     env = os.environ.copy()
@@ -16,14 +17,14 @@ def ephemeral_joplin():
 
     # Down first just in case
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)
-    
+
     # Spin up and wait for healthchecks
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build", "--force-recreate", "--remove-orphans", "--wait"], env=env, check=True)
-        
+
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
     os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"
     os.environ["JOPLIN_BASE_URL"] = "http://joplin:22300"
-    
+
     # Poll endpoints to ensure they are actually ready for traffic
     max_retries = 30
     for _ in range(max_retries):
@@ -34,7 +35,7 @@ def ephemeral_joplin():
             resp2 = requests.get("http://localhost:3001/status", timeout=2)
             # Check FastAPI backend
             resp3 = requests.get("http://localhost:8002/", timeout=2)
-            
+
             if resp1.status_code == 200 and resp2.status_code in [200, 401] and resp3.status_code == 200:
                 break
             time.sleep(1)
@@ -44,20 +45,23 @@ def ephemeral_joplin():
         except requests.exceptions.Timeout:
             time.sleep(1)
             continue
-    
+
     try:
         yield
     finally:
         # Tear down
         subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], check=True)
 
+
 def pytest_addoption(parser):
     parser.addoption(
         "--e2e", action="store_true", default=False, help="run e2e tests (now enabled by default, this flag is a no-op)"
     )
 
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "e2e: mark test as e2e")
+
 
 def pytest_collection_modifyitems(config, items):
     pass

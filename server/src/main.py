@@ -1,4 +1,5 @@
 
+import threading
 from typing import Literal
 import fastmcp
 from contextlib import asynccontextmanager
@@ -173,9 +174,8 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
     return embeddings if is_batch else embeddings[0]
 
 
-import threading
-
 _node_proxy_write_lock = threading.Lock()
+
 
 def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests.Response:
     config = get_config()
@@ -188,10 +188,10 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
     auth = (username, password) if username and password else None
 
     is_mutating = method.upper() in ["POST", "PUT", "DELETE", "PATCH"]
-    
+
     if is_mutating:
         _node_proxy_write_lock.acquire()
-        
+
     try:
         if method.upper() == "GET":
             return requests.get(url, auth=auth)
@@ -251,7 +251,7 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
                 return [{"error": f"Folder '{folder}' not found. Try searching without folder scope."}]
 
         # Determine how many candidates to fetch from each source to ensure good RRF results
-        max_candidates = max(page * limit, 20)
+        max_candidates = max(100, (page * limit) + 20)
 
         # 1. Vector Search using CTE MATCH pattern
         cursor.execute("""

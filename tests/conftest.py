@@ -1,3 +1,6 @@
+import subprocess
+import requests
+import time
 import pytest
 from pathlib import Path
 import os
@@ -62,12 +65,9 @@ def assert_snapshot(pytestconfig, request, browser_name):
 
     return compare
 
-import subprocess
-import time
-import requests
-import sys
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+
 
 @pytest.fixture(autouse=True)
 def reset_docker_state():
@@ -76,7 +76,7 @@ def reset_docker_state():
     """
     # 1. Truncate Postgres tables to clear Joplin Server data
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
-    
+
     # 2. Call /auth/wipe on the Proxy to clear config and memory (must use admin auth since it might be configured)
     try:
         # Try wiping as admin first, then as setup if it was never configured
@@ -85,6 +85,6 @@ def reset_docker_state():
             requests.post("http://localhost:3001/auth/wipe", auth=("setup", "1-mcp-server"), timeout=5)
     except Exception:
         pass
-        
+
     # Give the Node.js app a moment to process the wipe
     time.sleep(1)

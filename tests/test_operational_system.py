@@ -18,11 +18,13 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 # Ensure server module is accessible for Python MCP
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'tests')))
 
+
 class MockOllamaHandler(BaseHTTPRequestHandler):
     """
     Mock Ollama server that generates deterministic embeddings for testing,
     simulating the behavior of a real vector embedding model.
     """
+
     def do_POST(self):
         if self.path in ['/api/embeddings', '/api/embed', '/http-api/internal/embed']:
             try:
@@ -44,18 +46,18 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                 else:
                     content_length = int(self.headers.get('Content-Length', 0))
                     post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ''
-                    
+
                 req = json.loads(post_data) if post_data else {}
-                
+
                 texts = req.get('texts', req.get('input', []))
                 if not texts:
                     single_prompt = req.get('prompt', req.get('text', ''))
                     if single_prompt:
                         texts = [single_prompt]
-                        
+
                 import re
                 import hashlib
-                
+
                 all_embeddings = []
                 for prompt in texts:
                     embedding = [0.0] * 384
@@ -67,19 +69,19 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                         h = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)
                         idx = h % 300 + 10
                         embedding[idx] = 1.0
-                        embedding[idx+1] = 0.5
+                        embedding[idx + 1] = 0.5
                     all_embeddings.append(embedding)
             except Exception as e:
                 all_embeddings = [[0.0] * 384]
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
-            
+
             if 'internal/embed' in self.path or 'api/embed' in self.path:
                 response = {"embeddings": all_embeddings}
             else:
                 response = {"embedding": all_embeddings[0] if all_embeddings else []}
-                
+
             response_bytes = json.dumps(response).encode()
             self.send_header('Content-Length', str(len(response_bytes)))
             self.end_headers()
@@ -99,7 +101,7 @@ def mock_ollama_server():
     thread = threading.Thread(target=server.serve_forever)
     thread.daemon = True
     thread.start()
-    
+
     # Use the docker bridge IP so the container can reach the host
     # 172.17.0.1 is the default docker bridge IP on Linux GH actions
     yield f"http://172.17.0.1:{port}"
@@ -135,9 +137,9 @@ class TestOperationalSystem:
     async def run_full_e2e_workflow(self, mock_ollama_server, temp_profile):
         secret_uuid = str(uuid.uuid4())
         print(f"\n[Test Setup] Secret UUID for this run: {secret_uuid}")
-        
+
         client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
-        
+
         env = os.environ.copy()
         env["OLLAMA_URL"] = mock_ollama_server
         env["BACKEND_URL"] = mock_ollama_server
@@ -160,7 +162,7 @@ class TestOperationalSystem:
         print("Node.js output:", result.stdout)
         if result.stderr:
             print("Node.js error:", result.stderr)
-            
+
         assert result.returncode == 0, "Node.js client script failed"
 
         created_note_id = None
@@ -190,12 +192,12 @@ class TestOperationalSystem:
                     data = r.json()
                     status = data.get("sync", {}).get("status")
                     if status in ["idle", "online", "syncing"]:
-                       ready = True
-                       break
+                        ready = True
+                        break
             except Exception:
                 pass
             time.sleep(1)
-            
+
         if not ready:
             print("Warning: Proxy sync client may not have initialized in time")
 
@@ -203,24 +205,24 @@ class TestOperationalSystem:
         print("[Step 3] Extracting vector DB from container for Python MCP server...")
         subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
         assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
-        
+
         main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
         env["SQLITE_DB_PATH"] = sqlite_db_path
         env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
         env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"
-        
+
         server_params = StdioServerParameters(
             command=sys.executable,
             args=[main_py_path, "--stdio"],
             env=env
         )
-        
+
         # Step 4: Interact with Python MCP Server over stdio
         print("[Step 4] Starting MCP session via stdio...")
         async with stdio_client(server_params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
-                
+
                 # Semantic Search
                 search_query = f"secret number is {secret_uuid}"
                 print(f"[Step 4a] Searching via MCP for: {search_query}")
@@ -228,27 +230,27 @@ class TestOperationalSystem:
                     "notes_search",
                     arguments={"query": search_query}
                 )
-                
+
                 search_data = json.loads(search_res.content[0].text) if search_res.content else []
                 assert isinstance(search_data, list)
                 assert len(search_data) > 0, "No notes found matching the secret UUID"
-                
+
                 found_note_id = search_data[0].get("id")
                 assert found_note_id == created_note_id, f"Found note ID {found_note_id} doesn't match created note ID {created_note_id}"
                 assert "full_body" in search_data[0], "full_body should be present in the first result"
                 assert secret_uuid in search_data[0].get("full_body", ""), "Secret UUID not found in the full_body of the top search result"
-                
+
                 # Note Retrieval
                 print(f"[Step 4b] Retrieving note via MCP ID: {found_note_id}")
                 get_res = await session.call_tool(
                     "notes_get",
                     arguments={"note_id": found_note_id}
                 )
-                
+
                 get_data = json.loads(get_res.content[0].text)
                 assert get_data.get("id") == found_note_id
                 assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
-                
+
                 # Note Deletion Workflow
                 print("[Step 4c] Requesting secure note deletion via MCP...")
                 del_req_res = await session.call_tool(
@@ -272,18 +274,18 @@ class TestOperationalSystem:
                 )
                 del_data = json.loads(del_exec_res.content[0].text)
                 assert del_data.get("status") == "success", f"Delete failed: {del_data}"
-                
+
                 # Verify Deletion
                 print("[Step 4e] Verifying deletion via subsequent search...")
                 search_res_2 = await session.call_tool(
                     "notes_search",
                     arguments={"query": search_query}
                 )
-                
+
                 if not search_res_2.content:
                     search_data_2 = []
                 else:
                     search_data_2 = json.loads(search_res_2.content[0].text)
-                    
+
                 assert not any(note.get("id") == found_note_id for note in search_data_2), "Note was not deleted from DB"
                 print("\n[SUCCESS] JOPLINMEM-142 Operational System Test completely successful!")

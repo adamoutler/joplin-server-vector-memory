@@ -47,24 +47,24 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                         if chunk_size == 0:
                             break
                         post_data_bytes += self.rfile.read(chunk_size)
-                        self.rfile.readline() # read trailing \r\n
+                        self.rfile.readline()  # read trailing \r\n
                     post_data = post_data_bytes.decode('utf-8')
                 else:
                     content_length = int(self.headers.get('Content-Length', 0))
                     post_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ''
-                    
+
                 req = json.loads(post_data) if post_data else {}
-                
+
                 # Check if it's a batched request or single
                 texts = req.get('texts', req.get('input', []))
                 if not texts:
                     single_prompt = req.get('prompt', req.get('text', ''))
                     if single_prompt:
                         texts = [single_prompt]
-                        
+
                 import re
                 import hashlib
-                
+
                 all_embeddings = []
                 for prompt in texts:
                     embedding = [0.0] * 384
@@ -77,9 +77,9 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
                     else:
                         # Random noise logic: completely orthogonal but deterministic based on prompt
                         h = int(hashlib.md5(prompt.encode('utf-8')).hexdigest(), 16)
-                        idx = h % 300 + 10 # ensure it never hits index 1 or 2
+                        idx = h % 300 + 10  # ensure it never hits index 1 or 2
                         embedding[idx] = 1.0
-                        embedding[idx+1] = 0.5
+                        embedding[idx + 1] = 0.5
                     all_embeddings.append(embedding)
             except Exception as e:
                 import traceback
@@ -89,12 +89,12 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
-            
+
             if 'internal/embed' in self.path or 'api/embed' in self.path:
                 response = {"embeddings": all_embeddings}
             else:
                 response = {"embedding": all_embeddings[0] if all_embeddings else []}
-                
+
             response_bytes = json.dumps(response).encode()
             self.send_header('Content-Length', str(len(response_bytes)))
             self.end_headers()
@@ -106,6 +106,7 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Suppress logs
 
+
 @pytest.fixture(scope="module")
 def mock_ollama_server():
     server = HTTPServer(('0.0.0.0', 0), MockOllamaHandler)
@@ -113,29 +114,32 @@ def mock_ollama_server():
     thread = threading.Thread(target=server.serve_forever)
     thread.daemon = True
     thread.start()
-    
+
     # Use the docker bridge IP so the container can reach the host
     # 172.17.0.1 is the default docker bridge IP on Linux GH actions
     yield f"http://172.17.0.1:{port}"
     server.shutdown()
     server.server_close()
 
+
 @pytest.fixture
 def temp_profile():
     with tempfile.TemporaryDirectory() as temp_dir:
         yield temp_dir
 
+
 def test_massive_note_injection(ephemeral_joplin, mock_ollama_server, temp_profile):
     asyncio.run(run_massive_note_injection(mock_ollama_server, temp_profile))
+
 
 async def run_massive_note_injection(mock_ollama_server, temp_profile):
     secret_uuid = str(uuid.uuid4())
     print(f"\nSecret UUID for massive run: {secret_uuid}")
-    
+
     # Paths
     client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
     script_path = os.path.join(client_dir, 'e2e_massive_create_sync.js')
-    
+
     # Run Node.js client to create 50 notes, sync them, and generate embeddings
     env = os.environ.copy()
     env["OLLAMA_URL"] = mock_ollama_server
@@ -161,7 +165,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     print("Massive Node.js output:", result.stdout)
     if result.stderr:
         print("Massive Node.js error:", result.stderr)
-        
+
     assert result.returncode == 0, "Massive Node.js client script failed"
 
     # Extract the created note ID from the stdout
@@ -189,8 +193,8 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
         requests.post("http://localhost:3001/node-api/restart", timeout=5)
     except Exception:
         pass
-    time.sleep(3) # Wait for proxy to come back up
-    
+    time.sleep(3)  # Wait for proxy to come back up
+
     # Wait for proxy to be ready
     for _ in range(30):
         try:
@@ -210,34 +214,34 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     env["SQLITE_DB_PATH"] = sqlite_db_path
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
     env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"
-    
+
     server_params = StdioServerParameters(
         command=sys.executable,
         args=[main_py_path, "--stdio"],
         env=env
     )
-    
+
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            
+
             # Search for the one specific note containing the secret UUID
             search_query = f"secret keyword is {secret_uuid}"
             print(f"Searching via MCP for: {search_query}")
-            
+
             search_res = await session.call_tool(
                 "notes_search",
                 arguments={"query": search_query}
             )
-            
+
             print("Raw Search Res:", search_res)
             print("Search Response:", search_res.content[0].text if search_res.content else "EMPTY")
             search_data = json.loads(search_res.content[0].text) if search_res.content else []
-            
+
             # Verify the specific note is found correctly
             assert isinstance(search_data, list)
             assert len(search_data) > 0, "No notes found matching the massive injection secret UUID"
-            
+
             # It should ideally be the top hit since it alone contains the secret, but
             # because mock ollama might generate identical distances for mock data,
             # we check if it is ANYWHERE in the returned results.
@@ -246,18 +250,18 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
                 if item.get("id") == created_note_id:
                     found_note_id = created_note_id
                     break
-            
+
             assert found_note_id == created_note_id, f"Created note ID {created_note_id} not found in search results: {search_data}"
-            
+
             # Read the note via get_note
             get_res = await session.call_tool(
                 "notes_get",
                 arguments={"note_id": found_note_id}
             )
-            
+
             print("Get Response:", get_res.content[0].text)
             get_data = json.loads(get_res.content[0].text)
             assert get_data.get("id") == found_note_id
             assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
-            
+
             print("Massive test completely successful!")

@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+
+# If server/venv exists, source it
+if [ -f "server/venv/bin/activate" ]; then
+    . server/venv/bin/activate
+fi
+
+echo "Running flake8..."
+flake8 .
+echo "flake8 passed."

@@ -4,9 +4,9 @@ import time
 import os
 import uuid
 import sys
-import subprocess
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+
 
 @pytest.mark.enable_socket
 def test_api_server_live_endpoints():
@@ -33,23 +33,23 @@ def test_api_server_live_endpoints():
 
     docs_3000 = requests.get(f"{PROXY_URL}/docs", timeout=30)
     assert docs_3000.status_code == 404, f"Proxy /docs should return 404, got {docs_3000.status_code}"
-    
+
     # Check /http-api/search without token returns 401
     search_3000 = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "test"}, timeout=30)
     assert search_3000.status_code == 401, "Proxy /http-api/search should return 401 without auth"
-    
+
     search_8000 = requests.post(f"{BACKEND_URL}/http-api/search", json={"query": "test"}, timeout=30)
     assert search_8000.status_code == 401, "Backend /http-api/search should return 401 without auth"
 
     # Configure the app by posting to /auth
     auth_payload = {
-        "serverUrl": "http://joplin:22300", # internal network name
+        "serverUrl": "http://joplin:22300",  # internal network name
         "username": "admin@localhost",
         "password": "admin",
         "masterPassword": "test_master_password",
         "rotate": True
     }
-    
+
     # Actually wait for the app service to be fully up
     max_retries = 60
     for i in range(max_retries):
@@ -75,12 +75,12 @@ def test_api_server_live_endpoints():
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as e:
             last_err = str(e)
         time.sleep(2)
-        
+
     assert auth_success, f"Failed to authenticate setup after retries: {last_err}"
-    
+
     # Wait for the config to be written and system locked
     time.sleep(2)
-    
+
     key_resp = requests.post(f"{PROXY_URL}/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", "admin"), timeout=30)
     assert key_resp.status_code == 200, f"Failed to create key: {key_resp.text}"
     token = key_resp.json().get("key", {}).get("key")
@@ -99,7 +99,7 @@ def test_api_server_live_endpoints():
             pass
         except Exception:
             pass
-        
+
         # Alternatively, hit ollama directly, but we didn't expose it to localhost in the test compose file? 
         # Wait, docker-compose.test.yml exposes ollama on 11434.
         try:
@@ -119,17 +119,17 @@ def test_api_server_live_endpoints():
         "title": "E2E Test Note",
         "content": f"The secret E2E value is {secret_uuid}"
     }
-    
+
     remember_resp = requests.post(f"{PROXY_URL}/http-api/remember", json=remember_payload, headers=headers, timeout=30)
     assert remember_resp.status_code == 200, f"Remember API failed: {remember_resp.text}"
-    
+
     print("REMEMBER RESPONSE:", remember_resp.text)
     note_id = remember_resp.json().get("id")
     assert note_id, "Note ID should be returned"
 
     # Allow time for sync, embedding generation, and vector DB insertion
     print("Waiting for note to be embedded and synced...")
-    
+
     # 3. Use /http-api/search to retrieve that data (polling until ready)
     search_data = []
     for _ in range(30):
@@ -149,14 +149,14 @@ def test_api_server_live_endpoints():
     # 4. Perform the same search against the backend port directly
     search_resp_backend = requests.post(f"{BACKEND_URL}/http-api/search", json={"query": secret_uuid}, headers=headers, timeout=30)
     assert search_resp_backend.status_code == 200, f"Backend Search API failed: {search_resp_backend.text}"
-    
+
     search_data_backend = search_resp_backend.json()
     assert len(search_data_backend) > 0, "No results returned for backend search"
     assert search_data_backend[0]["id"] == note_id, "The backend top result should be the note we just created"
 
     # --- NEW: Test Advanced Settings Flow ---
     print("[E2E] Testing advanced settings and dynamic embedding model probe...", file=sys.stderr)
-    
+
     # 1. Test a fake model probe (should fail)
     fake_probe_payload = {
         "provider": "ollama",
@@ -165,7 +165,7 @@ def test_api_server_live_endpoints():
     }
     probe_fail_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=fake_probe_payload, headers=headers, timeout=30)
     assert probe_fail_resp.status_code in [400, 422], f"Expected probe to fail for fake model, got {probe_fail_resp.status_code}"
-    
+
     # 2. Test a valid model probe (should succeed since docker-compose.test.yml runs ollama with nomic-embed-text)
     valid_probe_payload = {
         "provider": "ollama",
@@ -194,9 +194,9 @@ def test_api_server_live_endpoints():
         # which intentionally kills the container (causing a RemoteDisconnected error)
         # before the HTTP response can fully stream back.
         print("[E2E] Connection dropped as expected during Maintenance Shutdown Protocol.", file=sys.stderr)
-        
+
     print("[E2E] Settings updated successfully. Awaiting Node.js daemon restart and re-sync...", file=sys.stderr)
-    
+
     # Wait for the app container to be ready again
     for _ in range(30):
         try:

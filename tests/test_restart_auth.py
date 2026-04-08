@@ -2,12 +2,12 @@ import pytest
 import requests
 import subprocess
 import time
-from playwright.sync_api import sync_playwright
+
 
 @pytest.mark.enable_socket
 def test_container_restart_keeps_auth(ephemeral_joplin):
     proxy_url = "http://127.0.0.1:3001"
-    
+
     # Wait for proxy to come up
     max_retries = 30
     for i in range(max_retries):
@@ -49,28 +49,28 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
         print("DOCKER LOGS:\n", logs)
     assert r.status_code == 200, f"Expected 200 from /auth, got {r.status_code}. Body: {r.text}"
     time.sleep(2)        
-    
+
     # Verify normal user can log in
     r = requests.get(f"{proxy_url}/", auth=("admin@localhost", "admin"))
     if r.status_code != 200:
         logs = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "logs", "app"], capture_output=True, text=True).stdout
         print("DOCKER LOGS:\n", logs)
     assert r.status_code == 200, f"Expected 200 after initial setup, got {r.status_code}. Body: {r.text}"    
-    
+
     # --- 1st Restart Sequence ---
     # Take the server down
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "stop", "app"], check=True)
-    
+
     # Check for a response to ensure it's down
     try:
         requests.get(f"{proxy_url}/status", timeout=2)
         assert False, "Server should be down, but got a response"
     except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
-        pass # Expected
-    
+        pass  # Expected
+
     # Bring the server back up
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "start", "app"], check=True)
-    
+
     # Wait for the HTTP port to be open and the app to be ready
     for i in range(15):
         try:
@@ -80,25 +80,24 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
         except Exception:
             pass
         time.sleep(1)
-    
+
     r = requests.get(f"{proxy_url}/", auth=("admin@localhost", "admin"))
     assert r.status_code == 200, f"Expected 200 after 1st restart, got {r.status_code}. Body: {r.text}"
-    
-    
+
     # --- 2nd Restart Sequence ---
     # Take the server down
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "stop", "app"], check=True)
-    
+
     # Check for a response to ensure it's down
     try:
         requests.get(f"{proxy_url}/status", timeout=2)
         assert False, "Server should be down, but got a response"
     except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
-        pass # Expected
-        
+        pass  # Expected
+
     # Bring the server back up
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "start", "app"], check=True)
-    
+
     # Wait for the HTTP port to be open and the app to be ready
     for i in range(15):
         try:
@@ -108,6 +107,6 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
         except Exception:
             pass
         time.sleep(1)
-    
+
     r = requests.get(f"{proxy_url}/", auth=("admin@localhost", "admin"))
     assert r.status_code == 200, f"Expected 200 after 2nd restart, got {r.status_code}. Body: {r.text}"
