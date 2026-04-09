@@ -40,7 +40,7 @@ describe('Frontend token copy functionality', () => {
 
     // The API keys list should be populated
     const listEl = document.getElementById('api-keys-list');
-    const items = listEl.querySelectorAll('div');
+    const items = listEl.children;
     expect(items.length).toBe(1);
 
     const copyBtn = items[0].querySelectorAll('button')[0]; // First button is Copy

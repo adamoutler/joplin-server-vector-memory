@@ -501,7 +501,7 @@ class JoplinSyncClient extends EventEmitter {
       throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
   }
 
-  async generateEmbeddings() {
+  async generateEmbeddings(changedNoteIds = null, deletedNoteIds = null) {
     this.emit('embeddingStart');
 
     const config = await this.getConfig();
@@ -524,26 +524,10 @@ class JoplinSyncClient extends EventEmitter {
 
       const folderPathCache = this.buildFolderPathLookup(joplinFolders);
 
-      // 2. Fetch current decrypted notes from Joplin DB
-      const notes = await this.db.selectAll('SELECT id, title, body, updated_time, parent_id FROM notes WHERE encryption_applied = 0');
-      
-      // 3. Fetch existing metadata from Vector DB
-      const vectorMeta = await new Promise((resolve, reject) => {
-        this.vectorDb.all(`SELECT note_id, updated_time FROM note_metadata`, (err, rows) => {
-          if (err) return reject(err);
-          resolve(rows || []);
-        });
-      }).catch(err => this._handleVectorDbFatalError(err));
-      
-      const vectorIdToTime = new Map();
-      vectorMeta.forEach(row => vectorIdToTime.set(row.note_id, row.updated_time || 0));
-      
-      const currentNoteIds = new Set(notes.map(n => n.id));
-      
-      // 3. Delete removed notes
-      for (const vId of vectorIdToTime.keys()) {
-        if (!currentNoteIds.has(vId)) {
-          console.log(`Note ${vId} was deleted, removing from vector DB...`);
+      // Proactively delete notes if provided
+      if (deletedNoteIds && deletedNoteIds.length > 0) {
+        console.log(`Proactively deleting ${deletedNoteIds.length} notes from vector DB...`);
+        for (const vId of deletedNoteIds) {
           await new Promise((resolve, reject) => {
             this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [vId], (err, row) => {
               if (err) return reject(err);
@@ -558,6 +542,55 @@ class JoplinSyncClient extends EventEmitter {
             });
           }).catch(err => this._handleVectorDbFatalError(err));
         }
+      }
+
+      // 2. Fetch current decrypted notes from Joplin DB
+      let notesQuery = 'SELECT id, title, body, updated_time, parent_id FROM notes WHERE encryption_applied = 0';
+      let notes = [];
+      if (changedNoteIds && changedNoteIds.length > 0) {
+          const placeholders = changedNoteIds.map(() => '?').join(',');
+          notesQuery += ` AND id IN (${placeholders})`;
+          notes = await this.db.selectAll(notesQuery, changedNoteIds);
+      } else if (changedNoteIds && changedNoteIds.length === 0) {
+          // Empty array passed, skip fetching
+          notes = [];
+      } else {
+          notes = await this.db.selectAll(notesQuery);
+      }
+      
+      // 3. Fetch existing metadata from Vector DB
+      const vectorMeta = await new Promise((resolve, reject) => {
+        this.vectorDb.all(`SELECT note_id, updated_time FROM note_metadata`, (err, rows) => {
+          if (err) return reject(err);
+          resolve(rows || []);
+        });
+      }).catch(err => this._handleVectorDbFatalError(err));
+      
+      const vectorIdToTime = new Map();
+      vectorMeta.forEach(row => vectorIdToTime.set(row.note_id, row.updated_time || 0));
+      
+      const currentNoteIds = new Set(notes.map(n => n.id));
+      
+      // Delete removed notes (only on full scan)
+      if (changedNoteIds === null) {
+          for (const vId of vectorIdToTime.keys()) {
+            if (!currentNoteIds.has(vId)) {
+              console.log(`Note ${vId} was deleted, removing from vector DB...`);
+              await new Promise((resolve, reject) => {
+                this.vectorDb.get(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [vId], (err, row) => {
+                  if (err) return reject(err);
+                  if (!row) return resolve();
+                  this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], (err2) => {
+                    if (err2) return reject(err2);
+                    this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {
+                      if (err3) return reject(err3);
+                      resolve();
+                    });
+                  });
+                });
+              }).catch(err => this._handleVectorDbFatalError(err));
+            }
+          }
       }
       
       // 4. Filter notes that need updating
