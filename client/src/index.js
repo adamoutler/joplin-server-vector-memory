@@ -924,10 +924,105 @@ async function runSyncCycle(config) {
 
               if (syncCheckRes && !syncCheckRes.ok && syncCheckRes.status !== 404) {
                   throw new Error(`Joplin Server rejected sync access (HTTP ${syncCheckRes.status}: ${syncCheckRes.statusText}). Ensure your account has sync permissions and you have accepted the Terms of Service on the Joplin Server web UI.`);
-              }           }
+              }
+
+              // --- EVENT POLLING LOGIC ---
+              let cursor = config.lastEventCursor;
+              let hasMore = true;
+              let hasNoteEvents = false;
+              let changedNoteIds = new Set();
+              let deletedNoteIds = new Set();
+              let newCursor = cursor;
+
+              if (cursor) {
+                  console.log(`Polling /api/events with cursor: ${cursor}`);
+                  while (hasMore) {
+                      const eventsRes = await fetch(`${joplinUrl}/api/events?cursor=${newCursor}`, {
+                          headers: { 'X-API-AUTH': sessionId }
+                      }).catch(() => null);
+
+                      if (eventsRes && eventsRes.ok) {
+                          const eventsData = await eventsRes.json();
+                          for (const item of (eventsData.items || [])) {
+                              if (item.item_type === 1) { // 1 is Note
+                                  hasNoteEvents = true;
+                                  if (item.type === 3) { // 3 is Delete
+                                      deletedNoteIds.add(item.item_id);
+                                  } else {
+                                      changedNoteIds.add(item.item_id);
+                                  }
+                              }
+                          }
+                          hasMore = eventsData.has_more;
+                          if (eventsData.cursor) {
+                              newCursor = eventsData.cursor;
+                          } else {
+                              hasMore = false;
+                          }
+                      } else {
+                          hasMore = false; 
+                          hasNoteEvents = true; // Force sync on error
+                      }
+                  }
+              } else {
+                  // No cursor, force full sync
+                  hasNoteEvents = true;
+              }
+
+              if (hasNoteEvents || !cursor) {
+                  console.log(`Changes detected (or initial run). Proceeding with sync...`);
+                  await syncClient.sync();
+                  await syncClient.decrypt();
+                  
+                  if (!cursor) {
+                      // First run, do full embedding
+                      await syncClient.generateEmbeddings();
+                      // Fetch initial cursor
+                      const initialEventsRes = await fetch(`${joplinUrl}/api/events`, {
+                          headers: { 'X-API-AUTH': sessionId }
+                      }).catch(() => null);
+                      if (initialEventsRes && initialEventsRes.ok) {
+                          const initialEventsData = await initialEventsRes.json();
+                          if (initialEventsData.cursor) {
+                              newCursor = initialEventsData.cursor;
+                          }
+                      }
+                  } else {
+                      // Targeted embedding
+                      await syncClient.generateEmbeddings(Array.from(changedNoteIds), Array.from(deletedNoteIds));
+                  }
+              } else {
+                  console.log(`No note changes detected. Skipping sync.`);
+                  // Keep status ready
+                  if (syncState.status === 'syncing') {
+                      syncState.status = 'ready';
+                  }
+                  if (embeddingState.status === 'waiting' || embeddingState.status === 'embedding') {
+                      embeddingState.status = 'ready';
+                  }
+              }
+
+              // Save new cursor to config
+              if (newCursor && newCursor !== cursor) {
+                  config.lastEventCursor = newCursor;
+                  try {
+                      const fs = require('fs');
+                      const cfgRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
+                      const cfgObj = JSON.parse(cfgRaw);
+                      cfgObj.lastEventCursor = newCursor;
+                      fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(cfgObj, null, 2));
+                      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+                  } catch (e) {
+                      console.error('Failed to save cursor to config.json:', e);
+                  }
+              }
+              
+              return; // We have handled everything inside the session logic
+           }
        }
     }
 
+    // Fallback if we couldn't do the session checks (e.g. no config)
     await syncClient.sync();
     await syncClient.decrypt();
     await syncClient.generateEmbeddings();
@@ -959,10 +1054,14 @@ async function runSyncCycle(config) {
         }
     }
     
-    // Avoid restarting the container for generic sync errors as it wipes in-memory credentials.
-    // Fatal SQLite corruption errors are handled natively in sync.js with process.exit.
-    if (err.message && err.message.includes('Sync failed')) {
-        console.error('Sync cycle encountered an error. Will retry on next interval.', err.message);
+    const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || (err.message && (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('timeout') || err.message.includes('Joplin Server') || err.message.includes('Sync failed')));
+    const isAuthError = err.message && (err.message.includes('invalid credentials') || err.message.includes('403') || err.message.includes('401'));
+
+    if (isNetworkError || isAuthError) {
+        console.error('Transient or Auth error during sync. Will retry on next interval.', err.message);
+    } else {
+        console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', err.message);
+        setTimeout(() => process.exit(1), 1000);
     }
   } finally {
     isProcessing = false;
@@ -1025,3 +1124,5 @@ if (require.main === module) {
 }
 
 module.exports = app;
+module.exports.runSyncCycle = runSyncCycle;
+module.exports.syncClient = syncClient;
