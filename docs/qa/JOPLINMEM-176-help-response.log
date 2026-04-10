@@ -1,0 +1,9 @@
+MCP `help` response LLM & Display Output:
+
+{
+  "llmContent": {
+    "projects": [],
+    "priorities": []
+  },
+  "returnDisplay": "No projects found."
+}
