@@ -1,4 +1,4 @@
-from src.main import search_notes, get_note, remember, request_note_deletion, execute_deletion, update_note
+from src.main import search_notes, extract_result, get_note, remember, request_note_deletion, execute_deletion, update_note
 import pytest
 import os
 import sys
@@ -43,13 +43,13 @@ def mock_ollama():
 
 def test_remember_and_get_note(temp_db, mock_ollama):
     # Remember a note
-    result = remember("Apple Recipe", "How to make apple pie")
+    result = extract_result(remember("Apple Recipe", "How to make apple pie"))
     assert result.get("status") == "success"
     note_id = result.get("id")
     assert note_id is not None
 
     # Get the note
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
     assert note.get("id") == note_id
     assert note.get("title") == "Apple Recipe"
     assert note.get("content") == "How to make apple pie"
@@ -57,19 +57,19 @@ def test_remember_and_get_note(temp_db, mock_ollama):
 
 def test_search_notes(temp_db, mock_ollama):
     # Add a few notes
-    remember("Apple Pie", "Delicious apple pie recipe")
-    remember("Banana Bread", "Easy banana bread recipe")
+    extract_result(remember("Apple Pie", "Delicious apple pie recipe"))
+    extract_result(remember("Banana Bread", "Easy banana bread recipe"))
 
     # Add a large note to test blurb truncation
     large_content = "x" * 2500
-    remember("Large Note", large_content)
+    extract_result(remember("Large Note", large_content))
 
     # Search for something that will match apple pie better based on mock
     # Our mock makes "test query" vector have vec[0]=1.0
     # "Apple" has vec[1]=1.0
     # "Banana" has vec[2]=1.0
     # Let's adjust mock logic or just test it returns something
-    results = search_notes("apple query")
+    results = extract_result(search_notes("apple query"))
     assert len(results) == 3
 
     # Results should contain blurb, title, id
@@ -93,16 +93,16 @@ def test_search_notes(temp_db, mock_ollama):
 
 def test_delete_note_flow(temp_db, mock_ollama):
     # Add a note
-    result = remember("To be deleted", "Delete this content")
+    result = extract_result(remember("To be deleted", "Delete this content"))
     note_id = result.get("id")
 
     # Verify it exists and get hash
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
     assert note.get("id") == note_id
     content_hash = note.get("content_hash")
 
     # Request deletion
-    req_result = request_note_deletion(note_id, "Test deletion")
+    req_result = extract_result(request_note_deletion(note_id, "Test deletion"))
     assert "deletion_token" in req_result
     token = req_result["deletion_token"]
 
@@ -111,79 +111,79 @@ def test_delete_note_flow(temp_db, mock_ollama):
         "content_hash": content_hash,
         "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
     }
-    exec_result = execute_deletion(token, "To be deleted", attestation)
+    exec_result = extract_result(execute_deletion(token, "To be deleted", attestation))
     assert exec_result.get("status") == "success"
 
     # Verify it's gone
-    note_after = get_note(note_id)
+    note_after = extract_result(get_note(note_id))
     assert note_after.get("error") == "Note not found"
 
 
 def test_delete_nonexistent_note(temp_db):
-    result = request_note_deletion("nonexistent_id", "Test")
+    result = extract_result(request_note_deletion("nonexistent_id", "Test"))
     assert result.get("error") == "Note not found"
 
 
 def test_get_nonexistent_note(temp_db):
-    result = get_note("nonexistent_id")
+    result = extract_result(get_note("nonexistent_id"))
     assert result.get("error") == "Note not found"
 
 
 def test_update_note_success(temp_db, mock_ollama):
     # Remember a note
-    result = remember("Update Test", "Initial content")
+    result = extract_result(remember("Update Test", "Initial content"))
     assert result.get("status") == "success"
     note_id = result.get("id")
 
     # Get the note and its timestamp
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
     timestamp = note.get("updated_time")
     assert timestamp is not None
 
     # Update the note (append)
-    update_res = update_note(note_id, "Appended content", "append", timestamp, "Test append")
+    update_res = extract_result(update_note(note_id, "Appended content", "append", timestamp, "Test append"))
     assert update_res.get("status") == "success"
 
     # Verify the update
-    updated_note = get_note(note_id)
+    updated_note = extract_result(get_note(note_id))
     assert "Initial content\n\nAppended content" in updated_note.get("content")
     assert updated_note.get("updated_time") >= timestamp
 
 
 def test_update_note_prepend(temp_db, mock_ollama):
     # Remember a note
-    result = remember("Update Prepend Test", "Initial content")
+    result = extract_result(remember("Update Prepend Test", "Initial content"))
     assert result.get("status") == "success"
     note_id = result.get("id")
 
     # Get the note and its timestamp
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
     timestamp = note.get("updated_time")
 
     # Update the note (prepend)
-    update_res = update_note(note_id, "Prepended content", "prepend", timestamp, "Test prepend")
+    update_res = extract_result(update_note(note_id, "Prepended content", "prepend", timestamp, "Test prepend"))
     assert update_res.get("status") == "success"
 
     # Verify the update
-    updated_note = get_note(note_id)
+    updated_note = extract_result(get_note(note_id))
     assert "Prepended content\n\nInitial content" in updated_note.get("content")
     assert updated_note.get("updated_time") >= timestamp
 
 
 def test_update_note_occ_failure(temp_db, mock_ollama):
     # Remember a note
-    result = remember("OCC Test", "Initial content")
+    result = extract_result(remember("OCC Test", "Initial content"))
     note_id = result.get("id")
 
     # Get the note to get initial timestamp
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
     initial_timestamp = note.get("updated_time")
 
     # Provide a wrong/stale timestamp
     stale_timestamp = initial_timestamp - 1000
 
     # Update should fail
-    update_res = update_note(note_id, "This should fail", "full_replace", stale_timestamp, "Test OCC")
+    update_res = extract_result(update_note(note_id, "This should fail", "full_replace", stale_timestamp, "Test OCC"))
     assert update_res.get(
         "error") == "Error: Note has been modified since you last read it. Retrieve the note again before updating."
 
