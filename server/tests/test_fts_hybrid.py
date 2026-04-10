@@ -1,4 +1,4 @@
-from src.main import search_notes, remember
+from src.main import search_notes, extract_result, remember
 import pytest
 import os
 import sys
@@ -55,12 +55,12 @@ def mock_node_proxy():
 def test_hybrid_search_fts(temp_db, mock_ollama):
     # Insert notes. All have same vector embedding from mock,
     # so distance will be same. We rely on FTS score via RRF.
-    remember("Common Note 1", "This is just a regular note.")
-    remember("Common Note 2", "Another note without the rare keyword.")
-    remember("Specific Note", "This contains the rare keyword Xylophagalicious.")
+    extract_result(remember("Common Note 1", "This is just a regular note."))
+    extract_result(remember("Common Note 2", "Another note without the rare keyword."))
+    extract_result(remember("Specific Note", "This contains the rare keyword Xylophagalicious."))
 
     # Search for exact keyword
-    results = search_notes("Xylophagalicious")
+    results = extract_result(search_notes("Xylophagalicious"))
 
     # Verify the note containing the exact keyword is top
     assert len(results) > 0
@@ -73,8 +73,8 @@ def test_temporal_weighting(temp_db, mock_ollama):
     from src.db import get_db_connection
 
     # Insert notes
-    remember("Note A", "This is a note about a temporal topic.")
-    remember("Note B", "This is a note about a temporal topic.")
+    extract_result(remember("Note A", "This is a note about a temporal topic."))
+    extract_result(remember("Note B", "This is a note about a temporal topic."))
 
     db = get_db_connection()
     cursor = db.cursor()
@@ -93,9 +93,9 @@ def test_temporal_weighting(temp_db, mock_ollama):
     db.commit()
 
     # Search with target_date="3 years ago" and date_weight=1.0
-    results_boosted_past = search_notes("temporal topic", target_date="3 years ago", date_weight=1.0)
+    results_boosted_past = extract_result(search_notes("temporal topic", target_date="3 years ago", date_weight=1.0))
     assert results_boosted_past[0]["title"] == "Note A"
 
     # Search with target_date="now" and date_weight=1.0
-    results_boosted_now = search_notes("temporal topic", target_date="now", date_weight=1.0)
+    results_boosted_now = extract_result(search_notes("temporal topic", target_date="now", date_weight=1.0))
     assert results_boosted_now[0]["title"] == "Note B"

@@ -22,7 +22,7 @@ import datetime
 from src.db import get_db_connection
 from sqlite_vec import serialize_float32
 from enum import Enum
-from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents
+from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents, TextContent, Annotations
 from typing import Union, List, Optional
 from sentence_transformers import SentenceTransformer
 
@@ -220,7 +220,7 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
 
 
 @mcp.tool(name="notes_search")
-def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[dict]:
+def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[Union[dict, TextContent]]:
     """
     Search notes semantically using the provided query.
     Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
@@ -248,7 +248,11 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
                 resolved_folder_id = row[0]
             else:
                 db.close()
-                return [{"error": f"Folder '{folder}' not found. Try searching without folder scope."}]
+                error_msg = f"Folder '{folder}' not found. Try searching without folder scope."
+                return [
+                    TextContent(type="text", text=json.dumps({"error": error_msg}), annotations=Annotations(audience=["assistant"])),
+                    TextContent(type="text", text=f"Error: {error_msg}", annotations=Annotations(audience=["user"]))
+                ]
 
         # Determine how many candidates to fetch from each source to ensure good RRF results
         max_candidates = max(100, (page * limit) + 20)
@@ -374,10 +378,32 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
                 note_dict["full_body"] = content
 
             notes.append(note_dict)
-        return notes
+
+        # Build optimized display string
+        display_lines = []
+        for n in notes:
+            # max 80 chars
+            title = n.get('title', 'Untitled')
+            # remove newlines from blurb and truncate if necessary to keep the whole line <= 80
+            blurb = n.get('blurb', '').replace('\\n', ' ')
+            prefix = f"- {title}: "
+            max_blurb_len = max(0, 80 - len(prefix))
+            if len(blurb) > max_blurb_len:
+                blurb = blurb[:max_blurb_len - 3] + "..."
+            display_lines.append(f"{prefix}{blurb}")
+
+        display_str = "\\n".join(display_lines) if display_lines else "No notes found."
+
+        return [
+            TextContent(type="text", text=json.dumps(notes), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=display_str, annotations=Annotations(audience=["user"]))
+        ]
     except Exception as e:
         logger.error(f"Error in search_notes: {e}")
-        return []
+        return [
+            TextContent(type="text", text=json.dumps({"error": str(e)}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Error searching notes: {e}", annotations=Annotations(audience=["user"]))
+        ]
 
 
 @mcp.tool(name="resources_get")
@@ -413,7 +439,7 @@ def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]
 
 
 @mcp.tool(name="resources_upload")
-def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> dict:
+def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> list[Union[dict, TextContent]]:
     """
     Uploads a binary file or resource to the server.
     Returns {"resource_id": "string", "markdown_link": "string"}.
@@ -433,17 +459,28 @@ def upload_resource(filename: str, base64_data: str, mime_type: str = None) -> d
             resource_id = data.get("id")
             is_image = mime_type and mime_type.startswith("image/")
             prefix = "!" if is_image else ""
-            return {
+            result_dict = {
                 "resource_id": resource_id,
                 "markdown_link": f"{prefix}[{filename}](:/{resource_id})"
             }
-        return {"error": f"Error uploading resource: {res.text}"}
+            return [
+                TextContent(type="text", text=json.dumps(result_dict), annotations=Annotations(audience=["assistant"])),
+                TextContent(type="text", text=f"Resource uploaded successfully: {filename}", annotations=Annotations(audience=["user"]))
+            ]
+        error_msg = f"Error uploading resource: {res.text}"
+        return [
+            TextContent(type="text", text=json.dumps({"error": error_msg}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=error_msg, annotations=Annotations(audience=["user"]))
+        ]
     except Exception as e:
-        return {"error": str(e)}
+        return [
+            TextContent(type="text", text=json.dumps({"error": str(e)}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Error uploading resource: {e}", annotations=Annotations(audience=["user"]))
+        ]
 
 
 @mcp.tool(name="notes_get")
-def get_note(note_id: str) -> dict:
+def get_note(note_id: str) -> list[Union[dict, TextContent]]:
     """
     Get the full content of a specific note by ID.
     """
@@ -465,7 +502,7 @@ def get_note(note_id: str) -> dict:
         except Exception as e:
             logger.warning(f"Failed to fetch resources for note {note_id}: {e}")
 
-        return {
+        result_dict = {
             "id": row[0],
             "title": row[1],
             "content": content,
@@ -473,11 +510,19 @@ def get_note(note_id: str) -> dict:
             "content_hash": content_hash,
             "resources": resources
         }
-    return {"error": "Note not found"}
+        display_str = f"# {row[1]}\\n{content}"
+        return [
+            TextContent(type="text", text=json.dumps(result_dict), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=display_str, annotations=Annotations(audience=["user"]))
+        ]
+    return [
+        TextContent(type="text", text=json.dumps({"error": "Note not found"}), annotations=Annotations(audience=["assistant"])),
+        TextContent(type="text", text="Error: Note not found", annotations=Annotations(audience=["user"]))
+    ]
 
 
 @mcp.tool(name="notes_remember")
-def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
+def remember(title: str, content: str, folder: str = "Agent Memory") -> list[Union[dict, TextContent]]:
     """
     Remember a new note by storing its title and content.
     Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
@@ -493,16 +538,24 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
         # 1. Relay to Joplin via Node Proxy
         res = _call_node_proxy("POST", "/node-api/notes", json_data={"title": title, "body": content, "folder": folder})
         if res.status_code != 200:
-            return {"error": f"Failed to create note in Joplin: {res.text}"}
+            error_msg = f"Failed to create note in Joplin: {res.text}"
+            return [
+                TextContent(type="text", text=json.dumps({"error": error_msg}), annotations=Annotations(audience=["assistant"])),
+                TextContent(type="text", text=error_msg, annotations=Annotations(audience=["user"]))
+            ]
 
         note_data = res.json()
         note_id = note_data.get("id")
         parent_id = note_data.get("parent_id")
         if not note_id:
-            return {"error": "Failed to get note ID from Joplin."}
+            error_msg = "Failed to get note ID from Joplin."
+            return [
+                TextContent(type="text", text=json.dumps({"error": error_msg}), annotations=Annotations(audience=["assistant"])),
+                TextContent(type="text", text=error_msg, annotations=Annotations(audience=["user"]))
+            ]
 
         # 2. Update local SQLite for instant searchability
-        embedding = get_embedding(f"{title}\n{content}")
+        embedding = get_embedding(f"{title}\\n{content}")
 
         db = get_db_connection()
         cursor = db.cursor()
@@ -522,19 +575,26 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> dict:
         db.commit()
         db.close()
 
-        return {
+        result_dict = {
             "status": "success",
             "id": note_id,
             "title": title,
             "message": "Note remembered successfully and synced to Joplin."
         }
+        return [
+            TextContent(type="text", text=json.dumps(result_dict), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Successfully remembered note: {title} (ID: {note_id})", annotations=Annotations(audience=["user"]))
+        ]
     except Exception as e:
         logger.error(f"Error in remember: {e}")
-        return {"error": str(e)}
+        return [
+            TextContent(type="text", text=json.dumps({"error": str(e)}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Error remembering note: {e}", annotations=Annotations(audience=["user"]))
+        ]
 
 
 @mcp.tool(name="notes_update")
-def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modified_timestamp: int, summary_of_changes: str) -> dict:
+def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modified_timestamp: int, summary_of_changes: str) -> list[Union[dict, TextContent]]:
     """
     Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
     update_mode can be 'full note replacement' or 'append'.
@@ -545,25 +605,31 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
     cursor.execute("SELECT title, content, updated_time, rowid FROM note_metadata WHERE note_id = ?", (note_id,))
     row = cursor.fetchone()
 
+    def _err(msg: str):
+        return [
+            TextContent(type="text", text=json.dumps({"error": msg}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Error: {msg}", annotations=Annotations(audience=["user"]))
+        ]
+
     if not row:
         db.close()
-        return {"error": "Note not found"}
+        return _err("Note not found")
 
     title, current_content, current_time, rowid = row
 
     if last_modified_timestamp != current_time:
         db.close()
-        return {"error": "Error: Note has been modified since you last read it. Retrieve the note again before updating."}
+        return _err("Error: Note has been modified since you last read it. Retrieve the note again before updating.")
 
     if update_mode == UpdateMode.append:
-        new_content = current_content + "\n\n" + content
+        new_content = current_content + "\\n\\n" + content
     elif update_mode == UpdateMode.prepend:
-        new_content = content + "\n\n" + current_content
+        new_content = content + "\\n\\n" + current_content
     elif update_mode == UpdateMode.full_note_replacement:
         new_content = content
     else:
         db.close()
-        return {"error": "Invalid update_mode. Must be 'append', 'prepend', or 'full note replacement'."}
+        return _err("Invalid update_mode. Must be 'append', 'prepend', or 'full note replacement'.")
 
     new_time = int(time.time() * 1000)
 
@@ -572,10 +638,10 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
         res = _call_node_proxy("PUT", f"/node-api/notes/{note_id}", json_data={"body": new_content})
         if res.status_code != 200:
             db.close()
-            return {"error": f"Failed to update note in Joplin: {res.text}"}
+            return _err(f"Failed to update note in Joplin: {res.text}")
 
         # 2. Update local SQLite
-        embedding = get_embedding(f"{title}\n{new_content}")
+        embedding = get_embedding(f"{title}\\n{new_content}")
 
         cursor.execute(
             "UPDATE note_metadata SET content = ?, updated_time = ? WHERE note_id = ?",
@@ -590,22 +656,26 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
         db.commit()
         db.close()
 
-        return {
+        result_dict = {
             "status": "success",
             "id": note_id
         }
+        return [
+            TextContent(type="text", text=json.dumps(result_dict), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Successfully updated note: {note_id}", annotations=Annotations(audience=["user"]))
+        ]
     except Exception as e:
         logger.error(f"Error in update_note: {e}")
         db.rollback()
         db.close()
-        return {"error": str(e)}
+        return _err(str(e))
 
 
 _deletion_tokens = {}
 
 
 @mcp.tool(name="notes_request_deletion")
-def request_note_deletion(note_id: str, reason: str) -> dict:
+def request_note_deletion(note_id: str, reason: str) -> list[Union[dict, TextContent]]:
     """
     Request the deletion of a note. This is step 1 of 2.
     Returns {"deletion_token": "string", "note_title": "string"}.
@@ -616,8 +686,14 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
     row = cursor.fetchone()
     db.close()
 
+    def _err(msg: str):
+        return [
+            TextContent(type="text", text=json.dumps({"error": msg}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Error: {msg}", annotations=Annotations(audience=["user"]))
+        ]
+
     if not row:
-        return {"error": "Note not found"}
+        return _err("Note not found")
 
     title = row[0]
     token = secrets.token_hex(8)
@@ -629,36 +705,46 @@ def request_note_deletion(note_id: str, reason: str) -> dict:
         "expires_at": expires_at
     }
 
-    return {
+    result_dict = {
         "deletion_token": token,
         "confirm_title": title
     }
+    return [
+        TextContent(type="text", text=json.dumps(result_dict), annotations=Annotations(audience=["assistant"])),
+        TextContent(type="text", text=f"Deletion requested for '{title}'. Ready for confirmation.", annotations=Annotations(audience=["user"]))
+    ]
 
 
 @mcp.tool(name="notes_execute_deletion")
-def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation: dict) -> dict:
+def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation: dict) -> list[Union[dict, TextContent]]:
     """
     Execute the deletion of a note. This is step 2 of 2.
     Requires the token from step 1, the exact note title, and a safety attestation.
     """
+    def _err(msg: str):
+        return [
+            TextContent(type="text", text=json.dumps({"error": msg}), annotations=Annotations(audience=["assistant"])),
+            TextContent(type="text", text=f"Error: {msg}", annotations=Annotations(audience=["user"]))
+        ]
+
     if deletion_token not in _deletion_tokens:
-        return {"error": "Invalid or expired deletion token."}
+        return _err("Invalid or expired deletion token.")
 
     token_data = _deletion_tokens[deletion_token]
 
     if time.time() > token_data["expires_at"]:
         del _deletion_tokens[deletion_token]
-        return {"error": "Deletion token expired. Request a new one."}
+        return _err("Deletion token expired. Request a new one.")
 
     if confirm_title != token_data["title"]:
-        return {"error": "confirm_title does not match the requested note's title."}
+        return _err("confirm_title does not match the requested note's title.")
 
     if not isinstance(safety_attestation, dict) or "content_hash" not in safety_attestation or "confirmation_statement" not in safety_attestation:
-        return {"error": "safety_attestation must contain 'content_hash' and 'confirmation_statement'."}
+        return _err("safety_attestation must contain 'content_hash' and 'confirmation_statement'.")
 
     expected_statement = "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
     if safety_attestation["confirmation_statement"] != expected_statement:
-        return {"error": f"Invalid confirmation_statement. Must be exactly: '{expected_statement}'"}
+        return _err(f"Invalid confirmation_statement. Must be exactly: '{expected_statement}'")
 
     note_id = token_data["note_id"]
 
@@ -670,21 +756,21 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     if not row:
         db.close()
         del _deletion_tokens[deletion_token]
-        return {"error": "Note not found during execution."}
+        return _err("Note not found during execution.")
 
     content = row[0]
     expected_hash = "sha256:" + hashlib.sha256(content.encode('utf-8')).hexdigest()
 
     if safety_attestation["content_hash"] != expected_hash:
         db.close()
-        return {"error": f"content_hash does not match the note's content. Expected {expected_hash}"}
+        return _err(f"content_hash does not match the note's content. Expected {expected_hash}")
 
     try:
         # 1. Relay to Joplin via Node Proxy
         res = _call_node_proxy("DELETE", f"/node-api/notes/{note_id}")
         if res.status_code != 200:
             db.close()
-            return {"error": f"Failed to delete note in Joplin: {res.text}"}
+            return _err(f"Failed to delete note in Joplin: {res.text}")
 
         # 2. Update local SQLite
         cursor.execute("SELECT rowid FROM note_metadata WHERE note_id = ?", (note_id,))
@@ -698,17 +784,21 @@ def execute_deletion(deletion_token: str, confirm_title: str, safety_attestation
     except Exception as e:
         db.rollback()
         db.close()
-        return {"error": f"Error deleting note: {str(e)}"}
+        return _err(f"Error deleting note: {str(e)}")
     finally:
         db.close()
 
     del _deletion_tokens[deletion_token]
 
-    return {
+    result_dict = {
         "status": "success",
         "id": note_id,
         "message": "Note deleted successfully and synced to Joplin."
     }
+    return [
+        TextContent(type="text", text=json.dumps(result_dict), annotations=Annotations(audience=["assistant"])),
+        TextContent(type="text", text=f"Note permanently deleted: {confirm_title}", annotations=Annotations(audience=["user"]))
+    ]
 
 
 class InternalEmbedRequest(BaseModel):
@@ -943,11 +1033,19 @@ def internal_embed(request: InternalEmbedRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
+    for r in res:
+        if isinstance(r, TextContent):
+            if r.annotations and r.annotations.audience and "assistant" in r.annotations.audience:
+                return json.loads(r.text)
+    return res
+
+
 @app.post(
     "/http-api/search",
     response_model=List[SearchResponseItem],
     summary="Search Notes",
-    description="Search notes semantically using the provided query.\n\n**Workflow Examples**:\n* **Search -> Get**: Use the `id` from a search result to fetch the full note content via `/api/get`.\n* **Search -> Delete**: Use the `id` from a search result to delete the note via `/api/delete`.",
+    description="Search notes semantically using the provided query.\\n\\n**Workflow Examples**:\\n* **Search -> Get**: Use the `id` from a search result to fetch the full note content via `/api/get`.\\n* **Search -> Delete**: Use the `id` from a search result to delete the note via `/api/delete`.",
     responses={
         200: {
             "description": "Successful Response",
@@ -982,25 +1080,25 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
         folder=request.folder,
         recursive=request.recursive
     )
-    return results
+    return extract_result(results)
 
 
 @app.post(
     "/http-api/get",
     response_model=GetResponse,
     summary="Get Note",
-    description="Get the full content of a specific note by ID.\n\n**Workflow Examples**:\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content."
+    description="Get the full content of a specific note by ID.\\n\\n**Workflow Examples**:\\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content."
 )
 async def api_get(request: GetRequest, token: str = Depends(verify_token)):
     result = get_note(request.note_id)
-    return result
+    return extract_result(result)
 
 
 @app.post(
     "/http-api/remember",
     response_model=RememberResponse,
     summary="Remember Note",
-    description="Remember a new note by storing its title and content.\n\n**Workflow Examples**:\n* **Remember -> Get**: Use the `id` from the response to fetch the newly created note via `/api/get`.\n* **Remember -> Delete**: Use the `id` from the response to delete the newly created note via `/api/delete`.",
+    description="Remember a new note by storing its title and content.\\n\\n**Workflow Examples**:\\n* **Remember -> Get**: Use the `id` from the response to fetch the newly created note via `/api/get`.\\n* **Remember -> Delete**: Use the `id` from the response to delete the newly created note via `/api/delete`.",
     responses={
         200: {
             "description": "Successful Response",
@@ -1027,7 +1125,7 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):
 async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):
     try:
         result = remember(request.title, request.content, request.folder)
-        return result
+        return extract_result(result)
     except Exception as e:
         logger.error(f"Error in api_remember: {e}")
         raise HTTPException(status_code=500, detail="An internal error occurred during remember.")
@@ -1040,7 +1138,7 @@ async def api_remember(request: RememberRequest, token: str = Depends(verify_tok
     description="Step 1 of the high-friction deletion process. Request the deletion of a note by ID. Returns a token."
 )
 async def api_request_deletion(request: RequestDeletionRequest, token: str = Depends(verify_token)):
-    res = request_note_deletion(request.note_id, request.reason)
+    res = extract_result(request_note_deletion(request.note_id, request.reason))
     if "error" in res:
         return RequestDeletionResponse(error=res["error"])
     return RequestDeletionResponse(**res)
@@ -1053,7 +1151,7 @@ async def api_request_deletion(request: RequestDeletionRequest, token: str = Dep
     description="Step 2 of the high-friction deletion process. Requires the token from step 1, exact note title, and safety attestation."
 )
 async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Depends(verify_token)):
-    res = execute_deletion(request.deletion_token, request.confirm_title, request.safety_attestation.model_dump())
+    res = extract_result(execute_deletion(request.deletion_token, request.confirm_title, request.safety_attestation.model_dump()))
     if "error" in res:
         return ExecuteDeletionResponse(error=res["error"])
     return ExecuteDeletionResponse(**res)

@@ -260,7 +260,17 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
             )
 
             print("Get Response:", get_res.content[0].text)
+
+            # Assert split response length
+            assert len(get_res.content) == 2, "Response should be split into 2 items (llmContent and displayReturn)"
+
+            # Assert display format matches `# [full title]\n[full content]`
+            display_text = get_res.content[1].text
+
             get_data = json.loads(get_res.content[0].text)
+            get_data_title = get_data.get("title", "")
+            assert display_text.startswith(f"# {get_data_title}\\n"), "Display format should start with '# [full title]'"
+
             assert get_data.get("id") == found_note_id
             assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
 

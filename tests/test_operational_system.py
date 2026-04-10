@@ -247,7 +247,14 @@ class TestOperationalSystem:
                     arguments={"note_id": found_note_id}
                 )
 
+                assert len(get_res.content) == 2, "Response should be split into 2 items"
+                display_text = get_res.content[1].text
+
                 get_data = json.loads(get_res.content[0].text)
+
+                get_data_title = get_data.get("title", "")
+                assert display_text.startswith(f"# {get_data_title}\\n"), "Display format should start with '# [full title]'"
+
                 assert get_data.get("id") == found_note_id
                 assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
 
