@@ -40,7 +40,7 @@ def mock_node_proxy():
             status_code = 200
 
             def __init__(self):
-                self.id = str(uuid.uuid4())
+                self.id = uuid.uuid4().hex
 
             def json(self):
                 return {"id": self.id}
