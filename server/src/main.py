@@ -203,6 +203,21 @@ def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests
             _node_proxy_write_lock.release()
 
 
+def _check_auth_status() -> Optional[str]:
+    """
+    Checks if the Node proxy has credentials. If not, returns a descriptive error message.
+    """
+    try:
+        res = _call_node_proxy("GET", "/status")
+        if res.status_code == 200:
+            data = res.json()
+            if not data.get("hasCredentials", False):
+                return "You are not logged in. Please navigate to the status page (typically http://127.0.0.1:3000) to log in. The vector memory server does not store login information persistently; it must be entered manually or provided via environmental variables. Credentials are wiped on restart and stored only in memory for future use."
+    except Exception as e:
+        logger.warning(f"Failed to check auth status: {e}")
+    return None
+
+
 def parse_temporal_date(date_str: str) -> Optional[int]:
     """
     Parses a human-readable date string into a millisecond timestamp.
@@ -394,6 +409,14 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
 
         display_str = "\\n".join(display_lines) if display_lines else "No notes found."
 
+        if not notes:
+            auth_err = _check_auth_status()
+            if auth_err:
+                return [
+                    TextContent(type="text", text=json.dumps({"error": auth_err}), annotations=Annotations(audience=["assistant"])),
+                    TextContent(type="text", text=auth_err, annotations=Annotations(audience=["user"]))
+                ]
+
         return [
             TextContent(type="text", text=json.dumps(notes), annotations=Annotations(audience=["assistant"])),
             TextContent(type="text", text=display_str, annotations=Annotations(audience=["user"]))
@@ -538,7 +561,8 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> list[Uni
         # 1. Relay to Joplin via Node Proxy
         res = _call_node_proxy("POST", "/node-api/notes", json_data={"title": title, "body": content, "folder": folder})
         if res.status_code != 200:
-            error_msg = f"Failed to create note in Joplin: {res.text}"
+            auth_err = _check_auth_status()
+            error_msg = auth_err if auth_err else f"Failed to create note in Joplin: {res.text}"
             return [
                 TextContent(type="text", text=json.dumps({"error": error_msg}), annotations=Annotations(audience=["assistant"])),
                 TextContent(type="text", text=error_msg, annotations=Annotations(audience=["user"]))
