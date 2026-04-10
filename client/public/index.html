@@ -191,8 +191,8 @@
             <input type="number" id="searchTopK" placeholder="5">
           </div>
           <div class="form-group">
-            <label>Hybrid Search Alpha</label>
-            <input type="number" id="hybridAlpha" placeholder="0.5" step="0.1" min="0" max="1">
+            <label>Hybrid Search Alpha <span id="hybridAlphaValue" style="margin-left: 5px; font-weight: bold;">0.5</span></label>
+            <input type="range" id="hybridAlpha" value="0.5" step="0.1" min="0" max="1" oninput="document.getElementById('hybridAlphaValue').innerText = this.value">
             <span class="help-text">0.0 = Keyword only, 1.0 = Vector only.</span>
           </div>
         </fieldset>
@@ -455,20 +455,32 @@
       keys.forEach((k) => {
         const item = document.createElement('div');
         item.style.display = 'flex';
-        item.style.alignItems = 'center';
-        item.style.gap = '0.5rem';
-        item.style.marginBottom = '0.5rem';
+        item.style.flexDirection = 'column';
+        item.style.gap = '0.25rem';
+        item.style.marginBottom = '1rem';
+        item.style.padding = '0.5rem';
+        item.style.border = '1px solid #ccc';
+        item.style.borderRadius = '4px';
+        item.style.backgroundColor = '#f9f9f9';
         
         const label = document.createElement('span');
         label.innerText = k.annotation + (k.expires_at ? ` (Expires: ${new Date(k.expires_at).toLocaleDateString()})` : ' (Never expires)');
-        label.style.minWidth = '200px';
+        label.style.fontWeight = 'bold';
         
+        const row2 = document.createElement('div');
+        row2.style.display = 'flex';
+        row2.style.alignItems = 'center';
+        row2.style.gap = '0.5rem';
+
         const input = document.createElement('input');
         input.type = 'text';
         input.value = k.key;
         input.readOnly = true;
         input.style.flexGrow = '1';
         input.style.fontFamily = 'monospace';
+        input.style.padding = '8px';
+        input.style.fontSize = '14px';
+        input.style.minHeight = '36px';
         
         const copyBtn = document.createElement('button');
         copyBtn.innerText = 'Copy';
@@ -515,9 +527,10 @@
         }
         
         item.appendChild(label);
-        item.appendChild(input);
-        item.appendChild(copyBtn);
-        item.appendChild(delBtn);
+        item.appendChild(row2);
+        row2.appendChild(input);
+        row2.appendChild(copyBtn);
+        row2.appendChild(delBtn);
         listEl.appendChild(item);
       });
     }
@@ -597,6 +610,10 @@
             const el = document.getElementById(f);
             if (el && data[f] !== undefined && data[f] !== null) {
               el.value = data[f];
+              if (f === 'hybridAlpha') {
+                  const valEl = document.getElementById('hybridAlphaValue');
+                  if (valEl) valEl.innerText = data[f];
+              }
             }
           });
 

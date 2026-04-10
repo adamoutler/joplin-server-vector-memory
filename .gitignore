@@ -17,3 +17,5 @@ test_qa.sh
 .venv/
 tmp-open-webui/
 .gemini/*.swp
+new_venv/
+root_venv/
