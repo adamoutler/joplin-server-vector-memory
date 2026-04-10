@@ -30,7 +30,7 @@ def mock_ollama():
 def test_extreme_friction_invalid_token(temp_db, mock_ollama):
     result = extract_result(remember("Test Note", "Content"))
     note_id = result["id"]
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
 
     req_result = extract_result(request_note_deletion(note_id, "Test"))
     assert "deletion_token" in req_result
@@ -47,7 +47,7 @@ def test_extreme_friction_invalid_token(temp_db, mock_ollama):
 def test_extreme_friction_incorrect_title(temp_db, mock_ollama):
     result = extract_result(remember("Test Note", "Content"))
     note_id = result["id"]
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
 
     req_result = extract_result(request_note_deletion(note_id, "Test"))
     token = req_result["deletion_token"]
@@ -64,7 +64,7 @@ def test_extreme_friction_incorrect_title(temp_db, mock_ollama):
 def test_extreme_friction_incorrect_hash(temp_db, mock_ollama):
     result = extract_result(remember("Test Note", "Content"))
     note_id = result["id"]
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
 
     req_result = extract_result(request_note_deletion(note_id, "Test"))
     token = req_result["deletion_token"]
@@ -81,7 +81,7 @@ def test_extreme_friction_incorrect_hash(temp_db, mock_ollama):
 def test_extreme_friction_incorrect_statement(temp_db, mock_ollama):
     result = extract_result(remember("Test Note", "Content"))
     note_id = result["id"]
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
 
     req_result = extract_result(request_note_deletion(note_id, "Test"))
     token = req_result["deletion_token"]
@@ -98,7 +98,7 @@ def test_extreme_friction_incorrect_statement(temp_db, mock_ollama):
 def test_extreme_friction_successful_loop(temp_db, mock_ollama):
     result = extract_result(remember("Test Note", "Content"))
     note_id = result["id"]
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
 
     req_result = extract_result(request_note_deletion(note_id, "Test"))
     token = req_result["deletion_token"]
@@ -113,14 +113,14 @@ def test_extreme_friction_successful_loop(temp_db, mock_ollama):
 
     assert token not in _deletion_tokens
 
-    deleted_note = get_note(note_id)
+    deleted_note = extract_result(get_note(note_id))
     assert deleted_note.get("error") == "Note not found"
 
 
 def test_extreme_friction_expired_token(temp_db, mock_ollama):
     result = extract_result(remember("Test Note", "Content"))
     note_id = result["id"]
-    note = get_note(note_id)
+    note = extract_result(get_note(note_id))
 
     req_result = extract_result(request_note_deletion(note_id, "Test"))
     token = req_result["deletion_token"]
