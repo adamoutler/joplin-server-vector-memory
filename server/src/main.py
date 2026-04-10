@@ -622,9 +622,9 @@ def update_note(note_id: str, content: str, update_mode: UpdateMode, last_modifi
         return _err("Error: Note has been modified since you last read it. Retrieve the note again before updating.")
 
     if update_mode == UpdateMode.append:
-        new_content = current_content + "\\n\\n" + content
+        new_content = current_content + "\n\n" + content
     elif update_mode == UpdateMode.prepend:
-        new_content = content + "\\n\\n" + current_content
+        new_content = content + "\n\n" + current_content
     elif update_mode == UpdateMode.full_note_replacement:
         new_content = content
     else:
@@ -1080,7 +1080,10 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
         folder=request.folder,
         recursive=request.recursive
     )
-    return extract_result(results)
+    extracted = extract_result(results)
+    if isinstance(extracted, dict) and "error" in extracted:
+        raise HTTPException(status_code=500, detail=extracted["error"])
+    return extracted
 
 
 @app.post(
@@ -1171,7 +1174,12 @@ async def api_update(request: UpdateRequest, token: str = Depends(verify_token))
             last_modified_timestamp=request.last_modified_timestamp,
             summary_of_changes=request.summary_of_changes
         )
-        return result
+        extracted = extract_result(result)
+        if isinstance(extracted, dict) and "error" in extracted:
+            raise HTTPException(status_code=500, detail=extracted["error"])
+        return extracted
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in api_update: {e}")
         raise HTTPException(status_code=500, detail="An internal error occurred during update.")
