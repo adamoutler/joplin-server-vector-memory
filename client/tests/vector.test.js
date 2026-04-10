@@ -56,4 +56,44 @@ describe('sqlite-vec functionality', () => {
       });
     });
   });
+
+  it('should unlink vector.sqlite and exit on Vector DB corruption (JOPLINMEM-154)', async () => {
+    const fs = require('fs');
+    const { JoplinSyncClient } = require('../src/sync');
+    const client = new JoplinSyncClient({
+      serverUrl: 'http://test', username: 'test', password: 'test', masterPassword: 'test', profileDir: '/tmp'
+    });
+    
+    // Mock the db connection
+    client.db = {
+      selectAll: jest.fn().mockResolvedValue([])
+    };
+    
+    // Mock vectorDb
+    client.vectorDb = {
+      close: jest.fn(),
+      all: jest.fn((query, cb) => cb(new Error("disk I/O error"))),
+      run: jest.fn((query, cb) => cb && cb(null)),
+      prepare: jest.fn().mockReturnValue({ run: jest.fn(), finalize: jest.fn() }),
+      serialize: jest.fn((cb) => cb())
+    };
+    client.getConfig = jest.fn().mockResolvedValue({ chunkSize: 1000 });
+    
+    // Mock fs
+    const unlinkSpy = jest.spyOn(fs, 'unlinkSync').mockImplementation();
+    const existsSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
+    
+    // Mock process.exit
+    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
+    
+    // Execute method that queries vectorDb.all
+    await expect(client.generateEmbeddings()).rejects.toThrow('Self-healing triggered');
+    
+    expect(unlinkSpy).toHaveBeenCalled();
+    expect(client.vectorDb.close).toHaveBeenCalled();
+    
+    unlinkSpy.mockRestore();
+    existsSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
 });
