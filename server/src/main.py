@@ -123,8 +123,8 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
         SAFE_BATCH_SIZE = 8
         all_embeddings = []
 
-        def fetch_single_with_retry(t: str) -> list[float]:
-            current_text = t
+        def fetch_single_with_retry(text_chunk: str) -> list[float]:
+            current_text = text_chunk
             max_retries = 3
             for attempt in range(max_retries):
                 try:
@@ -178,6 +178,18 @@ _node_proxy_write_lock = threading.Lock()
 
 
 def _call_node_proxy(method: str, path: str, json_data: dict = None) -> requests.Response:
+    """
+    Sends an HTTP request to the local Node.js proxy server.
+    Handles thread-safe locking for mutating requests.
+
+    Args:
+        method (str): The HTTP method (GET, POST, PUT, DELETE).
+        path (str): The API route path on the Node proxy.
+        json_data (dict, optional): The JSON payload to send with the request.
+
+    Returns:
+        requests.Response: The response object from the Node proxy.
+    """
     config = get_config()
     username = config.get("joplin_username", "")
     password = config.get("joplin_password", "")

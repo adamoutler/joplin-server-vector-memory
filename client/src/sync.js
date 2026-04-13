@@ -203,7 +203,13 @@ class JoplinSyncClient extends EventEmitter {
     return this.db;
   }
 
-    async sync() {
+    /**
+   * Executes the synchronization process with the Joplin Server.
+   * Pulls remote changes into the local database and handles database migrations.
+   *
+   * @throws {Error} Throws if the synchronizer is not initialized or a fatal sync error occurs.
+   */
+  async sync() {
     if (!this.synchronizer) {
       throw new Error('Synchronizer not initialized');
     }
@@ -698,7 +704,8 @@ class JoplinSyncClient extends EventEmitter {
 
       // Await the very last DB write before emitting complete
       await dbWriteQueue;
-      this.emit('embeddingComplete');    } catch (err) {
+      this.emit('embeddingComplete');
+    } catch (err) {
       console.error('Error in generateEmbeddings:', err);
       this.emit('embeddingError', err);
       throw err;

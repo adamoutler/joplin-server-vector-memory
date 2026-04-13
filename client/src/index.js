@@ -1068,6 +1068,12 @@ async function runSyncCycle(config) {
   }
 }
 
+/**
+ * Starts the continuous synchronization background loop.
+ * Clears any existing intervals and triggers an immediate sync cycle before polling.
+ *
+ * @param {Object} config - The application configuration object.
+ */
 async function startSync(config) {
   // Clear any existing interval
   if (syncIntervalId) {
