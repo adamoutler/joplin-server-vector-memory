@@ -7,7 +7,7 @@ import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'tests')))
 
 
-def wait_for_server(port, timeout=30):
+def wait_for_server(port, timeout=60):
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -107,5 +107,5 @@ def test_revision_service_bug(ephemeral_joplin):
                     break
         time.sleep(1)
 
-    assert error_found, "Did not observe the 'revisionService_ is not set' bug!"
-    print("BUG SUCCESSFULLY REPRODUCED!")
+    assert not error_found, "Observed the 'revisionService_ is not set' bug! It should be fixed."
+    print("BUG FIX SUCCESSFULLY VERIFIED - sync completed without errors after restart")

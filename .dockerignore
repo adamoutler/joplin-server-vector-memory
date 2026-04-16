@@ -4,3 +4,9 @@ client/node_modules/
 __pycache__/
 .pytest_cache/
 .git/
+.venv/
+new_venv/
+root_venv/
+venv/
+node_modules/
+.ipynb_checkpoints/

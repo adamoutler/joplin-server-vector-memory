@@ -5,17 +5,47 @@ import sys
 import os
 from urllib.parse import urljoin
 
+import time
+
 # Import the ephemeral_joplin fixture
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 
+def get_auth_headers():
+    auth_payload = {
+        "serverUrl": "http://joplin:22300",
+        "username": "admin@localhost",
+        "password": "admin",
+        "masterPassword": "test_master_password",
+        "rotate": True
+    }
+
+    for i in range(30):
+        try:
+            auth_resp = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=5)
+            if auth_resp.status_code == 200:
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
+    time.sleep(2)
+
+    key_resp = requests.post("http://localhost:3001/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", "admin"), timeout=30)
+    assert key_resp.status_code == 200, f"Failed to create key: {key_resp.text}"
+    token = key_resp.json().get("key", {}).get("key")
+    return {"Authorization": f"Bearer {token}"}
+
+
 @pytest.mark.enable_socket
 def test_sse_endpoint(ephemeral_joplin):
+    headers = get_auth_headers()
+    headers["Accept"] = "text/event-stream"
     base_url = "http://localhost:8002"
     sse_url = f"{base_url}/http-api/mcp/sse"
 
     # Start the SSE connection
-    resp = requests.get(sse_url, headers={"Accept": "text/event-stream"}, stream=True, timeout=30)
+    resp = requests.get(sse_url, headers=headers, stream=True, timeout=30)
     assert resp.status_code == 200, f"Failed to connect to SSE: {resp.status_code}"
 
     endpoint_url = None
@@ -52,7 +82,7 @@ def test_sse_endpoint(ephemeral_joplin):
         "id": 1
     }
 
-    post_resp = requests.post(post_url, json=init_msg, timeout=30)
+    post_resp = requests.post(post_url, json=init_msg, headers=headers, timeout=30)
     assert post_resp.status_code in [200, 202], f"Failed to POST to endpoint: {post_resp.status_code}"
 
     # Since it's SSE, the response to the initialization might come back on the SSE stream
@@ -74,7 +104,8 @@ def test_stream_endpoint(ephemeral_joplin):
     }
 
     # The middleware now sets the correct Accept header for us, but it's good practice to send it
-    headers = {"Accept": "application/json, text/event-stream"}
+    headers = get_auth_headers()
+    headers["Accept"] = "application/json, text/event-stream"
     resp = requests.post(url, json=init_msg, headers=headers, stream=True, timeout=30)
     assert resp.status_code == 200, f"Stream endpoint returned {resp.status_code}"
 
@@ -113,7 +144,8 @@ def test_stateless_endpoint(ephemeral_joplin):
         },
         "id": 1
     }
-    resp = requests.post(url, json=init_msg, timeout=30)
+    headers = get_auth_headers()
+    resp = requests.post(url, json=init_msg, headers=headers, timeout=30)
     assert resp.status_code == 200, f"Stateless endpoint returned {resp.status_code}"
 
     data = resp.json()

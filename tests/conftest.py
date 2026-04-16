@@ -86,5 +86,13 @@ def reset_docker_state():
     except Exception:
         pass
 
-    # Give the Node.js app a moment to process the wipe
-    time.sleep(1)
+    # We must wait for the container to fully reboot and become responsive
+    max_retries = 30
+    for _ in range(max_retries):
+        try:
+            r = requests.get("http://localhost:3001/status", timeout=2)
+            if r.status_code in [200, 401]:
+                break
+        except Exception:
+            pass
+        time.sleep(1)
