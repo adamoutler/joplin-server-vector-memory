@@ -31,6 +31,7 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 ENV BACKEND_URL="http://127.0.0.1:8000"
 ENV DATA_DIR="/app/data"
+ENV SQLITE_DB_PATH="/app/data/vector_memory.sqlite"
 
 EXPOSE 3000
 EXPOSE 8000
