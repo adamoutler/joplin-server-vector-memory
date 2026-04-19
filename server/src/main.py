@@ -396,7 +396,7 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
                 "id": note_id,
                 "title": title,
                 "blurb": blurb,
-                "distance": rrf_scores[rowid],  # We return RRF score here as 'distance'
+                "score": rrf_scores[rowid],  # Higher RRF score is better
                 "folder_id": data.get("parent_id"),
                 "folder_path": data.get("folder_path")
             }
@@ -899,7 +899,7 @@ class SearchResponseItem(BaseModel):
     id: str = Field(..., description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
     blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
-    distance: float = Field(..., description="Cosine Distance", examples=[0.123])
+    score: float = Field(..., description="RRF Score (higher is better)", examples=[0.123])
     folder_id: Optional[str] = Field(None, description="The ID of the folder the note is in.", examples=["folder_123"])
     folder_path: Optional[str] = Field(None, description="The human readable path of the folder.", examples=["Work/Recipes"])
     full_body: Optional[str] = Field(None, description="Full content of the note (only included for the top result)", examples=[
