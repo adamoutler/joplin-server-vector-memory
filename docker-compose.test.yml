@@ -114,3 +114,4 @@ volumes:
   ollama_data: null
   joplin_data: null
   test_data: null
+  redis_data: null

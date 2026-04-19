@@ -1092,11 +1092,33 @@ async function startSync(config) {
 // The onAuthSuccess() handler will auto-start sync once the user authenticates
 // via Basic Auth. Only the username/server URL marriage is preserved across restarts.
 if (fs.existsSync(CONFIG_PATH)) {
-  fs.promises.readFile(CONFIG_PATH, 'utf8').then(data => {
+  fs.promises.readFile(CONFIG_PATH, 'utf8').then(async data => {
     try {
       const config = JSON.parse(data);
       if (config.joplinServerUrl && config.joplinUsername) {
-        console.log(`Startup: Container is married to ${config.joplinUsername}. Waiting for user to authenticate to start sync.`);
+        let restoredFromRedis = false;
+        if (redisClient) {
+          try {
+             const cached = await redisClient.get(`joplin_creds_${config.joplinUsername}`);
+             if (cached) {
+               const parsed = JSON.parse(cached);
+               globalCredentials.password = parsed.joplinPassword;
+               globalCredentials.masterPassword = parsed.joplinMasterPassword;
+               config.joplinPassword = parsed.joplinPassword;
+               config.joplinMasterPassword = parsed.joplinMasterPassword;
+               restoredFromRedis = true;
+               console.log('Successfully restored credentials from Redis cache.');
+             }
+          } catch(e) {
+             console.error('Failed retrieving credentials from Redis:', e);
+          }
+        }
+        
+        if (restoredFromRedis) {
+           startSync(config);
+        } else {
+           console.log(`Startup: Container is married to ${config.joplinUsername}. Waiting for user to authenticate to start sync.`);
+        }
       }
     } catch(e) {
       console.error('Failed to read config on boot:', e);
