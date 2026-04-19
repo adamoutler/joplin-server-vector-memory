@@ -17,7 +17,20 @@ services:
       # - OLLAMA_URL=${OLLAMA_URL}
       # - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
+      - REDIS_URL=${REDIS_URL:-}
     restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   joplin-data:

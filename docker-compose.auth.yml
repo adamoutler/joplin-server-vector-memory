@@ -83,3 +83,13 @@ volumes:
   ollama_data:
   joplin_data:
   test_data:
+  redis_data:_data:
+  test_data:300'}}, (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  ollama_data:
+  joplin_data:
+  test_data:

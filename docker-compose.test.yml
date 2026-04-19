@@ -29,6 +29,21 @@ services:
       start_period: 30s
     extra_hosts:
     - host.docker.internal:host-gateway
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    extra_hosts:
+    - host.docker.internal:host-gateway
+
   ollama:
     image: ollama/ollama:latest
     volumes:
