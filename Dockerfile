@@ -1,4 +1,7 @@
-FROM node:20-bookworm
+# ==========================================
+# Stage 1: Builder (Heavy dependencies)
+# ==========================================
+FROM node:20-bookworm AS builder
 
 # Install Python and SQLite build dependencies
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
@@ -23,6 +26,26 @@ RUN pip install --upgrade setuptools wheel && \
 # Install Node dependencies
 COPY client/package*.json ./client/
 RUN cd client && npm ci --build-from-source=sqlite3 && find . -type f -name "Cargo.lock" -delete
+
+# ==========================================
+# Stage 2: Final Runtime (Lightweight)
+# ==========================================
+FROM node:20-bookworm-slim
+
+# Install runtime dependencies for python and sqlite3
+RUN apt-get update && apt-get install -y \
+    python3 \
+    sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the compiled python virtual environment
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy the node modules
+COPY --from=builder /app/client/node_modules ./client/node_modules
 
 # Copy full application code
 COPY . .
