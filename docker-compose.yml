@@ -17,11 +17,12 @@ services:
       # - OLLAMA_URL=${OLLAMA_URL}
       # - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
-      - REDIS_URL=${REDIS_URL:-}
+      - REDIS_URL=${REDIS_URL:-redis://:joplin_redis@redis:6379}
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    command: redis-server --save "" --appendonly no --requirepass "joplin_redis"
     profiles: ["redis"]
     restart: unless-stopped
     volumes:

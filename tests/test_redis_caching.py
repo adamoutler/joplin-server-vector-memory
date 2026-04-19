@@ -9,7 +9,7 @@ import os
 def test_redis_credential_caching_on_restart(ephemeral_joplin):
     # Enable the redis profile and REDIS_URL for this specific test
     env = os.environ.copy()
-    env["REDIS_URL"] = "redis://redis:6379"
+    env["REDIS_URL"] = "redis://:joplin_redis@redis:6379"
 
     # Start the test environment with redis profile
     subprocess.run(["docker", "compose", "-f", "docker-compose.test.yml", "--profile", "redis", "-p", "joplin-test-env", "up", "-d"], env=env, check=True)
@@ -41,19 +41,15 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     subprocess.run(["docker", "compose", "-f", "docker-compose.test.yml", "-p", "joplin-test-env", "start", "app"], check=True)
 
     # Wait for the node app to come back online
-    for i in range(15):
+    for i in range(25):
         try:
-            r = requests.get(f"{proxy_url}/status", auth=("admin@localhost", "admin"), timeout=2)
-            if r.status_code == 200:
+            r = requests.get(f"{proxy_url}/status", timeout=2)
+            if r.status_code == 200 and r.json().get("hasCredentials") is True:
                 break
         except Exception:
             pass
         time.sleep(1)
 
-    # The user should STILL be authenticated automatically because credentials were saved in Redis
-    # Actually, we can check if it has credentials without basic auth on /status? Wait, /status doesn't require auth in some cases?
-    # /status requires auth if we didn't mock it, wait, we do auth=("admin@localhost", "admin") so if it's correct, it works.
-    # The real test is if /status returns hasCredentials: True
     r = requests.get(f"{proxy_url}/status", auth=("admin@localhost", "admin"))
     assert r.status_code == 200, "Failed auto-auth after restart with Redis"
     data = r.json()

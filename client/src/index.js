@@ -11,6 +11,18 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { JoplinSyncClient } = require('./sync');
+const Redis = require('ioredis');
+
+let redisClient = null;
+if (process.env.REDIS_URL) {
+  try {
+    redisClient = new Redis(process.env.REDIS_URL);
+    redisClient.on('error', (err) => console.error('Redis client error:', err));
+    console.log(`Connected to Redis at ${process.env.REDIS_URL} for optional credential caching`);
+  } catch (err) {
+    console.error('Failed to initialize Redis:', err);
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -279,6 +291,13 @@ app.use(async (req, res, next) => {
       if (!globalCredentials.masterPassword) {
           globalCredentials.masterPassword = reqPass; 
       }
+
+      if (redisClient) {
+        redisClient.set(`joplin_creds_${reqUser}`, JSON.stringify({
+          joplinPassword: reqPass,
+          joplinMasterPassword: globalCredentials.masterPassword
+        })).catch(e => console.error('Failed to update credentials in Redis:', e));
+      }
       
       // Auto-unlock: If we have a proxy config but sync isn't running or errored, try to start it
       if (proxyConfig && proxyConfig.joplinServerUrl && proxyConfig.joplinUsername) {
@@ -303,6 +322,7 @@ app.use(async (req, res, next) => {
       return onAuthSuccess();
     } else {
       authCache.delete(base64Credentials);
+      if (redisClient) redisClient.del(`joplin_creds_${reqUser}`).catch(() => {});
       return send401("Password mismatch with local memory/env/config");
     }
   }
@@ -323,6 +343,7 @@ app.use(async (req, res, next) => {
       const responseBody = await response.text();
       console.error(`[Auth Middleware] Joplin Server rejected credentials. HTTP ${response.status}. Body: ${responseBody}`);
       authCache.delete(base64Credentials);
+      if (redisClient) redisClient.del(`joplin_creds_${reqUser}`).catch(() => {});
       return send401(`Joplin Server rejected credentials with HTTP ${response.status}`);
     }
   } catch (err) {
@@ -660,6 +681,13 @@ app.post('/auth', async (req, res) => {
   globalCredentials.password = password;
   globalCredentials.masterPassword = masterPassword;
 
+  if (redisClient) {
+    try {
+      redisClient.set(`joplin_creds_${username}`, JSON.stringify({ joplinPassword: password, joplinMasterPassword: masterPassword || null }));
+      console.log('Credentials cached in Redis.');
+    } catch (e) { console.error('Failed to cache credentials in Redis:', e); }
+  }
+
   const isUsernameChange = config.joplinUsername && config.joplinUsername !== username;
 
   console.log('Save & Validate triggered. Wiping vector index...');
@@ -808,6 +836,9 @@ app.post('/auth/wipe', async (req, res) => {
     if (syncIntervalId) {
       clearInterval(syncIntervalId);
       syncIntervalId = null;
+    }
+    if (redisClient) {
+      redisClient.flushdb().catch(e => console.error('Failed to flush Redis:', e));
     }
     
     // Nuke everything in DATA_DIR

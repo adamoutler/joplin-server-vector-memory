@@ -13,6 +13,7 @@ services:
     - EMBEDDING_MODEL=nomic-embed-text
     - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     - TEST_MODE_ALLOW_ALL_IPS=true
+    - REDIS_URL=${REDIS_URL:-redis://:joplin_redis@redis:6379}
     depends_on:
       ollama:
         condition: service_healthy
@@ -32,6 +33,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --save "" --appendonly no --requirepass "joplin_redis"
     profiles: ["redis"]
     restart: unless-stopped
     volumes:
