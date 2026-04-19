@@ -35,6 +35,9 @@
     "xml2js": "^0.6.2"
   },
   "overrides": {
+    "follow-redirects": "^1.15.12",
+    "file-type": "^12.4.2",
+    "request": "npm:@cypress/request@^3.0.0",
     "lodash": "^4.18.0",
     "sqlite3": "^6.0.1",
     "cross-spawn": "^7.0.6",

@@ -242,7 +242,7 @@ app.use(async (req, res, next) => {
     return send401("Missing Authorization header");
   }
 
-  const match = authHeader.match(/^Basic\s+(.*)$/i);
+  const match = authHeader.match(/^Basic\s+([a-zA-Z0-9+/=]+)$/i);
   if (!match) {
     return send401("Invalid Authorization header format");
   }
