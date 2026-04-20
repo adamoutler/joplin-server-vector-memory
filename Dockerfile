@@ -2,9 +2,12 @@
 # Stage 1: Base Python (Heavy Dependencies)
 # These change rarely and are huge.
 # ==========================================
-FROM python:3.11-slim-bookworm AS python-base
+FROM node:20-bookworm-slim AS python-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
