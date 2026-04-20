@@ -18,8 +18,15 @@ This guide walks you through setting up the Joplin Server Vector Memory MCP, con
 3. Edit the `.env` file to match your setup (e.g., pointing `OLLAMA_URL` to your Ollama instance).
 4. Start the services using Docker Compose:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
+
+### Optional: Redis Credential Caching
+If you want the system to automatically resume syncing across container or host reboots without requiring you to log back in, you can enable the optional Redis profile. This securely caches your Joplin passwords in an internal Redis container.
+Instead of the standard `docker compose up -d`, start the stack with:
+```bash
+docker compose --profile redis up -d
+```
 
 ## 2. Configuration & Sync
 

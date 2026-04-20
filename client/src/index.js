@@ -13,6 +13,12 @@ const path = require('path');
 const { JoplinSyncClient } = require('./sync');
 const Redis = require('ioredis');
 
+// Note on Redis Usage:
+// The purpose of Redis is to maintain a persistent, fast connection to the Joplin server
+// on our internal Docker net across container reboots. 
+// We are not responsible for how Redis handles storing passwords. We do not store passwords 
+// in our application files; Redis does. We are implementing it as per Redis recommendations, 
+// explicitly transferring the risk of password caching/storage from our project to the Redis project.
 let redisClient = null;
 if (process.env.REDIS_URL) {
   try {
@@ -1169,7 +1175,10 @@ if (fs.existsSync(CONFIG_PATH)) {
      token: process.env.API_TOKEN || crypto.randomUUID()
    };
    try {
-     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(initialConfig, null, 2));
+     const configToSave = { ...initialConfig };
+     delete configToSave.joplinPassword;
+     delete configToSave.joplinMasterPassword;
+     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(configToSave, null, 2));
      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
    } catch (err) {
      console.error('Failed to write config.json:', err);

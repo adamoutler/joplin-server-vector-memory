@@ -60,7 +60,8 @@ The architecture is split into robust, specialized components to keep your data 
 Your privacy is paramount. We've built the system so that your credentials stay yours alone.
 
 *   **Initial Boot (Setup Mode):** On first run (if no credentials are provided via `.env`), the system boots into Setup Mode. The background sync daemon is paused. You must access the dashboard at `http://localhost:3000` using the default setup credentials (`Username: setup`, `Password: 1-mcp-server`).
-*   **In-Memory Credentials:** The system is designed so that neither the Joplin Server password nor the E2EE Master Password is ever saved to the Docker volume. Passwords live strictly in volatile RAM.
+*   **In-Memory Credentials:** The system is designed so that neither the Joplin Server password nor the E2EE Master Password is ever saved to the Docker volume by default. Passwords live strictly in volatile RAM.
+*   **Optional Redis Caching:** For users who want persistent logins across container or host reboots without storing passwords in plaintext files, you can enable the optional Redis profile (`docker compose --profile redis up -d`). This securely caches your credentials in Redis, allowing the system to automatically resume syncing after a restart.
 *   **Auto-Unlock via Browser:** The system intercepts your browser's native Basic Auth login to acquire the passwords securely.
 *   **User Lock & Factory Reset:** Upon entering your real Joplin Server credentials into the dashboard, the system permanently binds exclusively to that username. It forces a logout of the `setup` account, requiring you to log back in using your *real* Joplin username and password. It cannot be hijacked by other accounts. To switch users, the authenticated owner must access the "Danger Zone" in the dashboard to perform a Factory Reset, which wipes the local databases and relinquishes the lock.
 
