@@ -42,8 +42,21 @@ def get_local_model():
             logger.error("sentence-transformers library not found. Please install it with 'pip install sentence-transformers torch'.")
             raise RuntimeError("Local embeddings unavailable: missing sentence-transformers/torch")
 
-        logger.info("Loading local sentence-transformers model (all-MiniLM-L6-v2)...")
-        _local_model = SentenceTransformer('all-MiniLM-L6-v2')
+        config = get_config()
+        model_name = config.get("embedding", {}).get("model", "all-MiniLM-L6-v2")
+
+        # Map common Ollama names to HuggingFace names for local use
+        if model_name == "nomic-embed-text":
+            model_name = "nomic-ai/nomic-embed-text-v1.5"
+
+        logger.info(f"Loading local sentence-transformers model ({model_name})...")
+        try:
+            # trust_remote_code=True is required for some models like nomic-embed-text-v1.5
+            _local_model = SentenceTransformer(model_name, trust_remote_code=True)
+        except Exception as e:
+            logger.warning(f"Failed to load preferred model {model_name}: {e}. Falling back to all-MiniLM-L6-v2")
+            _local_model = SentenceTransformer('all-MiniLM-L6-v2')
+
     return _local_model
 
 
