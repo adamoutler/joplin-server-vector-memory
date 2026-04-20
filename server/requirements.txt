@@ -8,6 +8,7 @@ fastapi
 httpx
 requests
 sentence-transformers
+einops
 dateparser
 torch
 pytest-playwright

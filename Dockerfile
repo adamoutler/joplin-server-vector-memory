@@ -13,7 +13,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install massive ML libraries separately for caching
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir torch sentence-transformers
+    pip install --no-cache-dir torch sentence-transformers einops
 
 # Pre-download the models into the image to avoid runtime downloads
 # This caches both the small fallback and the high-quality Nomic model
