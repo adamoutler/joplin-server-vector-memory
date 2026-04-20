@@ -35,6 +35,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     assert docs_3000.status_code == 200, f"Proxy /docs should return 200, got {docs_3000.status_code}"
 
     # Check /http-api/search without token returns 401
+    time.sleep(1)
     search_3000 = requests.post(f"{PROXY_URL}/http-api/search", json={"query": "test"}, timeout=30)
     assert search_3000.status_code == 401, "Proxy /http-api/search should return 401 without auth"
 

@@ -106,7 +106,7 @@ services:
     - POSTGRES_PORT=5432
     - POSTGRES_HOST=db
     - RATE_LIMIT_ENABLED=false
-    - MAX_LOGIN_ATTEMPTS=0
+    - MAX_LOGIN_ATTEMPTS=99999
     - MAILER_ENABLED=0
     healthcheck:
       test:
