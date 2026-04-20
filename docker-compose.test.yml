@@ -53,8 +53,12 @@ services:
     entrypoint:
     - /bin/sh
     - -c
-    - ollama serve & (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do
-      sleep 2; done' && ollama pull nomic-embed-text) & wait
+    - |
+      ollama serve &
+      # Only pull model if it is not already present to save time and memory
+      (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 2; done' && \
+       ollama list | grep -q "nomic-embed-text" || ollama pull nomic-embed-text) &
+      wait
     restart: unless-stopped
     healthcheck:
       test:
@@ -101,7 +105,7 @@ services:
     - POSTGRES_USER=joplin
     - POSTGRES_PORT=5432
     - POSTGRES_HOST=db
-    - MAX_LOGIN_ATTEMPTS=9999
+    - RATE_LIMIT_ENABLED=false
     - MAILER_ENABLED=0
     healthcheck:
       test:
