@@ -29,7 +29,7 @@ app.use(cors());
 
 const limiter = rateLimit({
   windowMs: 1000, // 1 second window
-  max: 10, // limit each IP to 10 requests per windowMs (equivalent to 1 per 100ms)
+  max: process.env.TEST_MODE_ALLOW_ALL_IPS === 'true' ? 1000 : 10, // 100x higher limit in test mode
   standardHeaders: true,
   legacyHeaders: false,
 });

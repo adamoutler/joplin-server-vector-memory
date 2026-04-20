@@ -74,6 +74,16 @@ def reset_docker_state():
     """
     Function-scoped fixture to wipe the app state and Joplin database before each test.
     """
+    # 0. Wait for Postgres to be ready
+    for _ in range(15):
+        try:
+            res = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "pg_isready", "-U", "joplin"], capture_output=True)
+            if res.returncode == 0:
+                break
+        except Exception:
+            pass
+        time.sleep(2)
+
     # 1. Truncate Postgres tables to clear Joplin Server data
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
 
