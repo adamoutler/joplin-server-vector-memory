@@ -101,6 +101,8 @@ services:
     - POSTGRES_USER=joplin
     - POSTGRES_PORT=5432
     - POSTGRES_HOST=db
+    - MAX_LOGIN_ATTEMPTS=9999
+    - MAILER_ENABLED=0
     healthcheck:
       test:
       - CMD-SHELL
