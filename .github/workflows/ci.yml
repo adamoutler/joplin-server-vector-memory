@@ -94,15 +94,49 @@ jobs:
           name: node-test-results-20
           path: client/test-results/jest-junit.xml
 
-  test-python:
-    name: Python Tests (3.11)
+  test-python-unit:
+    name: Python Unit Tests (3.11)
     needs: lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js (for integration scripts)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: './server/requirements.txt'
+
+      - name: Install Python dependencies
+        working-directory: ./server
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install pytest pytest-cov pytest-xdist
+
+      - name: Run Pytest (Unit Tests)
+        working-directory: ./
+        run: |
+          python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-unit-test-results
+          path: server/test-results/*.xml
+
+  test-python-e2e:
+    name: Python E2E Tests (3.11)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -131,33 +165,33 @@ jobs:
           pip install pytest pytest-cov
           python -m playwright install chromium
 
-      - name: Run Pytest (Unit Tests)
+      - name: Run Pytest (E2E Tests)
         working-directory: ./
         run: |
-          python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-python.xml
+          python -m pytest --timeout=900 server/tests/test_e2e_mcp.py tests/ --junitxml=server/test-results/pytest-e2e.xml
 
       - name: Extract Docker Logs on Failure
         if: failure()
         run: |
-          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-python-logs.txt || true
+          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-e2e-logs.txt || true
 
       - name: Upload Docker Logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-logs-python
+          name: docker-logs-e2e
           path: ./*-logs.txt
 
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-test-results
+          name: python-e2e-test-results
           path: server/test-results/*.xml
 
   publish-test-results:
     name: Publish Test Results
-    needs: [test-node, test-python]
+    needs: [test-node, test-python-unit, test-python-e2e]
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -177,7 +211,7 @@ jobs:
 
   build-container:
     name: Build and Push Dev Container
-    needs: [test-node, test-python]
+    needs: [test-node, test-python-unit, test-python-e2e]
     runs-on: ubuntu-latest
     permissions:
       contents: write
