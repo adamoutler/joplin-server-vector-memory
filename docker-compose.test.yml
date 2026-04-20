@@ -24,10 +24,10 @@ services:
       test:
       - CMD-SHELL
       - curl -s -o /dev/null http://127.0.0.1:3000 && curl -s -o /dev/null http://127.0.0.1:8000 || exit 1
-      interval: 5s
-      timeout: 5s
+      interval: 10s
+      timeout: 10s
       retries: 20
-      start_period: 30s
+      start_period: 60s
     extra_hosts:
     - host.docker.internal:host-gateway
 
@@ -56,7 +56,7 @@ services:
     - |
       ollama serve &
       # Only pull model if it is not already present to save time and memory
-      (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 2; done' && \
+      (timeout 120s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 5; done' && \
        ollama list | grep -q "nomic-embed-text" || ollama pull nomic-embed-text) &
       wait
     restart: unless-stopped
@@ -65,9 +65,10 @@ services:
       - CMD
       - ollama
       - list
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
     extra_hosts:
     - host.docker.internal:host-gateway
   db:
@@ -86,6 +87,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 30s
     extra_hosts:
     - host.docker.internal:host-gateway
   joplin:
@@ -114,9 +116,10 @@ services:
       - 'node -e "require(''http'').get({host: ''localhost'', port: 22300, path: ''/api/ping'',
         headers: {host: ''joplin:22300''}}, (r) => process.exit(r.statusCode === 200
         ? 0 : 1)).on(''error'', () => process.exit(1))"'
-      interval: 5s
-      timeout: 3s
-      retries: 20
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
     extra_hosts:
     - host.docker.internal:host-gateway
 volumes:
