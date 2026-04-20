@@ -43,14 +43,13 @@ jobs:
 
       - name: Run ESLint
         working-directory: ./client
-        run: npm run lint
+        run: npx eslint .
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-          cache-dependency-path: './server/requirements.txt'
 
       - name: Install Python dependencies
         working-directory: ./server
@@ -63,50 +62,14 @@ jobs:
         run: flake8 .
 
   test-node:
-    name: Node.js Tests (${{ matrix.node-version }})
+    name: Node.js Tests (20)
     needs: lint
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: ['20']
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-          cache-dependency-path: './client/package-lock.json'
-
-      - name: Install Node Dependencies
-        working-directory: ./client
-        run: npm ci
-
-      - name: Run Jest Tests
-        working-directory: ./client
-        run: npm run test -- --ci --reporters=default --reporters=jest-junit
-        env:
-          JEST_JUNIT_OUTPUT_DIR: "./test-results"
-          JEST_JUNIT_OUTPUT_NAME: "jest-junit.xml"
-
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-test-results-${{ matrix.node-version }}
-          path: client/test-results/jest-junit.xml
-
-  test-python-unit:
-    name: Python Unit Tests (3.11)
-    needs: lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js (for proxy interaction)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -117,57 +80,29 @@ jobs:
         working-directory: ./client
         run: npm ci
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: './server/requirements.txt'
-
-      - name: Add joplin alias to localhost
-        run: sudo echo "127.0.0.1 joplin" | sudo tee -a /etc/hosts
-
-      - name: Install Python dependencies
-        working-directory: ./server
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest pytest-cov pytest-xdist
-          python -m playwright install chromium
-
-      - name: Run Pytest (Unit Tests)
-        working-directory: ./
-        run: |
-          python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
-
-      - name: Extract Docker Logs on Failure
-        if: failure()
-        run: |
-          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-unit-logs.txt || true
-
-      - name: Upload Docker Logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-logs-unit
-          path: ./*-logs.txt
+      - name: Run Jest Tests
+        working-directory: ./client
+        run: npm test -- --ci --reporters=default --reporters=jest-junit
+        env:
+          JEST_JUNIT_OUTPUT_DIR: ./test-results
+          JEST_JUNIT_OUTPUT_NAME: jest-junit.xml
 
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-unit-test-results
-          path: server/test-results/*.xml
+          name: node-test-results-20
+          path: client/test-results/jest-junit.xml
 
-  test-python-e2e:
-    name: Python E2E Tests (3.11)
+  test-python:
+    name: Python Tests (3.11)
     needs: lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js (for e2e_workflow node script)
+      - name: Setup Node.js (for integration scripts)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -196,33 +131,33 @@ jobs:
           pip install pytest pytest-cov
           python -m playwright install chromium
 
-      - name: Run Pytest (E2E Tests)
+      - name: Run Pytest (Sequential)
         working-directory: ./
         run: |
-          python -m pytest --timeout=600 server/tests/test_e2e_mcp.py tests/ --junitxml=server/test-results/pytest-e2e.xml
+          python -m pytest --timeout=600 server/tests/ tests/ --junitxml=server/test-results/pytest-python.xml
 
       - name: Extract Docker Logs on Failure
         if: failure()
         run: |
-          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-e2e-logs.txt || true
+          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-python-logs.txt || true
 
       - name: Upload Docker Logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-logs-e2e
+          name: docker-logs-python
           path: ./*-logs.txt
 
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: python-e2e-test-results
+          name: python-test-results
           path: server/test-results/*.xml
 
   publish-test-results:
     name: Publish Test Results
-    needs: [test-node, test-python-unit, test-python-e2e]
+    needs: [test-node, test-python]
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -242,7 +177,7 @@ jobs:
 
   build-container:
     name: Build and Push Dev Container
-    needs: [test-node, test-python-unit, test-python-e2e]
+    needs: [test-node, test-python]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -291,16 +226,7 @@ jobs:
           COUNT=$(git rev-list --count HEAD)
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "version=0.1.${COUNT}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           
-          # Generate basic release notes for the step summary
-          echo "## Dev Build Release Notes" >> $GITHUB_STEP_SUMMARY
-          echo "Version: \`0.1.${COUNT}-${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${SHORT_SHA}\`" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Recent Changes:" >> $GITHUB_STEP_SUMMARY
-          git log -n 5 --pretty=format:"* %s (%h)" >> $GITHUB_STEP_SUMMARY
-
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -309,11 +235,6 @@ jobs:
           tags: |
             type=raw,value=latest
             type=raw,value=v${{ steps.version.outputs.version }}
-          labels: |
-            org.opencontainers.image.title=Joplin Server Vector Memory (Dev)
-            org.opencontainers.image.description=Development build for v${{ steps.version.outputs.version }}
-            org.opencontainers.image.version=v${{ steps.version.outputs.version }}
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -328,7 +249,7 @@ jobs:
 
   codeql-analyze:
     name: CodeQL Analyze (${{ matrix.language }})
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     permissions:
       security-events: write
       packages: read
@@ -349,13 +270,12 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@v4
+      uses: github/codeql-action/init@v3
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
 
     - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4
+      uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
-

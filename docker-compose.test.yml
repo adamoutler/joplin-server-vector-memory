@@ -107,7 +107,8 @@ services:
     - POSTGRES_HOST=db
     - RATE_LIMIT_ENABLED=false
     - JOPLIN_RATE_LIMIT_ENABLED=false
-    - APP_MAX_LOGIN_ATTEMPTS=9999
+    - APP_MAX_LOGIN_ATTEMPTS=0
+    - MAX_LOGIN_ATTEMPTS=0
     - MAILER_ENABLED=0
     deploy:
       resources:
