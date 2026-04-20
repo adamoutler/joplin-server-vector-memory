@@ -3,7 +3,7 @@ import subprocess
 import yaml
 
 
-def test_docker_compose_ports_parameterized():
+def test_docker_compose_ports_parameterized(ephemeral_joplin):
     # Test that docker-compose.yml has parameterized ports
     with open("docker-compose.yml", "r") as f:
         compose_content = yaml.safe_load(f)
@@ -14,7 +14,7 @@ def test_docker_compose_ports_parameterized():
     assert any("${BACKEND_PORT" in port for port in app_ports), "BACKEND_PORT not parameterized in app service"
 
 
-def test_docker_compose_config_with_env():
+def test_docker_compose_config_with_env(ephemeral_joplin):
     # Test that running docker compose config with specific env vars correctly assigns ports
     env = os.environ.copy()
     env["FRONTEND_PORT"] = "3333"

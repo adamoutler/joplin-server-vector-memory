@@ -6,7 +6,7 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 
 
 @pytest.mark.enable_socket
-def test_sync_fails_with_bad_credentials():
+def test_sync_fails_with_bad_credentials(ephemeral_joplin):
     PROXY_URL = "http://localhost:3001"
 
     # Configure the app with a bad password

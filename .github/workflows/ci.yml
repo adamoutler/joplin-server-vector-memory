@@ -138,7 +138,7 @@ jobs:
       - name: Run Pytest (Unit Tests)
         working-directory: ./
         run: |
-          python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
+          python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
 
       - name: Extract Docker Logs on Failure
         if: failure()
@@ -199,12 +199,12 @@ jobs:
       - name: Run Pytest (E2E Tests)
         working-directory: ./
         run: |
-          python -m pytest --timeout=600 server/tests/test_extreme_friction_deletion.py server/tests/test_e2e_mcp.py tests/ --junitxml=server/test-results/pytest-e2e.xml
+          python -m pytest --timeout=600 server/tests/test_e2e_mcp.py tests/ --junitxml=server/test-results/pytest-e2e.xml
 
       - name: Extract Docker Logs on Failure
         if: failure()
         run: |
-          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-test-env-logs.txt || true
+          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-e2e-logs.txt || true
 
       - name: Upload Docker Logs
         if: failure()
