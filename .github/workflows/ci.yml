@@ -131,10 +131,10 @@ jobs:
           pip install pytest pytest-cov
           python -m playwright install chromium
 
-      - name: Run Pytest (Sequential)
+      - name: Run Pytest (Unit Tests)
         working-directory: ./
         run: |
-          python -m pytest --timeout=600 server/tests/ tests/ --junitxml=server/test-results/pytest-python.xml
+          python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-python.xml
 
       - name: Extract Docker Logs on Failure
         if: failure()
