@@ -13,7 +13,7 @@ services:
     - EMBEDDING_MODEL=nomic-embed-text
     - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     - TEST_MODE_ALLOW_ALL_IPS=true
-    - REDIS_URL=${REDIS_URL:-redis://:joplin_redis@redis:6379}
+    - REDIS_URL=${REDIS_URL}
     depends_on:
       ollama:
         condition: service_healthy

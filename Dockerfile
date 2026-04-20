@@ -36,6 +36,7 @@ FROM node:20-bookworm-slim
 RUN apt-get update && apt-get install -y \
     python3 \
     sqlite3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
