@@ -7,7 +7,7 @@ import requests
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def ephemeral_joplin():
     env = os.environ.copy()
     env.pop("JOPLIN_SERVER_URL", None)

@@ -128,7 +128,6 @@ def temp_profile():
         yield temp_dir
 
 
-@pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Too heavy for CI runner memory limits")
 def test_massive_note_injection(ephemeral_joplin, mock_ollama_server, temp_profile):
     asyncio.run(run_massive_note_injection(mock_ollama_server, temp_profile))
 

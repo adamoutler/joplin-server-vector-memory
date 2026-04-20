@@ -106,14 +106,8 @@ services:
     - POSTGRES_PORT=5432
     - POSTGRES_HOST=db
     - RATE_LIMIT_ENABLED=false
-    - JOPLIN_RATE_LIMIT_ENABLED=false
-    - APP_MAX_LOGIN_ATTEMPTS=0
     - MAX_LOGIN_ATTEMPTS=0
     - MAILER_ENABLED=0
-    deploy:
-      resources:
-        limits:
-          memory: 2048M
     healthcheck:
       test:
       - CMD-SHELL
