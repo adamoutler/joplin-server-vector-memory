@@ -24,7 +24,6 @@ from sqlite_vec import serialize_float32
 from enum import Enum
 from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents, TextContent, Annotations
 from typing import Union, List, Optional
-from sentence_transformers import SentenceTransformer
 
 for key, value in list(os.environ.items()):
     if isinstance(value, str) and value.strip() == "":
@@ -37,6 +36,12 @@ _local_model = None
 def get_local_model():
     global _local_model
     if _local_model is None:
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError:
+            logger.error("sentence-transformers library not found. Please install it with 'pip install sentence-transformers torch'.")
+            raise RuntimeError("Local embeddings unavailable: missing sentence-transformers/torch")
+
         logger.info("Loading local sentence-transformers model (all-MiniLM-L6-v2)...")
         _local_model = SentenceTransformer('all-MiniLM-L6-v2')
     return _local_model
