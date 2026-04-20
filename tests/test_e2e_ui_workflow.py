@@ -12,19 +12,30 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 
 def populate_joplin(secret_uuid):
     # Create notes via the Node.js test script to populate the ephemeral Joplin instance
-    client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
-    result = subprocess.run(
-        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T",
-         "-e", "OLLAMA_URL=http://ollama:11434",
-         "-e", "JOPLIN_SERVER_URL=http://joplin:22300",
-         "-e", "JOPLIN_USERNAME=admin@localhost",
-         "-e", "JOPLIN_PASSWORD=admin",
-         "app", "node", "client/e2e_create_sync.js", secret_uuid],
-        cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
-        capture_output=True,
-        text=True
-    )
-    assert result.returncode == 0, f"Failed to populate Joplin: {result.stderr}"
+    # Add retries to handle transient 429 errors or slow startup
+    max_retries = 3
+    for i in range(max_retries):
+        client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
+        result = subprocess.run(
+            ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T",
+             "-e", "OLLAMA_URL=http://ollama:11434",
+             "-e", "JOPLIN_SERVER_URL=http://joplin:22300",
+             "-e", "JOPLIN_USERNAME=admin@localhost",
+             "-e", "JOPLIN_PASSWORD=admin",
+             "app", "node", "client/e2e_create_sync.js", secret_uuid],
+            cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            return
+
+        if "429" in result.stderr and i < max_retries - 1:
+            print(f"Got 429, retrying in 10s... ({i + 1}/{max_retries})")
+            time.sleep(10)
+            continue
+
+        assert result.returncode == 0, f"Failed to populate Joplin: {result.stderr}"
 
 
 @pytest.mark.enable_socket
