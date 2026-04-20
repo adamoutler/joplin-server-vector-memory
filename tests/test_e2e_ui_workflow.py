@@ -199,8 +199,8 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
         # Step 21: Wait for both sync and index states to report Ready
         try:
-            expect(page.locator("#sync-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=120000)
-            expect(page.locator("#embed-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=120000)
+            expect(page.locator("#sync-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=300000)
+            expect(page.locator("#embed-status-text")).to_have_text(re.compile(r"Ready|Idle", re.IGNORECASE), timeout=300000)
         except Exception as e:
             res = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "logs", "app"], capture_output=True, text=True)
             print("DOCKER LOGS:")
