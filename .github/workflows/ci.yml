@@ -124,17 +124,33 @@ jobs:
           cache: 'pip'
           cache-dependency-path: './server/requirements.txt'
 
+      - name: Add joplin alias to localhost
+        run: sudo echo "127.0.0.1 joplin" | sudo tee -a /etc/hosts
+
       - name: Install Python dependencies
         working-directory: ./server
         run: |
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest pytest-cov pytest-xdist
+          python -m playwright install chromium
 
       - name: Run Pytest (Unit Tests)
         working-directory: ./
         run: |
           python -m pytest -n auto --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
+
+      - name: Extract Docker Logs on Failure
+        if: failure()
+        run: |
+          docker compose -p joplin-test-env -f docker-compose.test.yml logs > joplin-unit-logs.txt || true
+
+      - name: Upload Docker Logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-logs-unit
+          path: ./*-logs.txt
 
       - name: Upload Test Results
         if: always()
@@ -183,7 +199,7 @@ jobs:
       - name: Run Pytest (E2E Tests)
         working-directory: ./
         run: |
-          python -m pytest --timeout=600 server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-e2e.xml
+          python -m pytest --timeout=600 server/tests/test_extreme_friction_deletion.py server/tests/test_e2e_mcp.py tests/ --junitxml=server/test-results/pytest-e2e.xml
 
       - name: Extract Docker Logs on Failure
         if: failure()
