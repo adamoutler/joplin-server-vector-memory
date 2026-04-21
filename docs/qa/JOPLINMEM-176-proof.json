@@ -1,0 +1,29 @@
+{
+  "projects": [
+    {
+      "project_slug": "JOPLINMEM",
+      "name": "Joplin Server Vector Memory",
+      "description": "The Joplin Server Vector Memory MCP empowers your AI assistant with secure, semantic access to your personal knowledge base by acting as a direct, private bridge to your End-to-End Encrypted Joplin Server. By syncing, decrypting, and vectorizing your notes locally into a lightweight SQLite database, it creates a private, bi-directional memory system that allows your agent to seamlessly search, read, and write memories without compromising data privacy or relying on heavy external infrastructure.",
+      "states": [
+        "Backlog",
+        "Todo",
+        "In Progress",
+        "Done",
+        "Cancelled",
+        "Crazy Ideas",
+        "Needs QA"
+      ],
+      "labels": [
+        "concepts",
+        "admin"
+      ]
+    }
+  ],
+  "priorities": [
+    "urgent",
+    "high",
+    "medium",
+    "low",
+    "none"
+  ]
+}

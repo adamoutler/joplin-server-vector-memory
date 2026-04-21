@@ -93,3 +93,24 @@ Perform a detailed security inspection and audit of the internal-only routes (`/
 - [x] Only traffic originating from `localhost` is permitted to access `/node-api/*`.
 - [x] Test execution passes, and QA artifacts (screenshots and `test-results.json`) are provided.
 - [x] Commits pushed to the repository.
+
+---
+
+# Ticket JOPLINMEM-176: Optimize MCP Help Response Structure and Terminology (c3de5d47-142b-451d-b73e-cd0593d97ed6)
+
+## Objective
+Optimize the MCP `help` response that returns project metadata to improve parsing efficiency and reduce token overhead.
+
+## Implementation Strategy
+1. **Collapse JSON into relevant units:** Group `states` and `labels` directly inside their respective `project` object.
+2. **Don't pretty print:** Send minified JSON to the `llmContent` stream.
+3. **Remove conversational filler:** Eliminate descriptive/chatty messages from the payload.
+4. **Convert display output:** Format the terminal output as `[PROJECT_SLUG] - [Description]`.
+5. **Proper terminology:** Change `identifier` to `project_slug`.
+
+## Definition of Done
+- [x] JSON response is strictly minified.
+- [x] `states` and `labels` are appropriately nested within the `project` object.
+- [x] Output is purely parsable JSON with absolutely zero conversational filler.
+- [x] The key uses `"project_slug"` instead of `"identifier"`.
+- [x] QA artifacts verifying this output are generated and stored in `docs/qa/JOPLINMEM-176-proof.json`.
