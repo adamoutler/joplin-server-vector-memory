@@ -315,6 +315,8 @@ app.use(async (req, res, next) => {
              setTimeout(() => {
                  if (!isProcessing && (!syncState || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
                      console.log("Auto-unlocking sync using intercepted Basic Auth credentials...");
+                     nextAllowedSyncTime = 0;
+                     consecutiveSyncErrors = 0;
                      startSync(proxyConfig);
                  }
              }, 1000);
@@ -364,6 +366,8 @@ let isProcessing = false;
 let syncState = { status: 'offline', progress: null, error: null };
 let embeddingState = { status: 'offline', progress: null, error: null };
 let syncClient = null;
+let nextAllowedSyncTime = 0;
+let consecutiveSyncErrors = 0;
 
 app.get('/node-api/resources/:id', async (req, res) => {
   if (!syncClient || !syncClient.db) {
@@ -586,6 +590,8 @@ app.post('/sync', async (req, res) => {
     return res.status(409).json({ error: 'Sync already in progress.' });
   }
 
+  nextAllowedSyncTime = 0;
+  consecutiveSyncErrors = 0;
   setTimeout(() => runSyncCycle(config).catch(e => console.error('Manual sync failed:', e)), 100);
   res.json({ success: true, message: 'Sync cycle initiated.' });
 });
@@ -875,6 +881,7 @@ app.post('/auth/wipe', async (req, res) => {
 let syncIntervalId = null;
 
 async function runSyncCycle(config) {
+  if (Date.now() < nextAllowedSyncTime) return;
   console.log('runSyncCycle triggered with config:', Object.keys(config || {}));
   if (isProcessing) return;
   isProcessing = true;
@@ -1066,6 +1073,7 @@ async function runSyncCycle(config) {
     await syncClient.decrypt();
     await syncClient.generateEmbeddings();
     
+    consecutiveSyncErrors = 0;
   } catch (err) {
     console.error('Cycle top-level error:', err);
     // Determine the source of the error to avoid cross-contamination of status states
@@ -1097,7 +1105,11 @@ async function runSyncCycle(config) {
     const isAuthError = err.message && (err.message.includes('invalid credentials') || err.message.includes('403') || err.message.includes('401'));
 
     if (isNetworkError || isAuthError) {
-        console.error('Transient or Auth error during sync. Will retry on next interval.', err.message);
+        consecutiveSyncErrors++;
+        if (consecutiveSyncErrors === 1) {
+            console.error('Transient or Auth error during sync. Will retry silently in 20 minutes.', err.message);
+        }
+        nextAllowedSyncTime = Date.now() + 20 * 60 * 1000;
     } else {
         console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', err.message);
         setTimeout(() => process.exit(1), 1000);
@@ -1153,6 +1165,15 @@ if (fs.existsSync(CONFIG_PATH)) {
           }
         }
         
+        if (!restoredFromRedis && process.env.JOPLIN_PASSWORD && (!process.env.JOPLIN_USERNAME || process.env.JOPLIN_USERNAME === config.joplinUsername)) {
+           globalCredentials.password = process.env.JOPLIN_PASSWORD;
+           globalCredentials.masterPassword = process.env.JOPLIN_MASTER_PASSWORD || process.env.JOPLIN_PASSWORD;
+           config.joplinPassword = process.env.JOPLIN_PASSWORD;
+           config.joplinMasterPassword = globalCredentials.masterPassword;
+           restoredFromRedis = true;
+           console.log('Successfully restored credentials from environment variables.');
+        }
+
         if (restoredFromRedis) {
            startSync(config);
         } else {
