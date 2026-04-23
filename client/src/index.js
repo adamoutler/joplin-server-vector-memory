@@ -565,14 +565,23 @@ app.get('/status', async (req, res) => {
       // omit sensitive data
       delete config.joplinPassword;
       delete config.joplinMasterPassword;
-    } catch (e) { 
+    } catch (e) {
       console.error('Failed to parse config.json in /status endpoint.', e);
       config = { error: 'Configuration file is corrupted.' };
     }
   }
+
+  if (globalCredentials.password && config.joplinServerUrl && config.joplinUsername) {
+    if (!isProcessing && (!syncState || syncState.status === 'offline' || syncState.status === 'error')) {
+      console.log("Auto-starting sync from /status endpoint since credentials are available...");
+      nextAllowedSyncTime = 0;
+      consecutiveSyncErrors = 0;
+      startSync(config);
+    }
+  }
+
   res.json({ syncState, embeddingState, config, hasCredentials: !!globalCredentials.password });
 });
-
 app.post('/sync', async (req, res) => {
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
