@@ -1,16 +1,14 @@
 import pytest
+import pytest
 import requests
 import json
-import sys
-import os
-from urllib.parse import urljoin
-
 import time
+from urllib.parse import urljoin
+from functools import lru_cache
 
-# Import the ephemeral_joplin fixture
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
-
+# We must be careful not to trigger a reset of auth loop unless needed.
+@lru_cache(maxsize=1)
 def get_auth_headers():
     auth_payload = {
         "serverUrl": "http://joplin:22300",

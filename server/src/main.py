@@ -49,12 +49,12 @@ def get_local_model():
         if model_name == "nomic-embed-text":
             model_name = "nomic-ai/nomic-embed-text-v1.5"
 
-        logger.info(f"Loading local sentence-transformers model ({model_name})...")
+        logger.info("Loading local sentence-transformers model (%s)...", model_name)
         try:
             # trust_remote_code=True is required for some models like nomic-embed-text-v1.5
             _local_model = SentenceTransformer(model_name, trust_remote_code=True)
         except Exception as e:
-            logger.warning(f"Failed to load preferred model {model_name}: {e}. Falling back to all-MiniLM-L6-v2")
+            logger.warning("Failed to load preferred model %s: %s. Falling back to all-MiniLM-L6-v2", model_name, e)
             _local_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     return _local_model
@@ -93,7 +93,7 @@ def _load_config_file() -> dict:
                     _config_cache = json.load(f)
                 _config_mtime = mtime
     except Exception as e:
-        logger.error(f"Error reading config.json: {e}")
+        logger.error("Error reading config.json: %s", e)
         # If the file exists but we failed to read it, do NOT return an empty dict, 
         # otherwise we will wipe the user's settings during a REINDEX merge.
         if os.path.exists(config_path):
@@ -1027,7 +1027,7 @@ def check_token_validity(token: str) -> bool:
                 except Exception as parse_err:
                     logger.error(f"Error parsing token expiration: {parse_err}")
     except Exception as e:
-        logger.error(f"Error reading config for auth: {e}")
+        logger.error("Error reading config for auth: %s", e)
     return False
 
 
@@ -1071,6 +1071,132 @@ app = FastAPI(
 @app.get("/", summary="Root Endpoint", description="Root endpoint indicating the server is running.")
 async def root():
     return {"message": "Joplin Server Vector Memory API is running. Access MCP at / or /mcp-server/stateless."}
+
+
+@app.post(
+    "/mcp",
+    summary="MCP JSON-RPC Endpoint",
+    operation_id="mcp_endpoint_mcp_post",
+    tags=["MCP"],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["jsonrpc", "method", "id"],
+                        "properties": {
+                            "jsonrpc": {
+                                "type": "string",
+                                "const": "2.0",
+                                "default": "2.0"
+                            },
+                            "method": {
+                                "type": "string"
+                            },
+                            "id": {
+                                "type": "string",
+                                "default": "1"
+                            },
+                            "params": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "examples": {
+                        "initialize": {
+                            "summary": "initialize",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "initialize",
+                                "id": "init-01",
+                                "params": {
+                                    "protocolVersion": "2024-11-05",
+                                    "capabilities": {},
+                                    "clientInfo": {"name": "swagger-ui", "version": "1.0"}
+                                }
+                            }
+                        },
+                        "ping": {
+                            "summary": "ping",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "ping",
+                                "id": "ping-01"
+                            }
+                        },
+                        "tools_list": {
+                            "summary": "tools/list",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "tools/list",
+                                "id": "tools-list-01"
+                            }
+                        },
+                        "notes_search": {
+                            "summary": "notes_search",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "tools/call",
+                                "id": "tools-call-search-01",
+                                "params": {
+                                    "name": "notes_search",
+                                    "arguments": {
+                                        "query": "project architecture",
+                                        "limit": 5
+                                    }
+                                }
+                            }
+                        },
+                        "notes_get": {
+                            "summary": "notes_get",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "tools/call",
+                                "id": "tools-call-get-01",
+                                "params": {
+                                    "name": "notes_get",
+                                    "arguments": {
+                                        "note_id": "YOUR_NOTE_ID_HERE"
+                                    }
+                                }
+                            }
+                        },
+                        "resources_list": {
+                            "summary": "resources/list",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "resources/list",
+                                "id": "resources-list-01"
+                            }
+                        },
+                        "prompts_list": {
+                            "summary": "prompts/list",
+                            "value": {
+                                "jsonrpc": "2.0",
+                                "method": "prompts/list",
+                                "id": "prompts-list-01"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
+async def mcp_endpoint(request: dict):
+    """
+    Stateless Model Context Protocol (MCP) JSON-RPC Endpoint.
+
+    This endpoint implements the `stateless` flavor of the MCP protocol over HTTP.
+    Clients should send standard JSON-RPC 2.0 requests specifying the desired method
+    and arguments.
+
+    Because JSON-RPC relies on the method string to determine the params payload,
+    the examples list provides a way to explore the protocol inside Swagger UI.
+    """
+    pass
 
 
 @app.post("/http-api/internal/embed")
@@ -1333,7 +1459,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
             if "embedding" in res:
                 new_dim = len(res["embedding"])
         except Exception as e:
-            logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
+            logger.error("Failed to determine dimensions for model %s: %s", new_embed.get("model"), e)
             raise HTTPException(status_code=400, detail="Failed to connect to the specified model at the provided base URL. See server logs for details.")
 
     new_config["embeddingDimension"] = new_dim
@@ -1434,7 +1560,7 @@ class ForceAcceptJSONMiddleware:
             method = scope.get("method", "")
 
             # Map exact /http-api/mcp based on method for Gemini CLI compatibility
-            if original_path.startswith("/http-api/mcp"):
+            if original_path.startswith("/http-api/mcp") or original_path == "/mcp":
                 auth_header = ""
                 for k, v in scope.get("headers", []):
                     if k.lower() == b"authorization":
@@ -1463,7 +1589,11 @@ class ForceAcceptJSONMiddleware:
                 # If it's explicitly one of the mounted sub-apps, leave it alone
                 if not any(original_path.startswith(p) for p in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]):
                     # It's a bare /http-api/mcp or a subpath like /http-api/mcp/messages
-                    subpath = original_path[len("/http-api/mcp"):]
+                    if original_path == "/mcp":
+                        subpath = "/"
+                    else:
+                        subpath = original_path[len("/http-api/mcp"):]
+
                     if not subpath or subpath == "/":
                         if method == "GET":
                             scope["path"] = "/http-api/mcp/sse"
