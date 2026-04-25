@@ -49,12 +49,12 @@ def get_local_model():
         if model_name == "nomic-embed-text":
             model_name = "nomic-ai/nomic-embed-text-v1.5"
 
-        logger.info(f"Loading local sentence-transformers model ({model_name})...")
+        logger.info("Loading local sentence-transformers model (%s)...", model_name)
         try:
             # trust_remote_code=True is required for some models like nomic-embed-text-v1.5
             _local_model = SentenceTransformer(model_name, trust_remote_code=True)
         except Exception as e:
-            logger.warning(f"Failed to load preferred model {model_name}: {e}. Falling back to all-MiniLM-L6-v2")
+            logger.warning("Failed to load preferred model %s: %s. Falling back to all-MiniLM-L6-v2", model_name, e)
             _local_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     return _local_model
@@ -93,7 +93,7 @@ def _load_config_file() -> dict:
                     _config_cache = json.load(f)
                 _config_mtime = mtime
     except Exception as e:
-        logger.error(f"Error reading config.json: {e}")
+        logger.error("Error reading config.json: %s", e)
         # If the file exists but we failed to read it, do NOT return an empty dict, 
         # otherwise we will wipe the user's settings during a REINDEX merge.
         if os.path.exists(config_path):
@@ -1027,7 +1027,7 @@ def check_token_validity(token: str) -> bool:
                 except Exception as parse_err:
                     logger.error(f"Error parsing token expiration: {parse_err}")
     except Exception as e:
-        logger.error(f"Error reading config for auth: {e}")
+        logger.error("Error reading config for auth: %s", e)
     return False
 
 
@@ -1333,7 +1333,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
             if "embedding" in res:
                 new_dim = len(res["embedding"])
         except Exception as e:
-            logger.error(f"Failed to determine dimensions for model {new_embed.get('model')}: {e}")
+            logger.error("Failed to determine dimensions for model %s: %s", new_embed.get("model"), e)
             raise HTTPException(status_code=400, detail="Failed to connect to the specified model at the provided base URL. See server logs for details.")
 
     new_config["embeddingDimension"] = new_dim
