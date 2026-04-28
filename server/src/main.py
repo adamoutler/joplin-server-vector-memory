@@ -1526,15 +1526,18 @@ class ForceAcceptJSONMiddleware:
         await self.app(scope, receive, send)
 
 
+_fastapi_app = app
+
+
 def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
+    if _fastapi_app.openapi_schema:
+        return _fastapi_app.openapi_schema
     from fastapi.openapi.utils import get_openapi
     openapi_schema = get_openapi(
         title="Joplin Server Vector Memory MCP",
         version="1.0.0",
         description="Joplin Server Vector Memory API",
-        routes=app.routes,
+        routes=_fastapi_app.routes,
     )
     if "components" not in openapi_schema:
         openapi_schema["components"] = {}
@@ -1618,8 +1621,8 @@ def custom_openapi():
         "prompts/list": "#/components/schemas/PromptsListRequest"
     }
 
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
+    _fastapi_app.openapi_schema = openapi_schema
+    return _fastapi_app.openapi_schema
 
 
 app.openapi = custom_openapi

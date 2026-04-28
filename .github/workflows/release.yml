@@ -259,10 +259,13 @@ jobs:
         id: version
         run: |
           COUNT=$(git rev-list --count HEAD)
-          AUTO_VERSION="0.1.${COUNT}"
+          AUTO_VERSION="0.1.${COUNT}-p"
           OVERRIDE="${{ github.event.inputs.version_override }}"
           if [ -n "$OVERRIDE" ]; then
             FINAL_VERSION="$OVERRIDE"
+            if [[ ! "$FINAL_VERSION" == *-p ]]; then
+              FINAL_VERSION="${FINAL_VERSION}-p"
+            fi
           else
             FINAL_VERSION="$AUTO_VERSION"
           fi
