@@ -1,0 +1,12 @@
+node_modules/
+.venv/
+new_venv/
+root_venv/
+venv/
+__pycache__/
+.pytest_cache/
+tests/
+tmp-open-webui/
+data/
+repro_data/
+.git/

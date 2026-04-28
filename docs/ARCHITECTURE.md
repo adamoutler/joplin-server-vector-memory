@@ -50,12 +50,12 @@ flowchart TB
     SyncEngine -- Writes Decrypted Data<br>&amp; Vectors --> Storage
     AIAgent -- Proxied API Access<br>(Discouraged Fallback) --> Web3000
     AIAgent -- "Reads /llms.txt" --> Web3000
-    User(("🧑‍💻 User / Admin")) -- Web Browser Access<br>(Config &amp; Status) --> Web3000
+    EndUser(("🧑‍💻 User / Admin")) -- Web Browser Access<br>(Config & Status) --> Web3000
 
      P3000:::port
      P8000:::port
      SQLite:::storage
-     User:::external
+     EndUser:::external
      JoplinServer:::external
      Ollama:::external
      AIAgent:::external

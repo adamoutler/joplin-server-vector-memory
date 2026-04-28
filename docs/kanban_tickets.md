@@ -23,8 +23,8 @@ By dynamically mapping Joplin resource MIME types to standard MCP `TextContent`,
   3. Call `GET /resources/{resource_id}/file` to fetch the raw file data.
   4. Implement a dynamic dispatch router based on MIME type:
       * **Text & Scripts (`text/*`, `application/json`, `.sh`, `.md`):** Read as UTF-8 string and return an MCP `TextContent` block.
-      * **Images (`image/jpeg`, `image/png`):** Read as binary, base64 encode, and return an MCP `ImageContent` block.
-      * **PDFs & Binaries (`application/pdf`, etc):** Read as binary, base64 encode, and return an MCP `EmbeddedResource` block strictly containing the raw binary data.
+      * **Images (`image/jpeg`, `image/png`):** Read as binary, encode into b64 format, and return an MCP `ImageContent` block.
+      * **PDFs & Binaries (`application/pdf`, etc):** Read as binary, encode into b64 format, and return an MCP `EmbeddedResource` block strictly containing the raw binary data.
 
 ### Task 3: API Authentication Plumbing
 * **Goal:** Authenticate the requests properly with the upstream Joplin Server.
