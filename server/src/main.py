@@ -1084,101 +1084,7 @@ async def root():
             "content": {
                 "application/json": {
                     "schema": {
-                        "type": "object",
-                        "required": ["jsonrpc", "method", "id"],
-                        "properties": {
-                            "jsonrpc": {
-                                "type": "string",
-                                "const": "2.0",
-                                "default": "2.0"
-                            },
-                            "method": {
-                                "type": "string"
-                            },
-                            "id": {
-                                "type": "string",
-                                "default": "1"
-                            },
-                            "params": {
-                                "type": "object"
-                            }
-                        }
-                    },
-                    "examples": {
-                        "initialize": {
-                            "summary": "initialize",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "initialize",
-                                "id": "init-01",
-                                "params": {
-                                    "protocolVersion": "2024-11-05",
-                                    "capabilities": {},
-                                    "clientInfo": {"name": "swagger-ui", "version": "1.0"}
-                                }
-                            }
-                        },
-                        "ping": {
-                            "summary": "ping",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "ping",
-                                "id": "ping-01"
-                            }
-                        },
-                        "tools_list": {
-                            "summary": "tools/list",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "tools/list",
-                                "id": "tools-list-01"
-                            }
-                        },
-                        "notes_search": {
-                            "summary": "notes_search",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "tools/call",
-                                "id": "tools-call-search-01",
-                                "params": {
-                                    "name": "notes_search",
-                                    "arguments": {
-                                        "query": "project architecture",
-                                        "limit": 5
-                                    }
-                                }
-                            }
-                        },
-                        "notes_get": {
-                            "summary": "notes_get",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "tools/call",
-                                "id": "tools-call-get-01",
-                                "params": {
-                                    "name": "notes_get",
-                                    "arguments": {
-                                        "note_id": "YOUR_NOTE_ID_HERE"
-                                    }
-                                }
-                            }
-                        },
-                        "resources_list": {
-                            "summary": "resources/list",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "resources/list",
-                                "id": "resources-list-01"
-                            }
-                        },
-                        "prompts_list": {
-                            "summary": "prompts/list",
-                            "value": {
-                                "jsonrpc": "2.0",
-                                "method": "prompts/list",
-                                "id": "prompts-list-01"
-                            }
-                        }
+                        "$ref": "#/components/schemas/JsonRpcRequest"
                     }
                 }
             }
@@ -1618,6 +1524,105 @@ class ForceAcceptJSONMiddleware:
                         headers[accept_key] = b"application/json"
                     scope["headers"] = [(k, v) for k, v in headers.items()]
         await self.app(scope, receive, send)
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+    openapi_schema = get_openapi(
+        title="Joplin Server Vector Memory MCP",
+        version="1.0.0",
+        description="Joplin Server Vector Memory API",
+        routes=app.routes,
+    )
+    if "components" not in openapi_schema:
+        openapi_schema["components"] = {}
+    if "schemas" not in openapi_schema["components"]:
+        openapi_schema["components"]["schemas"] = {}
+
+    openapi_schema["components"]["schemas"].update({
+        "JsonRpcRequest": {
+            "type": "object",
+            "required": ["jsonrpc", "method", "id"],
+            "discriminator": {"propertyName": "method"},
+            "properties": {
+                "jsonrpc": {"type": "string", "const": "2.0", "default": "2.0"},
+                "id": {"type": "string", "default": "1"},
+                "method": {"type": "string"}
+            }
+        },
+        "InitializeRequest": {
+            "type": "object",
+            "properties": {
+                "method": {"type": "string", "enum": ["initialize"]},
+                "params": {
+                    "type": "object",
+                    "properties": {
+                        "protocolVersion": {"type": "string", "default": "2024-11-05"},
+                        "capabilities": {"type": "object", "default": {}},
+                        "clientInfo": {
+                            "type": "object",
+                            "properties": {"name": {"type": "string"}, "version": {"type": "string"}},
+                            "default": {"name": "swagger-ui", "version": "1.0"}
+                        }
+                    }
+                }
+            },
+            "required": ["method", "params"]
+        },
+        "PingRequest": {
+            "type": "object",
+            "properties": {"method": {"type": "string", "enum": ["ping"]}},
+            "required": ["method"]
+        },
+        "ToolsListRequest": {
+            "type": "object",
+            "properties": {"method": {"type": "string", "enum": ["tools/list"]}},
+            "required": ["method"]
+        },
+        "ToolsCallRequest": {
+            "type": "object",
+            "properties": {
+                "method": {"type": "string", "enum": ["tools/call"]},
+                "params": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "examples": ["notes_search", "notes_get"]},
+                        "arguments": {"type": "object", "examples": [{"query": "architecture", "limit": 5}]}
+                    },
+                    "required": ["name"]
+                }
+            },
+            "required": ["method", "params"]
+        },
+        "ResourcesListRequest": {
+            "type": "object",
+            "properties": {"method": {"type": "string", "enum": ["resources/list"]}},
+            "required": ["method"]
+        },
+        "PromptsListRequest": {
+            "type": "object",
+            "properties": {"method": {"type": "string", "enum": ["prompts/list"]}},
+            "required": ["method"]
+        }
+    })
+
+    # Map the discriminator to the schemas
+    openapi_schema["components"]["schemas"]["JsonRpcRequest"]["mapping"] = {
+        "initialize": "#/components/schemas/InitializeRequest",
+        "ping": "#/components/schemas/PingRequest",
+        "tools/list": "#/components/schemas/ToolsListRequest",
+        "tools/call": "#/components/schemas/ToolsCallRequest",
+        "resources/list": "#/components/schemas/ResourcesListRequest",
+        "prompts/list": "#/components/schemas/PromptsListRequest"
+    }
+
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 
 app = ForceAcceptJSONMiddleware(app)
