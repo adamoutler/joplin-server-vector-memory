@@ -230,7 +230,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
-          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache,mode=max
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:buildcache,mode=max', github.repository_owner) || '' }}
 
   codeql-analyze:
     name: CodeQL Analyze (${{ matrix.language }})
