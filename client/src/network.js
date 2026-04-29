@@ -9,7 +9,7 @@ function safeUrl(urlString) {
     }
     return url.toString();
   } catch (e) {
-    throw new Error(`Invalid URL: ${urlString}`);
+    throw new Error(`Invalid URL: ${urlString}`, { cause: e });
   }
 }
 
