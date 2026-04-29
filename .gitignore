@@ -19,3 +19,7 @@ tmp-open-webui/
 .gemini/*.swp
 new_venv/
 root_venv/
+root_venv/
+new_venv/
+server/venv/
+client/node_modules/

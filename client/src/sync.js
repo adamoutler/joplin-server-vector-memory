@@ -13,6 +13,7 @@ const sqliteVec = require('sqlite-vec');
 const path = require('path');
 const fs = require('fs');
 const EventEmitter = require('events');
+const { triggerInternalEmbedding } = require('./network');
 
 class JoplinSyncClient extends EventEmitter {
   constructor(options = {}) {
@@ -657,11 +658,7 @@ class JoplinSyncClient extends EventEmitter {
 
         while (retries < maxRetries) {
           try {
-            response = await fetch(`${internalApiUrl}/http-api/internal/embed`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ texts: prompts })
-            });
+            response = await triggerInternalEmbedding(internalApiUrl, { texts: prompts });
             if (response.ok) break;
             console.warn(`Internal embed API error (${response.status}) for batch. Retrying in ${backoff}ms...`);
           } catch (err) {

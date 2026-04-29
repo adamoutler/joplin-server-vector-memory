@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { JoplinSyncClient } = require('./sync');
+const { fetchWithTimeout, validateJoplinSession, fetchJoplinEvents, checkJoplinSyncInfo } = require('./network');
 const Redis = require('ioredis');
 
 // Note on Redis Usage:
@@ -339,11 +340,7 @@ app.use(async (req, res, next) => {
 
   console.log(`[Auth Middleware] Password not in memory. Relaying to Joplin Server at ${joplinUrl}/api/sessions for validation...`);
   try {
-    const response = await fetch(`${joplinUrl}/api/sessions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: reqUser, password: reqPass })
-    });
+    const response = await validateJoplinSession(joplinUrl, reqUser, reqPass);
 
     console.log(`[Auth Middleware] Joplin Server responded with HTTP ${response.status}`);
     if (response.ok) {
@@ -639,22 +636,10 @@ app.post('/auth', async (req, res) => {
 
   // Ping and credential validation
   try {
-    const fetchWithTimeout = async (url, options = {}) => {
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 5000);
-      try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
-        clearTimeout(id);
-        return response;
-      } catch (err) {
-        clearTimeout(id);
-        throw err;
-      }
-    };
-    
+    // Using imported fetchWithTimeout helper
+
     // Attempt a basic check against the server to see if it's reachable
-    const checkRes = await fetchWithTimeout(`${cleanServerUrl}/api/ping`).catch(() => fetchWithTimeout(`${cleanServerUrl}/login`)).catch(() => fetchWithTimeout(cleanServerUrl));
-    
+    const checkRes = await fetchWithTimeout(`${cleanServerUrl}/api/ping`, {}, 5000).catch(() => fetchWithTimeout(`${cleanServerUrl}/login`, {}, 5000)).catch(() => fetchWithTimeout(cleanServerUrl, {}, 5000));    
     if (!checkRes || !checkRes.ok) {
       if (checkRes && checkRes.status !== 404 && checkRes.status !== 401 && checkRes.status !== 403) {
         console.warn('Server responded with status:', checkRes.status);
@@ -956,11 +941,7 @@ async function runSyncCycle(config) {
        
        const syncPass = config.joplinPassword || globalCredentials.password;
        if (syncPass) {
-           const sessionRes = await fetch(`${joplinUrl}/api/sessions`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: config.joplinUsername, password: syncPass })
-           }).catch(() => null);
+           const sessionRes = await validateJoplinSession(joplinUrl, config.joplinUsername, syncPass).catch(() => null);
 
            console.log(`[Explicit Check] /api/sessions returned status: ${sessionRes ? sessionRes.status : 'null'}`);
 
@@ -972,10 +953,7 @@ async function runSyncCycle(config) {
               const sessionData = await sessionRes.json();
               const sessionId = sessionData.id;
               
-              const syncCheckRes = await fetch(`${joplinUrl}/api/items/root:/info.json:/content`, {
-                  headers: { 'X-API-AUTH': sessionId },
-                  redirect: 'manual'
-              }).catch(() => null);
+              const syncCheckRes = await checkJoplinSyncInfo(joplinUrl, sessionId).catch(() => null);
 
               if (syncCheckRes && !syncCheckRes.ok && syncCheckRes.status !== 404) {
                   throw new Error(`Joplin Server rejected sync access (HTTP ${syncCheckRes.status}: ${syncCheckRes.statusText}). Ensure your account has sync permissions and you have accepted the Terms of Service on the Joplin Server web UI.`);
@@ -992,9 +970,7 @@ async function runSyncCycle(config) {
               if (cursor) {
                   console.log(`Polling /api/events with cursor: ${cursor}`);
                   while (hasMore) {
-                      const eventsRes = await fetch(`${joplinUrl}/api/events?cursor=${newCursor}`, {
-                          headers: { 'X-API-AUTH': sessionId }
-                      }).catch(() => null);
+                      const eventsRes = await fetchJoplinEvents(joplinUrl, sessionId, newCursor).catch(() => null);
 
                       if (eventsRes && eventsRes.ok) {
                           const eventsData = await eventsRes.json();
@@ -1033,9 +1009,7 @@ async function runSyncCycle(config) {
                       // First run, do full embedding
                       await syncClient.generateEmbeddings();
                       // Fetch initial cursor
-                      const initialEventsRes = await fetch(`${joplinUrl}/api/events`, {
-                          headers: { 'X-API-AUTH': sessionId }
-                      }).catch(() => null);
+                      const initialEventsRes = await fetchJoplinEvents(joplinUrl, sessionId).catch(() => null);
                       if (initialEventsRes && initialEventsRes.ok) {
                           const initialEventsData = await initialEventsRes.json();
                           if (initialEventsData.cursor) {
