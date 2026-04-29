@@ -1,4 +1,5 @@
 const request = require('supertest');
+ // eslint-disable-next-line no-unused-vars
 const express = require('express');
 const fs = require('fs');
 
@@ -19,7 +20,9 @@ jest.mock('fs', () => {
 // We will test the app by mocking http-proxy-middleware
 jest.mock('http-proxy-middleware', () => {
   return {
+ // eslint-disable-next-line no-unused-vars
     createProxyMiddleware: jest.fn((options) => {
+ // eslint-disable-next-line no-unused-vars
       return (req, res, next) => {
         res.status(200).json({ proxied: true, path: req.path });
       };
