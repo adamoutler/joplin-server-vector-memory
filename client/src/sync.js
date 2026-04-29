@@ -139,9 +139,16 @@ class JoplinSyncClient extends EventEmitter {
       get appId() { return 'joplin'; }
       get clientId() { return 'joplin-client'; }
       async supported() { return true; }
-      async setPassword(service, account, password) {}
-      async password(service, account) { return null; }
-      async deletePassword(service, account) {}
+  
+  
+ // eslint-disable-next-line no-unused-vars
+      async setPassword(_service, _account, _password) {}
+  
+ // eslint-disable-next-line no-unused-vars
+      async password(_service, _account) { return null; }
+  
+ // eslint-disable-next-line no-unused-vars
+      async deletePassword(_service, _account) {}
       async detectIfMacOsKeychainBug() { return false; }
     }
     
@@ -164,7 +171,8 @@ class JoplinSyncClient extends EventEmitter {
     
     // Monkey-patch revisionService getter to ensure it's never "not set" 
     // due to Node module caching edge cases or Joplin internals.
-    const originalRevisionService = BaseItem.revisionService;
+ // eslint-disable-next-line no-unused-vars
+          const originalRevisionService = BaseItem.revisionService;
     BaseItem.revisionService = function() {
         if (!this.revisionService_) {
             this.revisionService_ = require('@joplin/lib/services/RevisionService').default.instance();
@@ -503,6 +511,7 @@ class JoplinSyncClient extends EventEmitter {
       try {
           if (this.vectorDb) this.vectorDb.close();
           if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
+ // eslint-disable-next-line no-unused-vars
       } catch (e) { /* ignore cleanup error */ }
       setTimeout(() => process.exit(1), 1000);
       throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
@@ -672,6 +681,7 @@ class JoplinSyncClient extends EventEmitter {
           const status = response ? response.status : 'Unknown';
           const statusText = response ? response.statusText : 'Unknown';
           let errBody = '';
+ // eslint-disable-next-line no-unused-vars
           try { errBody = await response.text(); } catch(e) { /* ignore */ }
           throw new Error(`Failed to generate embeddings for batch: HTTP ${status} ${statusText}. ${errBody}`);
         }

@@ -1,4 +1,5 @@
 const request = require('supertest');
+ // eslint-disable-next-line no-unused-vars
 const fs = require('fs');
 
 jest.mock('fs', () => {

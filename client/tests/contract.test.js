@@ -1,3 +1,4 @@
+ // eslint-disable-next-line no-unused-vars
 const { Request } = require('express');
 
 describe('API Contract Validation', () => {

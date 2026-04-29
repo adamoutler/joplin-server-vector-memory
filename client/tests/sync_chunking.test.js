@@ -67,6 +67,7 @@ describe('Semantic Chunking for Large Notes', () => {
     });
 
     const originalSetTimeout = global.setTimeout;
+ // eslint-disable-next-line no-unused-vars
     global.setTimeout = (cb, ms) => originalSetTimeout(cb, 10);
 
     try {
