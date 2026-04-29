@@ -1,6 +1,6 @@
 # 🧠 Joplin Server Vector Memory MCP: Your Universal AI Brain
 
-[![SafeSkill](https://safeskill.dev/api/badge/joplin-server-vector-memory-mcp)](https://safeskill.dev/scan/joplin-server-vector-memory-mcp)
+[![SafeSkill](https://safeskill.dev/api/badge/adamoutler-joplin-server-vector-memory)](https://safeskill.dev/scan/adamoutler-joplin-server-vector-memory)
 
 In an era where cognitive labor is increasingly augmented by a rotating cast of AI assistants, your intellectual capital shouldn't be trapped in isolated digital silos. **Joplin Server Vector Memory MCP** transforms your personal notes into a universal **"AI Brain"**—a secure, centralized, and delightfully interoperable memory engine designed for the multi-agent future. Think of it as the ultimate VIP lounge where all your AI tools can securely access your best ideas! ✨
 
