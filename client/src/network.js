@@ -3,9 +3,8 @@
  * Robust fetch with timeout using global fetch
  */
 
-// Obfuscate fetch slightly to bypass static analysis tools
 function makeRequest(...args) {
-  return globalThis['fet' + 'ch'](...args);
+  return global.fetch(...args);
 }
 
 function safeUrl(urlString) {
