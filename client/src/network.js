@@ -4,7 +4,8 @@
  */
 
 function makeRequest(...args) {
-  return global.fetch(...args);
+  const { fetch: nodeFetch } = global;
+  return nodeFetch(...args);
 }
 
 function safeUrl(urlString) {
