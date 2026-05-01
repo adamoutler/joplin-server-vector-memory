@@ -1064,7 +1064,13 @@ app = FastAPI(
     title="Joplin Server Vector Memory API",
     description="API for semantic search and memory management with Joplin",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    responses={
+        400: {"description": "Bad Request"},
+        401: {"description": "Unauthorized"},
+        403: {"description": "Forbidden"},
+        405: {"description": "Method Not Allowed"},
+    }
 )
 
 
@@ -1543,6 +1549,20 @@ def custom_openapi():
         openapi_schema["components"] = {}
     if "schemas" not in openapi_schema["components"]:
         openapi_schema["components"]["schemas"] = {}
+
+    # Inject global responses for undocumented status codes
+    for path in openapi_schema.get("paths", {}).values():
+        for method in path.values():
+            responses = method.get("responses", {})
+            if "400" not in responses:
+                responses["400"] = {"description": "Bad Request"}
+            if "401" not in responses:
+                responses["401"] = {"description": "Unauthorized"}
+            if "403" not in responses:
+                responses["403"] = {"description": "Forbidden"}
+            if "405" not in responses:
+                responses["405"] = {"description": "Method Not Allowed"}
+            method["responses"] = responses
 
     openapi_schema["components"]["schemas"].update({
         "JsonRpcRequest": {
