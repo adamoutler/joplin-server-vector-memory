@@ -1,8 +1,25 @@
 {
   "name": "adamoutler-joplin-server-vector-memory",
   "version": "1.0.0",
-  "description": "In an era where cognitive labor is increasingly augmented by a rotating cast of AI assistants, your intellectual capital shouldn't be trapped in isolated digital silos. **Joplin Server Vector Memory MCP** transforms your personal notes into a universal **\"AI Brain\"**—a secure, centralized, and delightfully interoperable memory engine designed for the multi-agent future. Think of it as the ultimate VIP lounge where all your AI tools can securely access your best ideas! ✨",
+  "description": "Joplin Server Vector Memory MCP transforms your personal notes into a universal AI Brain, a secure, centralized, and delightfully interoperable memory engine designed for the multi-agent future.",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/adamoutler/joplin-server-vector-memory.git"
+  },
+  "homepage": "https://github.com/adamoutler/joplin-server-vector-memory#readme",
+  "bugs": {
+    "url": "https://github.com/adamoutler/joplin-server-vector-memory/issues"
+  },
+  "author": "Adam Outler",
+  "keywords": [
+    "joplin",
+    "mcp",
+    "vector",
+    "memory",
+    "ai",
+    "agent"
+  ],
   "directories": {
     "doc": "docs",
     "test": "tests"
@@ -10,7 +27,5 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC"
 }
