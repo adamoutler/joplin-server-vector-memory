@@ -255,6 +255,7 @@ jobs:
 
       - name: Update Docker Hub Description
         uses: peter-evans/dockerhub-description@v4
+        continue-on-error: true
         if: github.event_name == 'push'
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
