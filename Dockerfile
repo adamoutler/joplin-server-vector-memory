@@ -57,8 +57,8 @@ RUN cd client && npm ci --build-from-source=sqlite3 && find . -type f -name "Car
 # ==========================================
 FROM node:20-bookworm-slim
 
-# Install runtime essentials
-RUN apt-get update && apt-get install -y \
+# Install runtime essentials and upgrade OS packages for security
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     python3 \
     sqlite3 \
     curl \
