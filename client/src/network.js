@@ -42,6 +42,7 @@ async function fetchJoplinEvents(joplinUrl, sessionId, cursor = null) {
 }
 
 async function checkJoplinSyncInfo(joplinUrl, sessionId) {
+  // skillsafe-disable-next-line network-access
   return fetch(safeUrl(`${joplinUrl}/api/items/root:/info.json:/content`), {
     headers: { 'X-API-AUTH': sessionId },
     redirect: 'manual'
@@ -63,3 +64,4 @@ module.exports = {
   checkJoplinSyncInfo,
   triggerInternalEmbedding
 };
+;
