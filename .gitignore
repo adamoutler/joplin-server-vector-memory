@@ -18,9 +18,11 @@ test_qa.sh
 tmp-open-webui/
 .gemini/*.swp
 new_venv/
+test_venv/
 root_venv/
 root_venv/
 new_venv/
+test_venv/
 server/venv/
 client/node_modules/
 

@@ -1,7 +1,7 @@
 {
   "name": "joplin-sync-client",
   "version": "1.0.4",
-  "description": "Headless sync client for Joplin",
+  "description": "Joplin Server Vector Memory MCP transforms your personal notes into a universal AI Brain, a secure, centralized, and delightfully interoperable memory engine designed for the multi-agent future.",
   "repository": {
     "type": "git",
     "url": "https://github.com/adamoutler/joplin-server-vector-memory.git",
@@ -28,8 +28,7 @@
     "http-proxy-middleware": "^3.0.5",
     "ioredis": "^5.10.1",
     "path-to-regexp": "^8.4.0",
-    "sqlite-vec": "^0.1.7-alpha.2",
-    "uuid": "^11.1.0"
+    "sqlite-vec": "^0.1.7-alpha.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

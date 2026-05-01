@@ -50,7 +50,7 @@ async function checkJoplinSyncInfo(joplinUrl, sessionId) {
 }
 
 async function triggerInternalEmbedding(internalApiUrl, data) {
-  return fetch(safeUrl(`${internalApiUrl}/http-api/internal/embed`), {
+  return globalThis.fetch(safeUrl(`${internalApiUrl}/http-api/internal/embed`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data)
