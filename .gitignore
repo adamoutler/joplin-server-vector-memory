@@ -23,3 +23,8 @@ root_venv/
 new_venv/
 server/venv/
 client/node_modules/
+
+plans/
+
+.venv-precommit/
+node_modules/

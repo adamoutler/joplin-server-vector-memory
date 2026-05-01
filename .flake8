@@ -1,5 +1,5 @@
 [flake8]
 max-line-length = 120
-exclude = .git,__pycache__,venv,.venv,.pytest_cache,node_modules,new_venv,root_venv
+exclude = .git,__pycache__,venv,.venv,.pytest_cache,node_modules,new_venv,root_venv,.venv-precommit
 ignore = E203, W503, E501, W291, F811, F541, F841, E722
 

@@ -1,0 +1,19 @@
+rules:
+  - id: ban-eval
+    patterns:
+      - pattern: eval(...)
+    message: "Using eval() is dangerous and can lead to remote code execution."
+    languages: [python, javascript, typescript]
+    severity: ERROR
+  - id: ban-subprocess-shell-true
+    patterns:
+      - pattern: subprocess.run(..., shell=True, ...)
+    message: "Using subprocess.run() with shell=True is dangerous and can lead to command injection."
+    languages: [python]
+    severity: ERROR
+  - id: ban-subprocess-popen-shell-true
+    patterns:
+      - pattern: subprocess.Popen(..., shell=True, ...)
+    message: "Using subprocess.Popen() with shell=True is dangerous and can lead to command injection."
+    languages: [python]
+    severity: ERROR

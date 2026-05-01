@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/returntocorp/semgrep
+    rev: v1.66.0
+    hooks:
+      - id: semgrep
+        name: Semgrep (Targeted MCP/API Rules)
+        args: ['--config=.semgrep/local.yml', '--error']
+        files: \.(py|js|ts)$
+  - repo: local
+    hooks:
+      - id: validate-mcp-schema
+        name: Validate MCP Tool JSON Schemas
+        entry: ./scripts/validate_mcp.sh
+        language: system
+        files: \.py$
+        pass_filenames: false
+      - id: spectral-lint
+        name: Spectral API Linting
+        entry: ./scripts/validate_openapi.sh
+        language: system
+        files: \.py$
+        pass_filenames: false
