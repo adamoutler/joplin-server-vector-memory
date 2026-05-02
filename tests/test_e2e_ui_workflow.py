@@ -7,7 +7,7 @@ import requests
 import uuid
 import re
 
-DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
 
 def populate_joplin(secret_uuid):

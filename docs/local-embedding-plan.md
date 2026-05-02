@@ -19,4 +19,4 @@ The system must be fully self-contained by default. Relying on an external or co
 
 ### 3. Docker & Configuration
 - **`docker-compose.yml`**: Remove the `ollama` service entirely. Remove the `depends_on: ollama` from the `app` service. The default deployment is now just the single `app` container.
-- **`docker-compose.test.yml`**: Keep or adjust the `ollama` container specifically for testing external provider behavior, or drop it to speed up tests by relying on the internal CPU embedder.
+- **`tests/docker-compose.test.yml`**: Keep or adjust the `ollama` container specifically for testing external provider behavior, or drop it to speed up tests by relying on the internal CPU embedder.

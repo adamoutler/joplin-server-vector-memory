@@ -66,7 +66,7 @@ def assert_snapshot(pytestconfig, request, browser_name):
     return compare
 
 
-DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
 
 @pytest.fixture(autouse=True)

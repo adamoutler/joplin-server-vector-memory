@@ -22,7 +22,7 @@ from mcp.client.session import ClientSession
 # if we run from root, but `tests/` and `server/tests/` are siblings. 
 # Better to import it explicitly or recreate.
 
-DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'docker-compose.test.yml'))
+DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
 # Import ephemeral_joplin from test_ephemeral_joplin just in case, but it's local there
 # Let's just redefine a session-scoped ephemeral_joplin here if it doesn't conflict, 

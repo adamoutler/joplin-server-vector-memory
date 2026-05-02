@@ -23,9 +23,9 @@ Runs unit and integration tests for the JavaScript/Node.js client daemon.
 ### C. Python Tests (`test-python`)
 A comprehensive testing suite for the Python FastMCP server and end-to-end integration. Runs across Python 3.11 and 3.12.
 *   **Unit Tests**: Core server logic, configuration, OpenAPI, and database schema tests.
-*   **Core API & E2E**: Spins up an ephemeral Joplin instance via Docker Compose (`docker-compose.test.yml`) and tests the complete lifecycle (syncing, vectorizing, MCP endpoints).
+*   **Core API & E2E**: Spins up an ephemeral Joplin instance via Docker Compose (`tests/docker-compose.test.yml`) and tests the complete lifecycle (syncing, vectorizing, MCP endpoints).
 *   **Live API**: Tests against the active endpoints.
-*   **Auth Flow & UI**: Uses Playwright to test the dashboard authentication flow (`docker-compose.auth.yml`).
+*   **Auth Flow & UI**: Uses Playwright to test the dashboard authentication flow (`tests/docker-compose.auth.yml`).
 *   **Artifacts**: Automatically extracts and uploads Playwright traces, screenshots, video recordings, and Docker logs if failures occur.
 
 ### D. Reporting & Deployment

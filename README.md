@@ -1,6 +1,14 @@
 # 🧠 Joplin Server Vector Memory MCP: Your Universal AI Brain
 
 [![SafeSkill](https://safeskill.dev/api/badge/adamoutler-joplin-server-vector-memory)](https://safeskill.dev/scan/adamoutler-joplin-server-vector-memory)
+[![CI Pipeline](https://github.com/adamoutler/joplin-server-vector-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/adamoutler/joplin-server-vector-memory/actions/workflows/ci.yml)
+[![NPM Version](https://img.shields.io/github/package-json/v/adamoutler/joplin-server-vector-memory.svg)](https://github.com/adamoutler/joplin-server-vector-memory)
+[![License](https://img.shields.io/github/license/adamoutler/joplin-server-vector-memory.svg)](https://github.com/adamoutler/joplin-server-vector-memory/blob/main/LICENSE)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
+[![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/adamoutler/joplin-server-vector-memory/badge)](https://securityscorecards.dev/viewer/?uri=github.com/adamoutler/joplin-server-vector-memory)
+[![Docker Image Size](https://img.shields.io/docker/image-size/adamoutler/joplin-server-vector-memory-dev/latest?label=Docker%20Size)](https://github.com/adamoutler/joplin-server-vector-memory/pkgs/container/joplin-server-vector-memory-dev)
 
 In an era where cognitive labor is increasingly augmented by a rotating cast of AI assistants, your intellectual capital shouldn't be trapped in isolated digital silos. **Joplin Server Vector Memory MCP** transforms your personal notes into a universal **"AI Brain"**—a secure, centralized, and delightfully interoperable memory engine designed for the multi-agent future. Think of it as the ultimate VIP lounge where all your AI tools can securely access your best ideas! ✨
 
