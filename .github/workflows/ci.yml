@@ -129,6 +129,8 @@ jobs:
 
       - name: Run Pytest (Unit Tests)
         working-directory: ./
+        env:
+          PYTHONPATH: server:server/src
         run: |
           python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
 

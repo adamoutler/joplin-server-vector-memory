@@ -140,11 +140,15 @@ jobs:
 
       - name: Run Pytest (Unit Tests)
         working-directory: ./
+        env:
+          PYTHONPATH: server:server/src
         run: |
           python -m pytest --timeout=600 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_extreme_friction_deletion.py server/tests/test_fts_hybrid.py --junitxml=server/test-results/pytest-unit.xml
 
       - name: Run Pytest (Integration & E2E)
         working-directory: ./
+        env:
+          PYTHONPATH: server:server/src
         run: |
           python -m pytest --e2e --timeout=600 server/tests/test_e2e_mcp.py tests/test_ephemeral_joplin.py tests/test_e2e_workflow.py tests/test_live_api_e2e.py tests/test_auth_flow.py tests/test_dashboard_auth.py tests/test_ui_api_key.py --junitxml=server/test-results/pytest-e2e.xml --tracing=retain-on-failure --screenshot=only-on-failure --video=retain-on-failure
 
