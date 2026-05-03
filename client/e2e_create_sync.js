@@ -31,19 +31,19 @@ async function main() {
   });
   console.log("Created note ID:", note1.id);
   
-  let note2 = await Note.save({
+  let _note2 = await Note.save({
     title: "Second E2E Note",
     body: "This is the second note for the test.",
     parent_id: folder.id
   });
   
-  let note3 = await Note.save({
+  let _note3 = await Note.save({
     title: "Third E2E Note",
     body: "This is the third note for the test.",
     parent_id: folder.id
   });
   
-  let _note4 = await Note.save({
+  let __note4 = await Note.save({
     title: "Fourth E2E Note",
     body: "This is the fourth note for the test.",
     parent_id: folder.id

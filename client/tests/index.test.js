@@ -1,5 +1,5 @@
 const request = require('supertest');
-const fs = require('fs');
+const _fs = require('fs');
 
 jest.mock('fs', () => {
   const actualFs = jest.requireActual('fs');

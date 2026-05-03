@@ -141,11 +141,11 @@ class JoplinSyncClient extends EventEmitter {
       async supported() { return true; }
   
   
-      async setPassword(_service, _account, _password) { console.debug("setPassword", _service); }
+      async setPassword(_service, __account, __password) { console.debug("setPassword", _service); }
   
-      async password(_service, _account) { return null; }
+      async password(__service, __account) { return null; }
   
-      async deletePassword(_service, _account) { console.debug("deletePassword", _service); }
+      async deletePassword(_service, __account) { console.debug("deletePassword", _service); }
       async detectIfMacOsKeychainBug() { return false; }
     }
     
@@ -168,7 +168,7 @@ class JoplinSyncClient extends EventEmitter {
     
     // Monkey-patch revisionService getter to ensure it's never "not set" 
     // due to Node module caching edge cases or Joplin internals.
-          const originalRevisionService = BaseItem.revisionService;
+          const _originalRevisionService = BaseItem.revisionService;
     BaseItem.revisionService = function() {
         if (!this.revisionService_) {
             this.revisionService_ = require('@joplin/lib/services/RevisionService').default.instance();
@@ -507,7 +507,7 @@ class JoplinSyncClient extends EventEmitter {
       try {
           if (this.vectorDb) this.vectorDb.close();
           if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
-      } catch (e) { /* ignore cleanup error */ }
+      } catch (_e) { /* ignore cleanup error */ }
       setTimeout(() => process.exit(1), 1000);
       throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
   }
@@ -676,7 +676,7 @@ class JoplinSyncClient extends EventEmitter {
           const status = response ? response.status : 'Unknown';
           const statusText = response ? response.statusText : 'Unknown';
           let errBody = '';
-          try { errBody = await response.text(); } catch(e) { /* ignore */ }
+          try { errBody = await response.text(); } catch(_e) { /* ignore */ }
           throw new Error(`Failed to generate embeddings for batch: HTTP ${status} ${statusText}. ${errBody}`);
         }
 

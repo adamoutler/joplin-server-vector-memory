@@ -67,7 +67,7 @@ describe('Semantic Chunking for Large Notes', () => {
     });
 
     const originalSetTimeout = global.setTimeout;
-    global.setTimeout = (cb, ms) => originalSetTimeout(cb, 10);
+    global.setTimeout = (cb, _ms) => originalSetTimeout(cb, 10);
 
     try {
         await client.generateEmbeddings();

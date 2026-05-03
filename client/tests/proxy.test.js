@@ -1,5 +1,5 @@
 const request = require('supertest');
-const express = require('express');
+const _express = require('express');
 const fs = require('fs');
 
 jest.mock('fs', () => {
@@ -19,8 +19,8 @@ jest.mock('fs', () => {
 // We will test the app by mocking http-proxy-middleware
 jest.mock('http-proxy-middleware', () => {
   return {
-    createProxyMiddleware: jest.fn((options) => {
-      return (req, res, next) => {
+    createProxyMiddleware: jest.fn((_options) => {
+      return (req, res, _next) => {
         res.status(200).json({ proxied: true, path: req.path });
       };
     })

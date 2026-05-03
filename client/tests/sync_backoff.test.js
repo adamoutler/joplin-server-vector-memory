@@ -50,7 +50,7 @@ describe('Incremental Backoff for Ollama Initialization', () => {
     let callCount = 0;
     let embedCount = 0;
     
-    global.fetch.mockImplementation(async (url, options) => {
+    global.fetch.mockImplementation(async (url, _options) => {
       if (url.includes('/http-api/internal/embed')) {
         callCount++;
         if (callCount <= 3) {
@@ -69,7 +69,7 @@ describe('Incremental Backoff for Ollama Initialization', () => {
     
     // Make the test faster by mocking global.setTimeout temporarily
     const originalSetTimeout = global.setTimeout;
-    global.setTimeout = (cb, ms) => originalSetTimeout(cb, 10); // execute with only 10ms delay for fast test
+    global.setTimeout = (cb, _ms) => originalSetTimeout(cb, 10); // execute with only 10ms delay for fast test
 
     try {
         await client.generateEmbeddings();

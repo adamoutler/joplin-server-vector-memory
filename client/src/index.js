@@ -128,7 +128,7 @@ if (!fs.existsSync(CONFIG_PATH) && !fs.existsSync(CONFIG_PATH + '.tmp')) {
 }
 
 app.get('/llms.txt', (req, res) => {
-  const hostUrl = `${req.protocol}://${req.get('host')}`;
+  const _hostUrl = `${req.protocol}://${req.get('host')}`;
   res.type('text/plain').send(`# For Humans
 To set up MCP access for your AI Agent:
 
@@ -233,7 +233,7 @@ app.use(async (req, res, next) => {
       if (!joplinUrl && proxyConfig.joplinServerUrl) {
         joplinUrl = proxyConfig.joplinServerUrl.replace(/\/$/, '');
       }
-    } catch(e) {
+    } catch(_e) {
       // ignore parse errors
     }
   }
@@ -585,7 +585,7 @@ app.post('/sync', async (req, res) => {
     try {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       config = JSON.parse(data);
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
   }
   
   if (!config.joplinServerUrl || !config.joplinUsername) {
@@ -603,7 +603,7 @@ app.post('/sync', async (req, res) => {
 });
 
 app.post('/auth', async (req, res) => {
-  const { serverUrl, username, password, masterPassword, memoryServerAddress, rotate } = req.body;
+  const { serverUrl, username, password, masterPassword, memoryServerAddress, _rotate } = req.body;
 
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
@@ -626,7 +626,7 @@ app.post('/auth', async (req, res) => {
       throw new Error('Invalid protocol');
     }
     cleanServerUrl = parsed.toString().replace(/\/$/, '');
-  } catch (err) {
+  } catch (_err) {
     return res.status(400).json({ error: 'Invalid Joplin Server URL format or protocol.' });
   }
 
@@ -704,7 +704,7 @@ app.post('/auth', async (req, res) => {
       if (fs.existsSync(sqliteDbPath)) {
           try {
               fs.unlinkSync(sqliteDbPath);
-          } catch (e) {
+          } catch (_e) {
               console.warn('Failed to unlink sqlite db (might be locked), attempting to truncate/clear instead...');
           }
       }
@@ -726,7 +726,7 @@ app.post('/auth', async (req, res) => {
 
   // Clear the in-memory sync client so it re-initializes with the new databases
   if (syncClient && syncClient.db) {
-      try { syncClient.db.close(); } catch(e) { /* ignore */ }
+      try { syncClient.db.close(); } catch(_e) { /* ignore */ }
   }
   syncClient = null;
 
@@ -770,7 +770,7 @@ app.get('/auth/keys', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
   }
   res.json({ api_keys: config.api_keys || [] });
 });
@@ -781,7 +781,7 @@ app.post('/auth/keys/create', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
   }
   
   const newKey = 'JMS_' + crypto.randomBytes(32).toString('hex');
@@ -798,7 +798,7 @@ app.post('/auth/keys/create', (req, res) => {
     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
     res.json({ success: true, key: keyObj });
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ error: 'Failed to save new key' });
   }
 });
@@ -809,7 +809,7 @@ app.post('/auth/keys/delete', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-    } catch (e) { /* ignore */ }
+    } catch (_e) { /* ignore */ }
   }
   
   if (config.api_keys) {
@@ -818,7 +818,7 @@ app.post('/auth/keys/delete', (req, res) => {
       fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
       res.json({ success: true });
-    } catch (err) {
+    } catch (_err) {
       res.status(500).json({ error: 'Failed to delete key' });
     }
   } else {

@@ -1,6 +1,6 @@
 const request = require('supertest');
 const fs = require('fs');
-const path = require('path');
+const _path = require('path');
 
 process.env.JOPLIN_SERVER_URL = 'http://testserver';
 const authHeader = 'Basic ' + Buffer.from('setup:1-mcp-server').toString('base64');
@@ -124,7 +124,7 @@ describe('Dashboard Endpoints', () => {
       joplinPassword: 'password123'
     }));
 
-    const response = await request(app)
+    const _response = await request(app)
       .post('/auth')
       .set('Authorization', adminAuthHeader)
       .send({
@@ -185,7 +185,7 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(200);
 
     // Now mock the fetch to throw an error (or return 500)
-    global.fetch.mockImplementationOnce(async (url, options) => {
+    global.fetch.mockImplementationOnce(async (url, _options) => {
       if (url.endsWith('/api/sessions')) {
         return { ok: false, status: 500, json: async () => ({ error: 'Internal Server Error' }) };
       }

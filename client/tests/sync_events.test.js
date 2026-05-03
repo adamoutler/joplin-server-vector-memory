@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const _fs = require('fs');
+const _path = require('path');
 
 // Mock syncClient module before requiring index.js
 const mockSync = jest.fn().mockResolvedValue();

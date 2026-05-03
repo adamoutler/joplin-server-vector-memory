@@ -1,4 +1,4 @@
-const { Request } = require('express');
+const { _Request } = require('express');
 
 describe('API Contract Validation', () => {
     test('MCP request payload conforms to JSON-RPC 2.0 schema expected by backend', () => {
