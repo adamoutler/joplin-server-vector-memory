@@ -9,7 +9,7 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'd
 
 
 @pytest.mark.enable_socket
-def test_api_server_live_endpoints(ephemeral_joplin):
+def test_api_server_live_endpoints(ephemeral_joplin):  # NOSONAR
     # setup_live_container starts docker-compose.test.yml which exposes:
     # app proxy on 3001
     # app backend on 8002

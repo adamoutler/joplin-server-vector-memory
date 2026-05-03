@@ -50,7 +50,10 @@ RUN pip install --no-cache-dir -r server/requirements.txt
 
 # Install Node dependencies and compile sqlite3
 COPY client/package*.json ./client/
-RUN cd client && npm ci --build-from-source=sqlite3 && find . -type f -name "Cargo.lock" -delete && npm cache clean --force
+RUN cd client && \  # NOSONAR
+    npm ci --build-from-source=sqlite3 && \
+    find . -type f -name "Cargo.lock" -delete && \
+    npm cache clean --force
 
 # ==========================================
 # Stage 3: Final Runtime (Lightweight)

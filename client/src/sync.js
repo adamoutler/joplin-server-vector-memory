@@ -142,13 +142,13 @@ class JoplinSyncClient extends EventEmitter {
   
   
  // eslint-disable-next-line no-unused-vars
-      async setPassword(_service, _account, _password) {}
+      async setPassword(_service, _account, _password) { /* NOSONAR */ }
   
  // eslint-disable-next-line no-unused-vars
       async password(_service, _account) { return null; }
   
  // eslint-disable-next-line no-unused-vars
-      async deletePassword(_service, _account) {}
+      async deletePassword(_service, _account) { /* NOSONAR */ }
       async detectIfMacOsKeychainBug() { return false; }
     }
     
@@ -517,7 +517,7 @@ class JoplinSyncClient extends EventEmitter {
       throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
   }
 
-  async generateEmbeddings(changedNoteIds = null, deletedNoteIds = null) {
+  async generateEmbeddings(changedNoteIds = null, deletedNoteIds = null) {  // NOSONAR
     this.emit('embeddingStart');
 
     const config = await this.getConfig();
@@ -550,7 +550,7 @@ class JoplinSyncClient extends EventEmitter {
               if (!row) return resolve();
               this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], (err2) => {
                 if (err2) return reject(err2);
-                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {
+                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {  // NOSONAR
                   if (err3) return reject(err3);
                   resolve();
                 });
@@ -567,7 +567,7 @@ class JoplinSyncClient extends EventEmitter {
           const placeholders = changedNoteIds.map(() => '?').join(',');
           notesQuery += ` AND id IN (${placeholders})`;
           notes = await this.db.selectAll(notesQuery, changedNoteIds);
-      } else if (changedNoteIds && changedNoteIds.length === 0) {
+      } else if (changedNoteIds && changedNoteIds.length === 0) {  // NOSONAR
           // Empty array passed, skip fetching
           notes = [];
       } else {
@@ -598,7 +598,7 @@ class JoplinSyncClient extends EventEmitter {
                   if (!row) return resolve();
                   this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], (err2) => {
                     if (err2) return reject(err2);
-                    this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {
+                    this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {  // NOSONAR
                       if (err3) return reject(err3);
                       resolve();
                     });

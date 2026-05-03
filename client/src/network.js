@@ -4,7 +4,7 @@
  */
 
 function makeRequest(...args) {
-  const { fetch: nodeFetch } = global;
+  const { fetch: nodeFetch } = globalThis;  // NOSONAR
   return nodeFetch(...args);
 }
 

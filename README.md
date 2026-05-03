@@ -4,7 +4,6 @@
 [![CI Pipeline](https://github.com/adamoutler/joplin-server-vector-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/adamoutler/joplin-server-vector-memory/actions/workflows/ci.yml)
 [![NPM Version](https://img.shields.io/github/package-json/v/adamoutler/joplin-server-vector-memory.svg)](https://github.com/adamoutler/joplin-server-vector-memory)
 [![License](https://img.shields.io/github/license/adamoutler/joplin-server-vector-memory.svg)](https://github.com/adamoutler/joplin-server-vector-memory/blob/main/LICENSE)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 [![Commitizen friendly](https://img.shields.io/badge/commitizen-friendly-brightgreen.svg)](http://commitizen.github.io/cz-cli/)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/adamoutler/joplin-server-vector-memory/badge)](https://securityscorecards.dev/viewer/?uri=github.com/adamoutler/joplin-server-vector-memory)

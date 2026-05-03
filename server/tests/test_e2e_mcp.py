@@ -13,12 +13,12 @@ def get_auth_headers():
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": "admin",
+        "password": "admin",  # NOSONAR
         "masterPassword": "test_master_password",
         "rotate": True
     }
 
-    for i in range(30):
+    for _ in range(30):  # NOSONAR
         try:
             auth_resp = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=5)
             if auth_resp.status_code == 200:

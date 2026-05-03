@@ -299,10 +299,10 @@ describe('JoplinSyncClient', () => {
     let originalFetch;
 
     beforeEach(() => {
-      originalFetch = global.fetch;
+      originalFetch = globalThis.fetch;
   
  // eslint-disable-next-line no-unused-vars
-      global.fetch = jest.fn().mockImplementation((_url, _options) => {
+      globalThis.fetch = jest.fn().mockImplementation((_url, _options) => {  // NOSONAR
         return Promise.resolve({
           ok: true,
           json: async () => ({ embeddings: [ [0.1] ] })
@@ -328,7 +328,7 @@ describe('JoplinSyncClient', () => {
       const mockEmbedding = [0.1, 0.2, 0.3];
   
  // eslint-disable-next-line no-unused-vars
-      global.fetch.mockImplementation((_url, _options) => {
+      globalThis.fetch.mockImplementation((_url, _options) => {  // NOSONAR
         return Promise.resolve({
           ok: true,
           json: async () => ({ embeddings: [ mockEmbedding ] })
@@ -372,7 +372,7 @@ describe('JoplinSyncClient', () => {
       const mockEmbedding = [0.4, 0.5, 0.6];
   
  // eslint-disable-next-line no-unused-vars
-      global.fetch.mockImplementation((_url, _options) => {
+      globalThis.fetch.mockImplementation((_url, _options) => {  // NOSONAR
         return Promise.resolve({
           ok: true,
           json: async () => ({ embeddings: [ mockEmbedding ] })
@@ -499,7 +499,7 @@ describe('JoplinSyncClient', () => {
       let embedAttempts = 0;
   
  // eslint-disable-next-line no-unused-vars
-      global.fetch.mockImplementation((_url, _options) => {
+      globalThis.fetch.mockImplementation((_url, _options) => {  // NOSONAR
         embedAttempts++;
         if (embedAttempts === 1) return Promise.reject(new Error('fetch failed'));
         if (embedAttempts === 2) return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });

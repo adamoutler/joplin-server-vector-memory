@@ -45,8 +45,7 @@ async function main() {
     parent_id: folder.id
   });
   
- // eslint-disable-next-line no-unused-vars
-  let note4 = await Note.save({
+  let _note4 = await Note.save({
     title: "Fourth E2E Note",
     body: "This is the fourth note for the test.",
     parent_id: folder.id

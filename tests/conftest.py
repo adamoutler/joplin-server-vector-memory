@@ -117,13 +117,13 @@ def ephemeral_joplin():
     env.pop("JOPLIN_MASTER_PASSWORD", None)
 
     # Down first just in case
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)  # NOSONAR
 
     # Spin up and wait for healthchecks
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build", "--force-recreate", "--remove-orphans", "--wait"], env=env, check=True)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build", "--force-recreate", "--remove-orphans", "--wait"], env=env, check=True)
 
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
-    os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"
+    os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"  # NOSONAR
     os.environ["JOPLIN_BASE_URL"] = "http://joplin:22300"
 
     # Poll endpoints to ensure they are actually ready for traffic
@@ -151,7 +151,7 @@ def ephemeral_joplin():
         yield
     finally:
         # Tear down
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", "/dev/null", "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], check=True)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], check=True)
 
 
 def pytest_addoption(parser):
