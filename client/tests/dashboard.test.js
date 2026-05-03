@@ -1,6 +1,5 @@
 const request = require('supertest');
 const fs = require('fs');
- // eslint-disable-next-line no-unused-vars
 const path = require('path');
 
 process.env.JOPLIN_SERVER_URL = 'http://testserver';
@@ -125,7 +124,6 @@ describe('Dashboard Endpoints', () => {
       joplinPassword: 'password123'
     }));
 
- // eslint-disable-next-line no-unused-vars
     const response = await request(app)
       .post('/auth')
       .set('Authorization', adminAuthHeader)
@@ -187,7 +185,6 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(200);
 
     // Now mock the fetch to throw an error (or return 500)
- // eslint-disable-next-line no-unused-vars
     global.fetch.mockImplementationOnce(async (url, options) => {
       if (url.endsWith('/api/sessions')) {
         return { ok: false, status: 500, json: async () => ({ error: 'Internal Server Error' }) };

@@ -128,7 +128,6 @@ if (!fs.existsSync(CONFIG_PATH) && !fs.existsSync(CONFIG_PATH + '.tmp')) {
 }
 
 app.get('/llms.txt', (req, res) => {
- // eslint-disable-next-line no-unused-vars
   const hostUrl = `${req.protocol}://${req.get('host')}`;
   res.type('text/plain').send(`# For Humans
 To set up MCP access for your AI Agent:
@@ -211,7 +210,7 @@ app.use('/node-api', (req, res, next) => {
   next();
 });
 
-app.use(async (req, res, next) => {  // NOSONAR
+app.use(async (req, res, next) => {
   // Allow internal API calls from the Python MCP server without basic auth
   if (req.isInternalApi) {
     return next();
@@ -234,7 +233,6 @@ app.use(async (req, res, next) => {  // NOSONAR
       if (!joplinUrl && proxyConfig.joplinServerUrl) {
         joplinUrl = proxyConfig.joplinServerUrl.replace(/\/$/, '');
       }
- // eslint-disable-next-line no-unused-vars
     } catch(e) {
       // ignore parse errors
     }
@@ -253,7 +251,7 @@ app.use(async (req, res, next) => {  // NOSONAR
     return send401("Missing Authorization header");
   }
 
-  const match = authHeader.match(/^Basic\s+([a-zA-Z0-9+/=]+)$/i);  // NOSONAR
+  const match = authHeader.match(/^Basic\s+([a-zA-Z0-9+/=]+)$/i);
   if (!match) {
     return send401("Invalid Authorization header format");
   }
@@ -587,7 +585,6 @@ app.post('/sync', async (req, res) => {
     try {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       config = JSON.parse(data);
- // eslint-disable-next-line no-unused-vars
     } catch (e) { /* ignore */ }
   }
   
@@ -605,8 +602,7 @@ app.post('/sync', async (req, res) => {
   res.json({ success: true, message: 'Sync cycle initiated.' });
 });
 
-app.post('/auth', async (req, res) => {  // NOSONAR
- // eslint-disable-next-line no-unused-vars
+app.post('/auth', async (req, res) => {
   const { serverUrl, username, password, masterPassword, memoryServerAddress, rotate } = req.body;
 
   let config = {};
@@ -630,7 +626,6 @@ app.post('/auth', async (req, res) => {  // NOSONAR
       throw new Error('Invalid protocol');
     }
     cleanServerUrl = parsed.toString().replace(/\/$/, '');
- // eslint-disable-next-line no-unused-vars
   } catch (err) {
     return res.status(400).json({ error: 'Invalid Joplin Server URL format or protocol.' });
   }
@@ -709,7 +704,6 @@ app.post('/auth', async (req, res) => {  // NOSONAR
       if (fs.existsSync(sqliteDbPath)) {
           try {
               fs.unlinkSync(sqliteDbPath);
- // eslint-disable-next-line no-unused-vars
           } catch (e) {
               console.warn('Failed to unlink sqlite db (might be locked), attempting to truncate/clear instead...');
           }
@@ -732,7 +726,6 @@ app.post('/auth', async (req, res) => {  // NOSONAR
 
   // Clear the in-memory sync client so it re-initializes with the new databases
   if (syncClient && syncClient.db) {
- // eslint-disable-next-line no-unused-vars
       try { syncClient.db.close(); } catch(e) { /* ignore */ }
   }
   syncClient = null;
@@ -777,7 +770,6 @@ app.get('/auth/keys', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
- // eslint-disable-next-line no-unused-vars
     } catch (e) { /* ignore */ }
   }
   res.json({ api_keys: config.api_keys || [] });
@@ -789,7 +781,6 @@ app.post('/auth/keys/create', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
- // eslint-disable-next-line no-unused-vars
     } catch (e) { /* ignore */ }
   }
   
@@ -807,7 +798,6 @@ app.post('/auth/keys/create', (req, res) => {
     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
     res.json({ success: true, key: keyObj });
- // eslint-disable-next-line no-unused-vars
   } catch (err) {
     res.status(500).json({ error: 'Failed to save new key' });
   }
@@ -819,7 +809,6 @@ app.post('/auth/keys/delete', (req, res) => {
   if (fs.existsSync(CONFIG_PATH)) {
     try {
       config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
- // eslint-disable-next-line no-unused-vars
     } catch (e) { /* ignore */ }
   }
   
@@ -829,7 +818,6 @@ app.post('/auth/keys/delete', (req, res) => {
       fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
       res.json({ success: true });
- // eslint-disable-next-line no-unused-vars
     } catch (err) {
       res.status(500).json({ error: 'Failed to delete key' });
     }
@@ -886,7 +874,7 @@ app.post('/auth/wipe', async (req, res) => {
 
 let syncIntervalId = null;
 
-async function runSyncCycle(config) {  // NOSONAR
+async function runSyncCycle(config) {
   if (Date.now() < nextAllowedSyncTime) return;
   console.log('runSyncCycle triggered with config:', Object.keys(config || {}));
   if (isProcessing) return;
@@ -984,7 +972,7 @@ async function runSyncCycle(config) {  // NOSONAR
                   while (hasMore) {
                       const eventsRes = await fetchJoplinEvents(joplinUrl, sessionId, newCursor).catch(() => null);
 
-                      if (eventsRes && eventsRes.ok) {  // NOSONAR
+                      if (eventsRes && eventsRes.ok) {
                           const eventsData = await eventsRes.json();
                           for (const item of (eventsData.items || [])) {
                               if (item.item_type === 1) { // 1 is Note
@@ -1017,12 +1005,12 @@ async function runSyncCycle(config) {  // NOSONAR
                   await syncClient.sync();
                   await syncClient.decrypt();
                   
-                  if (!cursor) {  // NOSONAR
+                  if (!cursor) {
                       // First run, do full embedding
                       await syncClient.generateEmbeddings();
                       // Fetch initial cursor
                       const initialEventsRes = await fetchJoplinEvents(joplinUrl, sessionId).catch(() => null);
-                      if (initialEventsRes && initialEventsRes.ok) {  // NOSONAR
+                      if (initialEventsRes && initialEventsRes.ok) {
                           const initialEventsData = await initialEventsRes.json();
                           if (initialEventsData.cursor) {
                               newCursor = initialEventsData.cursor;
@@ -1047,7 +1035,7 @@ async function runSyncCycle(config) {  // NOSONAR
               if (newCursor && newCursor !== cursor) {
                   config.lastEventCursor = newCursor;
                   try {
-                      const fs = require('fs');  // NOSONAR
+                      const fs = require('fs');
                       const cfgRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
                       const cfgObj = JSON.parse(cfgRaw);
                       cfgObj.lastEventCursor = newCursor;
@@ -1138,7 +1126,7 @@ async function startSync(config) {
 // The onAuthSuccess() handler will auto-start sync once the user authenticates
 // via Basic Auth. Only the username/server URL marriage is preserved across restarts.
 if (fs.existsSync(CONFIG_PATH)) {
-  fs.promises.readFile(CONFIG_PATH, 'utf8').then(async data => {  // NOSONAR
+  fs.promises.readFile(CONFIG_PATH, 'utf8').then(async data => {
     try {
       const config = JSON.parse(data);
       if (config.joplinServerUrl && config.joplinUsername) {

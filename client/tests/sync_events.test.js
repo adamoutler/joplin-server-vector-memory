@@ -1,7 +1,5 @@
- // eslint-disable-next-line no-unused-vars
-const fs = require('fs');  // NOSONAR
- // eslint-disable-next-line no-unused-vars
-const path = require('path');  // NOSONAR
+const fs = require('fs');
+const path = require('path');
 
 // Mock syncClient module before requiring index.js
 const mockSync = jest.fn().mockResolvedValue();
@@ -12,12 +10,12 @@ const mockInit = jest.fn().mockResolvedValue();
 jest.mock('../src/sync', () => {
     return {
         JoplinSyncClient: class {
-            constructor() {}  // NOSONAR
+            constructor() {}
             init = mockInit;
             sync = mockSync;
             decrypt = mockDecrypt;
             generateEmbeddings = mockGenerateEmbeddings;
-            on() {}  // NOSONAR
+            on() {}
         }
     };
 });
@@ -29,7 +27,7 @@ describe('Event-Based Polling Synchronization', () => {
     let configObj;
 
     beforeEach(() => {
-        originalFetch = global.fetch;  // NOSONAR
+        originalFetch = global.fetch;
         
         mockSync.mockClear();
         mockDecrypt.mockClear();
@@ -42,7 +40,7 @@ describe('Event-Based Polling Synchronization', () => {
             joplinPassword: 'password'
         };
 
-        globalThis.fetch = jest.fn();  // NOSONAR
+        globalThis.fetch = jest.fn();
         
         // Reset Express state
         app.syncState = { status: 'ready', progress: null };
@@ -50,17 +48,17 @@ describe('Event-Based Polling Synchronization', () => {
     });
 
     afterEach(() => {
-        global.fetch = originalFetch;  // NOSONAR
+        global.fetch = originalFetch;
         jest.clearAllMocks();
     });
 
     it('should run full sync if no cursor is present', async () => {
         // First call: session
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'session-123' }) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'session-123' }) });
         // Second call: info.json (check permissions)
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
         // Third call: initial cursor fetch
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ cursor: 'cursor-456' }) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ cursor: 'cursor-456' }) });
 
         // Act
         await app.runSyncCycle(configObj);
@@ -76,11 +74,11 @@ describe('Event-Based Polling Synchronization', () => {
         configObj.lastEventCursor = 'cursor-456';
         
         // First call: session
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'session-123' }) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'session-123' }) });
         // Second call: info.json
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
         // Third call: /events?cursor=cursor-456
-        global.fetch.mockResolvedValueOnce({  // NOSONAR
+        global.fetch.mockResolvedValueOnce({
             ok: true, 
             json: async () => ({
                 has_more: false,
@@ -105,11 +103,11 @@ describe('Event-Based Polling Synchronization', () => {
         configObj.lastEventCursor = 'cursor-456';
         
         // First call: session
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'session-123' }) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'session-123' }) });
         // Second call: info.json
-        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });  // NOSONAR
+        global.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({}) });
         // Third call: /events?cursor=cursor-456
-        global.fetch.mockResolvedValueOnce({  // NOSONAR
+        global.fetch.mockResolvedValueOnce({
             ok: true, 
             json: async () => ({
                 has_more: false,

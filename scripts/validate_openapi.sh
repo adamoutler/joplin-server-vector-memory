@@ -1,7 +1,7 @@
 #!/bin/bash
 cd "$(dirname "$0")/.." || exit 1
 
-if [ ! -f "server/venv/bin/activate" ]; then  # NOSONAR
+if [ ! -f "server/venv/bin/activate" ]; then
   echo "server/venv not found. Skipping Spectral (requires server env)."
   exit 0
 fi
@@ -23,7 +23,7 @@ with open('openapi.json', 'w') as f:
     json.dump(fastapi_app.openapi(), f)
 "
 
-if [ $? -ne 0 ]; then  # NOSONAR
+if [ $? -ne 0 ]; then
   echo "Failed to dump OpenAPI schema."
   exit 1
 fi
@@ -38,7 +38,7 @@ EXIT_CODE=$?
 # Clean up
 rm -f openapi.json
 
-if [[ $EXIT_CODE -ne 0 ]]; then  # NOSONAR
+if [[ $EXIT_CODE -ne 0 ]]; then
   echo "Spectral linting failed!"
   exit $EXIT_CODE
 fi

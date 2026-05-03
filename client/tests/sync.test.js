@@ -101,7 +101,6 @@ jest.mock('sqlite3', () => ({
         callback.call({ lastID: 1 }, null);
       }
     }
- // eslint-disable-next-line no-unused-vars
     prepare(query) {
       return {
         run: function(params, callback) {
@@ -301,8 +300,7 @@ describe('JoplinSyncClient', () => {
     beforeEach(() => {
       originalFetch = globalThis.fetch;
   
- // eslint-disable-next-line no-unused-vars
-      globalThis.fetch = jest.fn().mockImplementation((_url, _options) => {  // NOSONAR
+      globalThis.fetch = jest.fn().mockImplementation((_url, _options) => {
         return Promise.resolve({
           ok: true,
           json: async () => ({ embeddings: [ [0.1] ] })
@@ -327,8 +325,7 @@ describe('JoplinSyncClient', () => {
 
       const mockEmbedding = [0.1, 0.2, 0.3];
   
- // eslint-disable-next-line no-unused-vars
-      globalThis.fetch.mockImplementation((_url, _options) => {  // NOSONAR
+      globalThis.fetch.mockImplementation((_url, _options) => {
         return Promise.resolve({
           ok: true,
           json: async () => ({ embeddings: [ mockEmbedding ] })
@@ -371,8 +368,7 @@ describe('JoplinSyncClient', () => {
 
       const mockEmbedding = [0.4, 0.5, 0.6];
   
- // eslint-disable-next-line no-unused-vars
-      globalThis.fetch.mockImplementation((_url, _options) => {  // NOSONAR
+      globalThis.fetch.mockImplementation((_url, _options) => {
         return Promise.resolve({
           ok: true,
           json: async () => ({ embeddings: [ mockEmbedding ] })
@@ -457,7 +453,6 @@ describe('JoplinSyncClient', () => {
         selectAll: jest.fn().mockResolvedValue(mockNotes)
       };
 
- // eslint-disable-next-line no-unused-vars
       global.fetch.mockImplementation((url, options) => {
         if (url && url.includes('/api/tags')) {
           return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
@@ -498,8 +493,7 @@ describe('JoplinSyncClient', () => {
       // Mock fetch to fail 2 times then succeed for embeddings
       let embedAttempts = 0;
   
- // eslint-disable-next-line no-unused-vars
-      globalThis.fetch.mockImplementation((_url, _options) => {  // NOSONAR
+      globalThis.fetch.mockImplementation((_url, _options) => {
         embedAttempts++;
         if (embedAttempts === 1) return Promise.reject(new Error('fetch failed'));
         if (embedAttempts === 2) return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' });

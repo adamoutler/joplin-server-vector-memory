@@ -58,7 +58,7 @@ describe('sqlite-vec functionality', () => {
   });
 
   it('should unlink vector.sqlite and exit on Vector DB corruption (JOPLINMEM-154)', async () => {
-    const fs = require('fs');  // NOSONAR
+    const fs = require('fs');
     const { JoplinSyncClient } = require('../src/sync');
     const client = new JoplinSyncClient({
       serverUrl: 'http://test', username: 'test', password: 'test', masterPassword: 'test', profileDir: '/tmp'
@@ -73,7 +73,7 @@ describe('sqlite-vec functionality', () => {
     client.vectorDb = {
       close: jest.fn(),
       all: jest.fn((query, cb) => cb(new Error("disk I/O error"))),
-      run: jest.fn((query, cb) => cb && cb(null)),  // NOSONAR
+      run: jest.fn((query, cb) => cb && cb(null)),
       prepare: jest.fn().mockReturnValue({ run: jest.fn(), finalize: jest.fn() }),
       serialize: jest.fn((cb) => cb())
     };

@@ -1,6 +1,5 @@
 const request = require('supertest');
- // eslint-disable-next-line no-unused-vars
-const fs = require('fs');  // NOSONAR
+const fs = require('fs');
 
 jest.mock('fs', () => {
   const actualFs = jest.requireActual('fs');
@@ -38,7 +37,7 @@ jest.mock('../src/sync', () => {
 describe('index.js runSyncCycle error handling', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    globalThis.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ id: 'token' }) }));  // NOSONAR
+    globalThis.fetch = jest.fn(async () => ({ ok: true, status: 200, json: async () => ({ id: 'token' }) }));
   });
 
   afterAll(() => {

@@ -25,7 +25,7 @@ from enum import Enum
 from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents, TextContent, Annotations
 from typing import Union, List, Optional
 
-for key, value in list(os.environ.items()):  # NOSONAR
+for key, value in list(os.environ.items()):
     if isinstance(value, str) and value.strip() == "":
         del os.environ[key]
 
@@ -53,8 +53,8 @@ def get_local_model():
         try:
             # trust_remote_code=True is required for some models like nomic-embed-text-v1.5
             _local_model = SentenceTransformer(model_name, trust_remote_code=True)
-        except Exception as e:
-            logger.warning("Failed to load preferred model %s: %s. Falling back to all-MiniLM-L6-v2", model_name, e)
+        except Exception:
+            logger.warning("Failed to load preferred model %s. Falling back to all-MiniLM-L6-v2", model_name)
             _local_model = SentenceTransformer('all-MiniLM-L6-v2')
 
     return _local_model
@@ -83,7 +83,7 @@ def _load_config_file() -> dict:
     The cache is invalidated if the file's modification time changes.
     """
     global _config_cache, _config_mtime
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")  # NOSONAR
+    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     try:
         if os.path.exists(config_path):
             mtime = os.path.getmtime(config_path)
@@ -97,7 +97,7 @@ def _load_config_file() -> dict:
         # If the file exists but we failed to read it, do NOT return an empty dict, 
         # otherwise we will wipe the user's settings during a REINDEX merge.
         if os.path.exists(config_path):
-            raise HTTPException(status_code=500, detail="Critical Configuration Error: Lock file is corrupted or unreadable.")  # NOSONAR
+            raise HTTPException(status_code=500, detail="Critical Configuration Error: Lock file is corrupted or unreadable.")
     return _config_cache
 
 
@@ -127,7 +127,7 @@ def get_config() -> dict:
     }
 
 
-def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[float]]]:  # NOSONAR
+def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[float]]]:
     config = get_config()
     embed_config = config.get("embedding", {})
 
@@ -259,13 +259,13 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
         dt = dateparser.parse(date_str, settings={'RELATIVE_BASE': datetime.datetime.now()})
         if dt:
             return int(dt.timestamp() * 1000)
-    except Exception as e:
-        logger.warning(f"Failed to parse date string '{date_str}': {e}")  # NOSONAR
+    except Exception:
+        logger.warning("Failed to parse date string '%s'", date_str)
     return None
 
 
 @mcp.tool(name="notes_search")
-def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[Union[dict, TextContent]]:  # NOSONAR
+def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[Union[dict, TextContent]]:
     """
     Search notes semantically using the provided query.
     Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
@@ -361,14 +361,14 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
         notes_data = {}
 
         for rank, row in enumerate(vec_results):
-            rowid, note_id, title, content, distance, updated_time, parent_id, folder_path = row  # NOSONAR
+            rowid, note_id, title, content, distance, updated_time, parent_id, folder_path = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
                 notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
             rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
 
         for rank, row in enumerate(fts_results):
-            rowid, note_id, title, content, score, updated_time, parent_id, folder_path = row  # NOSONAR
+            rowid, note_id, title, content, score, updated_time, parent_id, folder_path = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
                 notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
@@ -569,13 +569,13 @@ def get_note(note_id: str) -> list[Union[dict, TextContent]]:
             TextContent(type="text", text=display_str, annotations=Annotations(audience=["user"]))
         ]
     return [
-        TextContent(type="text", text=json.dumps({"error": "Note not found"}), annotations=Annotations(audience=["assistant"])),  # NOSONAR
+        TextContent(type="text", text=json.dumps({"error": "Note not found"}), annotations=Annotations(audience=["assistant"])),
         TextContent(type="text", text="Error: Note not found", annotations=Annotations(audience=["user"]))
     ]
 
 
 @mcp.tool(name="notes_remember")
-def remember(title: str, content: str, folder: str = "Agent Memory") -> list[Union[dict, TextContent]]:  # NOSONAR
+def remember(title: str, content: str, folder: str = "Agent Memory") -> list[Union[dict, TextContent]]:
     """
     Remember a new note by storing its title and content.
     Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
@@ -914,7 +914,7 @@ class SearchRequest(BaseModel):
 
 
 class SearchResponseItem(BaseModel):
-    id: str = Field(..., description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])  # NOSONAR
+    id: str = Field(..., description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
     blurb: str = Field(..., description="Note Blurb", examples=["Boil water, add pasta..."])
     score: float = Field(..., description="RRF Score (higher is better)", examples=[0.123])
@@ -935,7 +935,7 @@ class GetResponse(BaseModel):
     content: Optional[str] = Field(None, description="Note Content", examples=["# Pasta Recipe\n\nBoil water..."])
     updated_time: Optional[int] = Field(None, description="Last updated timestamp", examples=[1628000000])
     content_hash: Optional[str] = Field(None, description="SHA256 hash of the content")
-    error: Optional[str] = Field(None, description="Error message if any")  # NOSONAR
+    error: Optional[str] = Field(None, description="Error message if any")
 
 
 class RememberRequest(BaseModel):
@@ -946,7 +946,7 @@ class RememberRequest(BaseModel):
 
 
 class RememberResponse(BaseModel):
-    status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])  # NOSONAR
+    status: Optional[str] = Field(None, description="Status of the operation", examples=["success"])
     id: Optional[str] = Field(None, description="New Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"])
     title: Optional[str] = Field(None, description="New Note Title", examples=["New Recipe"])
     message: Optional[str] = Field(None, description="Success or error message", examples=[
@@ -1006,7 +1006,7 @@ class UpdateResponse(BaseModel):
 security = HTTPBearer()
 
 
-def check_token_validity(token: str) -> bool:  # NOSONAR
+def check_token_validity(token: str) -> bool:
     import datetime
     try:
         config = _load_config_file()
@@ -1043,13 +1043,13 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
 
 
 # Configure FastMCP global settings for absolute paths (to avoid 404s when mounted at root)
-fastmcp.settings.sse_path = "/http-api/mcp/sse"  # NOSONAR
+fastmcp.settings.sse_path = "/http-api/mcp/sse"
 fastmcp.settings.message_path = "/http-api/mcp/sse/messages"
 fastmcp.settings.streamable_http_path = "/http-api/mcp/stream"
 
 # Create the Starlette/ASGI app for uvicorn
 fastmcp_app = mcp.http_app(transport='sse')
-stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/http-api/mcp/stateless", json_response=True)  # NOSONAR
+stateless_app = mcp.http_app(transport='http', stateless_http=True, path="/http-api/mcp/stateless", json_response=True)
 streamable_app = mcp.http_app(transport='streamable-http')
 
 
@@ -1122,7 +1122,7 @@ def internal_embed(request: InternalEmbedRequest):
         return {"embeddings": embeddings}
     except Exception as e:
         logger.error(f"Error generating internal embedding: {e}")
-        raise HTTPException(status_code=500, detail=str(e))  # NOSONAR
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
@@ -1161,7 +1161,7 @@ def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
         }
     }
 )
-async def api_search(request: SearchRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def api_search(request: SearchRequest, token: str = Depends(verify_token)):
     results = search_notes(
         query=request.query,
         page=request.page,
@@ -1174,7 +1174,7 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
     )
     extracted = extract_result(results)
     if isinstance(extracted, dict) and "error" in extracted:
-        raise HTTPException(status_code=500, detail=extracted["error"])  # NOSONAR
+        raise HTTPException(status_code=500, detail=extracted["error"])
     return extracted
 
 
@@ -1184,7 +1184,7 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
     summary="Get Note",
     description="Get the full content of a specific note by ID.\\n\\n**Workflow Examples**:\\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content."
 )
-async def api_get(request: GetRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def api_get(request: GetRequest, token: str = Depends(verify_token)):
     result = get_note(request.note_id)
     return extract_result(result)
 
@@ -1217,13 +1217,13 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):  # N
         }
     }
 )
-async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):
     try:
         result = remember(request.title, request.content, request.folder)
         return extract_result(result)
     except Exception as e:
         logger.error(f"Error in api_remember: {e}")
-        raise HTTPException(status_code=500, detail="An internal error occurred during remember.")  # NOSONAR
+        raise HTTPException(status_code=500, detail="An internal error occurred during remember.")
 
 
 @app.post(
@@ -1232,7 +1232,7 @@ async def api_remember(request: RememberRequest, token: str = Depends(verify_tok
     summary="Request Note Deletion",
     description="Step 1 of the high-friction deletion process. Request the deletion of a note by ID. Returns a token."
 )
-async def api_request_deletion(request: RequestDeletionRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def api_request_deletion(request: RequestDeletionRequest, token: str = Depends(verify_token)):
     res = extract_result(request_note_deletion(request.note_id, request.reason))
     if "error" in res:
         return RequestDeletionResponse(error=res["error"])
@@ -1245,7 +1245,7 @@ async def api_request_deletion(request: RequestDeletionRequest, token: str = Dep
     summary="Execute Note Deletion",
     description="Step 2 of the high-friction deletion process. Requires the token from step 1, exact note title, and safety attestation."
 )
-async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Depends(verify_token)):
     res = extract_result(execute_deletion(request.deletion_token, request.confirm_title, request.safety_attestation.model_dump()))
     if "error" in res:
         return ExecuteDeletionResponse(error=res["error"])
@@ -1257,7 +1257,7 @@ async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Dep
           summary="Update Note",
           description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('full_replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
           )
-async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):
     try:
         result = update_note(
             note_id=request.note_id,
@@ -1268,17 +1268,17 @@ async def api_update(request: UpdateRequest, token: str = Depends(verify_token))
         )
         extracted = extract_result(result)
         if isinstance(extracted, dict) and "error" in extracted:
-            raise HTTPException(status_code=500, detail=extracted["error"])  # NOSONAR
+            raise HTTPException(status_code=500, detail=extracted["error"])
         return extracted
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in api_update: {e}")
-        raise HTTPException(status_code=500, detail="An internal error occurred during update.")  # NOSONAR
+        raise HTTPException(status_code=500, detail="An internal error occurred during update.")
 
 
 @app.get("/api/settings", response_model=Settings)
-async def get_settings(token: str = Depends(verify_token)):  # NOSONAR
+async def get_settings(token: str = Depends(verify_token)):
     config = _load_config_file()
     # Extract only valid fields for Settings
     valid_keys = Settings.schema()["properties"].keys() if hasattr(Settings, "schema") else Settings.model_fields.keys()
@@ -1292,7 +1292,7 @@ class TestModelRequest(BaseModel):
 
 
 @app.post("/api/settings/test-model")
-async def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):
     if not request.baseUrl:
         return {"success": True, "dimension": 384}  # Local model
     try:
@@ -1309,11 +1309,11 @@ async def test_model_connection(request: TestModelRequest, token: str = Depends(
             raise ValueError("Response did not contain an embedding array.")
     except Exception as e:
         logger.error(f"Model test failed: {e}")
-        raise HTTPException(status_code=400, detail="Failed to connect to or pull the specified model from the provided base URL. See server logs for details.")  # NOSONAR
+        raise HTTPException(status_code=400, detail="Failed to connect to or pull the specified model from the provided base URL. See server logs for details.")
 
 
 @app.post("/api/settings", response_model=Settings)
-async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):  # NOSONAR
+async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
     global _config_mtime
     _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()
@@ -1331,7 +1331,7 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
     # Make sure directory exists
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     tmp_config_path = f"{config_path}.tmp"
-    with open(tmp_config_path, "w") as f:  # NOSONAR
+    with open(tmp_config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
@@ -1343,7 +1343,7 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
 
 
 @app.post("/api/reindex", response_model=Settings)
-async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify_token)):  # NOSONAR
+async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify_token)):
     global _config_mtime
     _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()
@@ -1364,7 +1364,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
             # Pull the model if it doesn't exist
             try:
                 client.show(new_embed["model"])
-            except:  # NOSONAR
+            except:
                 client.pull(new_embed["model"])
             # Generate a tiny embedding to measure its length
             res = client.embeddings(model=new_embed["model"], prompt="test")
@@ -1372,7 +1372,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
                 new_dim = len(res["embedding"])
         except Exception as e:
             logger.error("Failed to determine dimensions for model %s: %s", new_embed.get("model"), e)
-            raise HTTPException(status_code=400, detail="Failed to connect to the specified model at the provided base URL. See server logs for details.")  # NOSONAR
+            raise HTTPException(status_code=400, detail="Failed to connect to the specified model at the provided base URL. See server logs for details.")
 
     new_config["embeddingDimension"] = new_dim
 
@@ -1382,13 +1382,13 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
     lock_file = "/tmp/maintenance.lock"
     confirm_file = "/tmp/maintenance.confirm"
 
-    with open(lock_file, "w") as f:  # NOSONAR
+    with open(lock_file, "w") as f:
         f.write("maintenance")
 
     # Tell the Node.js daemon to restart, which exits process, triggering entrypoint.sh handshake
     try:
         import requests
-        requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)  # NOSONAR
+        requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
     except Exception as e:
         logger.error(f"Failed to signal Node daemon to restart: {e}")
 
@@ -1396,7 +1396,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
     for _ in range(50):
         if os.path.exists(confirm_file):
             break
-        time.sleep(0.1)  # NOSONAR
+        time.sleep(0.1)
 
     # 1. Safely drop DB
     from src.db import reset_database
@@ -1408,7 +1408,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     tmp_config_path = f"{config_path}.tmp"
-    with open(tmp_config_path, "w") as f:  # NOSONAR
+    with open(tmp_config_path, "w") as f:
         json.dump(merged_config, f, indent=2)
         f.flush()
         os.fsync(f.fileno())
@@ -1421,14 +1421,14 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
             os.remove(lock_file)
         if os.path.exists(confirm_file):
             os.remove(confirm_file)
-    except:  # NOSONAR
+    except:
         pass
 
     return Settings(**merged_config)
 
 
 @app.post("/api/settings/reset", response_model=Settings)
-async def reset_settings(token: str = Depends(verify_token)):  # NOSONAR
+async def reset_settings(token: str = Depends(verify_token)):
     default_settings = Settings()
     current_config = _load_config_file()
 
@@ -1466,13 +1466,13 @@ class ForceAcceptJSONMiddleware:
     def __init__(self, app):
         self.app = app
 
-    async def __call__(self, scope, receive, send):  # NOSONAR
+    async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
             original_path = scope["path"]
             method = scope.get("method", "")
 
             # Map exact /http-api/mcp based on method for Gemini CLI compatibility
-            if original_path.startswith("/http-api/mcp") or original_path == "/mcp":  # NOSONAR
+            if original_path.startswith("/http-api/mcp") or original_path == "/mcp":
                 auth_header = ""
                 for k, v in scope.get("headers", []):
                     if k.lower() == b"authorization":
@@ -1535,7 +1535,7 @@ class ForceAcceptJSONMiddleware:
 _fastapi_app = app
 
 
-def custom_openapi():  # NOSONAR
+def custom_openapi():
     if _fastapi_app.openapi_schema:
         return _fastapi_app.openapi_schema
     from fastapi.openapi.utils import get_openapi

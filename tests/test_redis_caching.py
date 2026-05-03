@@ -21,8 +21,8 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     setup_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": "admin",  # NOSONAR
-        "masterPassword": "admin",  # NOSONAR
+        "password": "admin",
+        "masterPassword": "admin",
         "memoryServerAddress": "http://localhost:8000"
     }
     r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", "1-mcp-server"))
@@ -41,7 +41,7 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "start", "app"], check=True)
 
     # Wait for the node app to come back online
-    for _ in range(25):  # NOSONAR
+    for _ in range(25):
         try:
             r = requests.get(f"{proxy_url}/status", timeout=2)
             if r.status_code == 200 and r.json().get("hasCredentials") is True:

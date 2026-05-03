@@ -47,6 +47,8 @@
   },
   "overrides": {
     "uuid": "^11.1.0",
+    "diff": "^7.0.0",
+    "brace-expansion": "^2.0.1",
     "follow-redirects": "^1.15.12",
     "file-type": "^12.4.2",
     "request": "npm:@cypress/request@^3.0.0",

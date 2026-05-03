@@ -141,14 +141,11 @@ class JoplinSyncClient extends EventEmitter {
       async supported() { return true; }
   
   
- // eslint-disable-next-line no-unused-vars
-      async setPassword(_service, _account, _password) { /* NOSONAR */ }
+      async setPassword(_service, _account, _password) { console.debug("setPassword", _service); }
   
- // eslint-disable-next-line no-unused-vars
       async password(_service, _account) { return null; }
   
- // eslint-disable-next-line no-unused-vars
-      async deletePassword(_service, _account) { /* NOSONAR */ }
+      async deletePassword(_service, _account) { console.debug("deletePassword", _service); }
       async detectIfMacOsKeychainBug() { return false; }
     }
     
@@ -171,7 +168,6 @@ class JoplinSyncClient extends EventEmitter {
     
     // Monkey-patch revisionService getter to ensure it's never "not set" 
     // due to Node module caching edge cases or Joplin internals.
- // eslint-disable-next-line no-unused-vars
           const originalRevisionService = BaseItem.revisionService;
     BaseItem.revisionService = function() {
         if (!this.revisionService_) {
@@ -511,13 +507,12 @@ class JoplinSyncClient extends EventEmitter {
       try {
           if (this.vectorDb) this.vectorDb.close();
           if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
- // eslint-disable-next-line no-unused-vars
       } catch (e) { /* ignore cleanup error */ }
       setTimeout(() => process.exit(1), 1000);
       throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
   }
 
-  async generateEmbeddings(changedNoteIds = null, deletedNoteIds = null) {  // NOSONAR
+  async generateEmbeddings(changedNoteIds = null, deletedNoteIds = null) {
     this.emit('embeddingStart');
 
     const config = await this.getConfig();
@@ -550,7 +545,7 @@ class JoplinSyncClient extends EventEmitter {
               if (!row) return resolve();
               this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], (err2) => {
                 if (err2) return reject(err2);
-                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {  // NOSONAR
+                this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {
                   if (err3) return reject(err3);
                   resolve();
                 });
@@ -567,7 +562,7 @@ class JoplinSyncClient extends EventEmitter {
           const placeholders = changedNoteIds.map(() => '?').join(',');
           notesQuery += ` AND id IN (${placeholders})`;
           notes = await this.db.selectAll(notesQuery, changedNoteIds);
-      } else if (changedNoteIds && changedNoteIds.length === 0) {  // NOSONAR
+      } else if (changedNoteIds && changedNoteIds.length === 0) {
           // Empty array passed, skip fetching
           notes = [];
       } else {
@@ -598,7 +593,7 @@ class JoplinSyncClient extends EventEmitter {
                   if (!row) return resolve();
                   this.vectorDb.run(`DELETE FROM vec_notes WHERE rowid = ?`, [row.rowid], (err2) => {
                     if (err2) return reject(err2);
-                    this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {  // NOSONAR
+                    this.vectorDb.run(`DELETE FROM note_metadata WHERE rowid = ?`, [row.rowid], (err3) => {
                       if (err3) return reject(err3);
                       resolve();
                     });
@@ -681,7 +676,6 @@ class JoplinSyncClient extends EventEmitter {
           const status = response ? response.status : 'Unknown';
           const statusText = response ? response.statusText : 'Unknown';
           let errBody = '';
- // eslint-disable-next-line no-unused-vars
           try { errBody = await response.text(); } catch(e) { /* ignore */ }
           throw new Error(`Failed to generate embeddings for batch: HTTP ${status} ${statusText}. ${errBody}`);
         }

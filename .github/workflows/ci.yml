@@ -2,11 +2,11 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   schedule:
-    - cron: '30 15 * * 1'
+  - cron: '30 15 * * 1'
 
 jobs:
   commitlint:  # NOSONAR
@@ -15,130 +15,136 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Run commitlint
-        uses: wagoid/commitlint-github-action@v6
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Run commitlint
+      uses: wagoid/commitlint-github-action@v6
 
   lint:
     name: Lint Code Base
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './client/package-lock.json'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './client/package-lock.json'
 
-      - name: Install Node Dependencies
-        working-directory: ./client
-        run: npm ci
+    - name: Install Node Dependencies
+      working-directory: ./client
+      run: npm ci
 
-      - name: Run ESLint
-        working-directory: ./client
-        run: npx eslint .
+    - name: Run ESLint
+      working-directory: ./client
+      run: npx eslint .
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
 
-      - name: Install Python dependencies
-        working-directory: ./server
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8
+    - name: Install Python dependencies
+      working-directory: ./server
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8
 
-      - name: Run Flake8
-        working-directory: ./server
-        run: flake8 .
+    - name: Run Flake8
+      working-directory: ./server
+      run: flake8 .
 
   test-node:
     name: Node.js Tests (20)
     needs: lint
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './client/package-lock.json'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './client/package-lock.json'
 
-      - name: Install Node Dependencies
-        working-directory: ./client
-        run: npm ci
+    - name: Install Node Dependencies
+      working-directory: ./client
+      run: npm ci
 
-      - name: Run Jest Tests
-        working-directory: ./client
-        run: npm test -- --ci --reporters=default --reporters=jest-junit
-        env:
-          JEST_JUNIT_OUTPUT_DIR: ./test-results
-          JEST_JUNIT_OUTPUT_NAME: jest-junit.xml
+    - name: Run Jest Tests
+      working-directory: ./client
+      run: npm test -- --ci --reporters=default --reporters=jest-junit
+      env:
+        JEST_JUNIT_OUTPUT_DIR: ./test-results
+        JEST_JUNIT_OUTPUT_NAME: jest-junit.xml
 
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-test-results-20
-          path: client/test-results/jest-junit.xml
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: node-test-results-20
+        path: client/test-results/jest-junit.xml
 
   test-python-unit:
     name: Python Unit Tests (3.11)
     needs: lint
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js (for proxy interaction)
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: './client/package-lock.json'
+    - name: Setup Node.js (for proxy interaction)
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: './client/package-lock.json'
 
-      - name: Install Node Dependencies
-        working-directory: ./client
-        run: npm ci
+    - name: Install Node Dependencies
+      working-directory: ./client
+      run: npm ci
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-          cache-dependency-path: './server/requirements.txt'
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        cache-dependency-path: './server/requirements.txt'
 
-      - name: Install Python dependencies
-        working-directory: ./server
-        run: |
-          python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest pytest-cov pytest-xdist
+    - name: Install Python dependencies
+      working-directory: ./server
+      run: |
+        python -m pip install --upgrade pip
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        pip install pytest pytest-cov pytest-xdist
 
-      - name: Run Pytest (Unit Tests)
-        working-directory: ./
-        env:
-          PYTHONPATH: server:server/src
-        run: |
-          python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
+    - name: Run Pytest (Unit Tests)
+      working-directory: ./
+      env:
+        PYTHONPATH: server:server/src
+      run: |
+        python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
 
-      - name: Upload Test Results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-unit-test-results
-          path: server/test-results/*.xml
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: python-unit-test-results
+        path: server/test-results/*.xml
 
   publish-test-results:
     name: Publish Test Results
@@ -149,16 +155,16 @@ jobs:
       checks: write
       pull-requests: write
     steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
 
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        if: github.event_name == 'pull_request'
-        with:
-          files: "artifacts/**/*.xml"
+    - name: Publish Test Results
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      if: github.event_name == 'pull_request'
+      with:
+        files: "artifacts/**/*.xml"
 
   build-container:
     name: Build and Push Dev Container
@@ -169,101 +175,102 @@ jobs:
       packages: write
       security-events: write
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
 
-      - name: Build local image for scanning
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:local-test
+    - name: Build local image for scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: true
+        tags: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:local-test
 
-      - name: Run Trivy vulnerability scanner (Image)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:local-test'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          exit-code: '0'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          trivyignores: '.trivyignore'
+    - name: Run Trivy vulnerability scanner (Image)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:local-test'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        exit-code: '0'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
+        trivyignores: '.trivyignore'
 
-      - name: Upload Trivy SARIF report
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
+    - name: Upload Trivy SARIF report
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-        if: github.event_name == 'push'
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      if: github.event_name == 'push'
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-        if: github.event_name == 'push'
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+      if: github.event_name == 'push'
 
-      - name: Calculate Version
-        id: version
-        run: |
-          COUNT=$(git rev-list --count HEAD)
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          echo "version=0.1.${COUNT}-${SHORT_SHA}" >> $GITHUB_OUTPUT
-          
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev
-            ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
-          tags: |
-            type=raw,value=latest
-            type=raw,value=v${{ steps.version.outputs.version }}
-          labels: |
-            org.opencontainers.image.title=Joplin Server Vector Memory (Dev)
-            org.opencontainers.image.description=Development build for v${{ steps.version.outputs.version }}
-            org.opencontainers.image.version=v${{ steps.version.outputs.version }}
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+    - name: Calculate Version
+      id: version
+      run: |
+        COUNT=$(git rev-list --count HEAD)
+        SHORT_SHA=$(git rev-parse --short HEAD)
+        echo "version=0.1.${COUNT}-${SHORT_SHA}" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
-          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:buildcache,mode=max', github.repository_owner) || '' }}
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: |
+          ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev
+          ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
+        tags: |
+          type=raw,value=latest
+          type=raw,value=v${{ steps.version.outputs.version }}
+        labels: |
+          org.opencontainers.image.title=Joplin Server Vector Memory (Dev)
+          org.opencontainers.image.description=Development build for v${{ steps.version.outputs.version }}
+          org.opencontainers.image.version=v${{ steps.version.outputs.version }}
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
-      - name: Update Docker Hub Description
-        uses: peter-evans/dockerhub-description@v4
-        continue-on-error: true
-        if: github.event_name == 'push'
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
-          short-description: "Joplin Server Vector Memory MCP - Development Build"
-          readme-filepath: ./README.md
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: ${{ github.event_name == 'push' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
+        cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:buildcache,mode=max',
+          github.repository_owner) || '' }}
+
+    - name: Update Docker Hub Description
+      uses: peter-evans/dockerhub-description@v4
+      continue-on-error: true
+      if: github.event_name == 'push'
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+        repository: ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
+        short-description: "Joplin Server Vector Memory MCP - Development Build"
+        readme-filepath: ./README.md
 
   codeql-analyze:
     name: CodeQL Analyze (${{ matrix.language }})
@@ -301,29 +308,34 @@ jobs:
   test-api-fuzzing:
     name: Schemathesis API Fuzzing
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [test-node, test-python-unit]
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Start Docker Compose Environment
-        run: docker compose -f tests/docker-compose.test.yml up -d --wait
+    - name: Start Docker Compose Environment
+      run: docker compose -f tests/docker-compose.test.yml up -d --wait
 
-      - name: Run Schemathesis
-        run: docker run --network host schemathesis/schemathesis:latest run http://localhost:8002/openapi.json --checks all --exclude-checks unsupported_method
+    - name: Run Schemathesis
+      run: docker run --network host schemathesis/schemathesis:latest run http://localhost:8002/openapi.json
+        --checks all --exclude-checks unsupported_method
 
   test-agentic-fuzzing:
     name: Promptfoo Agentic Fuzzing
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     needs: [test-node, test-python-unit]
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    - name: Checkout Code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
-      - name: Run Promptfoo Eval
-        run: npx --yes promptfoo@latest eval -c tests/promptfooconfig.yaml
+    - name: Run Promptfoo Eval
+      run: npx --yes promptfoo@latest eval -c tests/promptfooconfig.yaml
