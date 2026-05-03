@@ -21,3 +21,7 @@ This document outlines the methodology and guidelines for future AI incarnations
 - **No Passwords on Disk:** Remember that `joplinPassword` and `joplinMasterPassword` are strictly ephemeral. Never write them to `config.json`.
 - **Vector DB Resilience:** The `sqlite-vec` database is treated as ephemeral. If corrupted, it should be wiped and rebuilt from the source notes.
 - **Zero-Trust E2EE:** Do not expose decrypted note contents outside the local host environment except via the authenticated MCP interface.
+
+## 5. SonarCloud Integration
+- **Project Key:** `adamoutler_joplin-server-vector-memory`
+- **Organization Key:** `adamoutler`
