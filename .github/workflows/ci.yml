@@ -319,8 +319,7 @@ jobs:
       run: docker compose -f tests/docker-compose.test.yml up -d --wait
 
     - name: Run Schemathesis
-      run: docker run --network host schemathesis/schemathesis:latest run http://localhost:8002/openapi.json
-        --checks all --exclude-checks unsupported_method
+      run: docker run --network host schemathesis/schemathesis:v4.16.1 run http://localhost:8002/openapi.json --checks all --exclude-checks unsupported_method
 
   test-agentic-fuzzing:
     name: Promptfoo Agentic Fuzzing
