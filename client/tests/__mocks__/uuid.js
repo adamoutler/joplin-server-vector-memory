@@ -10,6 +10,6 @@ module.exports = {
   NIL: '00000000-0000-0000-0000-000000000000',
   parse: (str) => Buffer.from(str.replace(/-/g, ''), 'hex'),
   stringify: (arr) => Buffer.from(arr).toString('hex'),
-  validate: (str) => true,
-  version: (str) => 4
+  validate: (_str) => true,
+  version: (_str) => 4
 };
