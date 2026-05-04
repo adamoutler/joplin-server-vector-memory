@@ -173,20 +173,6 @@ jobs:
         cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:latest
         cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:latest,mode=max', github.repository_owner) || '' }}
 
-    - name: Export digest
-      run: |
-        mkdir -p /tmp/digests
-        digest="${{ steps.build.outputs.digest }}"
-        touch "/tmp/digests/${digest#sha256:}"
-        
-    - name: Upload digest
-      uses: actions/upload-artifact@v4
-      with:
-        name: digests-linux-arm64
-        path: /tmp/digests/*
-        if-no-files-found: error
-        retention-days: 1
-
   test-node:
     name: Node.js Tests (20)
     needs: lint
@@ -421,12 +407,7 @@ jobs:
           fi
         done <<< "${{ steps.meta.outputs.tags }}"
         
-        DIGESTS=""
-        for digest in /tmp/digests/*; do
-          DIGESTS="${DIGESTS} ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev@sha256:$(basename ${digest})"
-        done
-        
-        docker buildx imagetools create $TAGS_ARGS $DIGESTS
+        docker buildx imagetools create $TAGS_ARGS ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:test-${{ github.sha }} ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:arm64-${{ github.sha }}
 
     - name: Update Docker Hub Description
       uses: peter-evans/dockerhub-description@v4
@@ -437,3 +418,9 @@ jobs:
         repository: ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
         short-description: "Joplin Server Vector Memory MCP - Development Build"
         readme-filepath: ./README.md
+md
+}}
+        repository: ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
+        short-description: "Joplin Server Vector Memory MCP - Development Build"
+        readme-filepath: ./README.md
+md
