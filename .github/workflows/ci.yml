@@ -166,10 +166,44 @@ jobs:
       with:
         files: "artifacts/**/*.xml"
 
-  build-container:
-    name: Build and Push Dev Container
-    needs: [test-node, test-python-unit]
+  test-api-fuzzing:
+    name: Schemathesis API Fuzzing
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Start Docker Compose Environment
+      run: docker compose -f tests/docker-compose.test.yml up -d --wait
+
+    - name: Run Schemathesis
+      run: docker run --network host schemathesis/schemathesis:v4.16.1 run http://localhost:8002/openapi.json --checks all --exclude-checks unsupported_method --max-examples 20
+
+  test-agentic-fuzzing:
+    name: Promptfoo Agentic Fuzzing
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run Promptfoo Eval
+      run: npx --yes promptfoo@latest eval -c tests/promptfooconfig.yaml
+
+  build:
+    name: Build Image (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
     permissions:
       contents: write
       packages: write
@@ -187,6 +221,7 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Build local image for scanning
+      if: matrix.platform == 'linux/amd64'
       uses: docker/build-push-action@v5
       with:
         context: .
@@ -194,6 +229,7 @@ jobs:
         tags: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:local-test
 
     - name: Run Trivy vulnerability scanner (Image)
+      if: matrix.platform == 'linux/amd64'
       uses: aquasecurity/trivy-action@master
       with:
         image-ref: 'ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:local-test'
@@ -206,8 +242,8 @@ jobs:
         trivyignores: '.trivyignore'
 
     - name: Upload Trivy SARIF report
+      if: matrix.platform == 'linux/amd64'
       uses: github/codeql-action/upload-sarif@v3
-      if: always()
       with:
         sarif_file: 'trivy-results.sarif'
 
@@ -225,6 +261,68 @@ jobs:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
       if: github.event_name == 'push'
+
+    - name: Build and push by digest
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: ${{ matrix.platform }}
+        outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev\,${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev,push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
+        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
+        cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:buildcache,mode=max', github.repository_owner) || '' }}
+
+    - name: Export digest
+      if: github.event_name == 'push'
+      run: |
+        mkdir -p /tmp/digests
+        digest="${{ steps.build.outputs.digest }}"
+        touch "/tmp/digests/${digest#sha256:}"
+
+    - name: Upload digest
+      if: github.event_name == 'push'
+      uses: actions/upload-artifact@v4
+      with:
+        name: digests-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+        path: /tmp/digests/*
+        if-no-files-found: error
+        retention-days: 1
+
+  push-images:
+    name: Push Multi-Arch Images
+    needs: [test-node, test-python-unit, test-api-fuzzing, test-agentic-fuzzing, build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      packages: write
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Download digests
+      uses: actions/download-artifact@v4
+      with:
+        path: /tmp/digests
+        pattern: digests-*
+        merge-multiple: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
 
     - name: Calculate Version
       id: version
@@ -249,22 +347,16 @@ jobs:
           org.opencontainers.image.version=v${{ steps.version.outputs.version }}
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        platforms: linux/amd64,linux/arm64
-        push: ${{ github.event_name == 'push' }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
-        cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:buildcache,mode=max',
-          github.repository_owner) || '' }}
+    - name: Create manifest list and push
+      working-directory: /tmp/digests
+      run: |
+        docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          $(printf 'ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev@sha256:%s ' *) \
+          $(printf '${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev@sha256:%s ' *)
 
     - name: Update Docker Hub Description
       uses: peter-evans/dockerhub-description@v4
       continue-on-error: true
-      if: github.event_name == 'push'
       with:
         username: ${{ secrets.DOCKERHUB_USERNAME }}
         password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -304,37 +396,3 @@ jobs:
       uses: github/codeql-action/analyze@v3
       with:
         category: "/language:${{matrix.language}}"
-
-  test-api-fuzzing:
-    name: Schemathesis API Fuzzing
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    needs: [test-node, test-python-unit]
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Start Docker Compose Environment
-      run: docker compose -f tests/docker-compose.test.yml up -d --wait
-
-    - name: Run Schemathesis
-      run: docker run --network host schemathesis/schemathesis:v4.16.1 run http://localhost:8002/openapi.json --checks all --exclude-checks unsupported_method
-
-  test-agentic-fuzzing:
-    name: Promptfoo Agentic Fuzzing
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    needs: [test-node, test-python-unit]
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-
-    - name: Run Promptfoo Eval
-      run: npx --yes promptfoo@latest eval -c tests/promptfooconfig.yaml
