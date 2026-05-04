@@ -34,7 +34,7 @@ def test_revision_service_bug(ephemeral_joplin):
     joplin_internal_url = "http://joplin:22300"
     joplin_external_url = "http://localhost:22300"
     email = "admin@localhost"
-    password = "admin"
+    password = os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin")
 
     import base64
     auth_header = "Basic " + base64.b64encode(f"{email}:{password}".encode('utf-8')).decode('utf-8')

@@ -2,6 +2,7 @@ import pytest
 import requests
 import subprocess
 import time
+import os
 
 
 @pytest.mark.enable_socket
@@ -40,7 +41,7 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
     setup_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": "admin",
+        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
         "memoryServerAddress": "http://localhost:8000"
     }
     r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", "1-mcp-server"))

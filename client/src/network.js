@@ -1,4 +1,3 @@
-/* skillsafe-disable network-access */
 /**
  * Robust fetch with timeout using global fetch
  */

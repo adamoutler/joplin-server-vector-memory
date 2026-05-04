@@ -177,7 +177,7 @@ class TestOperationalSystem:
         auth_payload = {
             "serverUrl": "http://joplin:22300",
             "username": "admin@localhost",
-            "password": "admin",
+            "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
             "masterPassword": "test_master_password",
             "rotate": False
         }

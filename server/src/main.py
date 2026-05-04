@@ -260,7 +260,7 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
         if dt:
             return int(dt.timestamp() * 1000)
     except Exception:
-        logger.warning("Failed to parse date string '%s'", date_str)
+        logger.warning("Failed to parse date string")
     return None
 
 
@@ -1025,9 +1025,9 @@ def check_token_validity(token: str) -> bool:
                     if expires_date > current_time:
                         return True
                 except Exception as parse_err:
-                    logger.error(f"Error parsing token expiration: {parse_err}")
+                    logger.error("Error parsing token expiration")
     except Exception as e:
-        logger.error("Error reading config for auth: %s", e)
+        logger.error("Error reading config for auth")
     return False
 
 
@@ -1122,7 +1122,7 @@ def internal_embed(request: InternalEmbedRequest):
         return {"embeddings": embeddings}
     except Exception as e:
         logger.error(f"Error generating internal embedding: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
@@ -1657,4 +1657,4 @@ if __name__ == "__main__":
     else:
         import uvicorn
         # Allow running the server locally
-        uvicorn.run("main:app", host="0.0.0.0", port=8000)
+        uvicorn.run("main:app", host="127.0.0.1", port=8000)

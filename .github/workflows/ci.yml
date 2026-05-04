@@ -9,7 +9,7 @@ on:
   - cron: '30 15 * * 1'
 
 jobs:
-  commitlint:  # NOSONAR
+  commitlint:
     name: Lint Commit Messages
     runs-on: ubuntu-latest
     permissions:
@@ -261,8 +261,8 @@ jobs:
         context: .
         platforms: ${{ matrix.platform }}
         push: false
-        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
-        cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:buildcache,mode=max', github.repository_owner) || '' }}
+        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:latest
+        cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:latest,mode=max', github.repository_owner) || '' }}
 
   push-images:
     name: Push Multi-Arch Images
@@ -327,7 +327,7 @@ jobs:
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:buildcache
+        cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:latest
 
     - name: Update Docker Hub Description
       uses: peter-evans/dockerhub-description@v4

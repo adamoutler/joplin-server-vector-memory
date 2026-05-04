@@ -274,7 +274,7 @@ app.use(async (req, res, next) => {
   const isSetupMode = !proxyConfig || !proxyConfig.joplinUsername;
   const isDefaultSetup = reqUser === 'setup' && reqPass === '1-mcp-server';
   
-  console.log(`[Auth Middleware] Path: ${req.path}, isSetupMode: ${isSetupMode}, reqUser: ${reqUser}, reqPass: ${reqPass === '1-mcp-server' ? '(default)' : '(hidden)'}`);
+  console.log(`[Auth Middleware] isSetupMode: ${isSetupMode}, reqPass: ${reqPass === '1-mcp-server' ? '(default)' : '(hidden)'}`);
 
   if (isSetupMode) {
       if (isDefaultSetup) {
@@ -1200,3 +1200,4 @@ if (require.main === module) {
 module.exports = app;
 module.exports.runSyncCycle = runSyncCycle;
 module.exports.syncClient = syncClient;
+syncClient = syncClient;

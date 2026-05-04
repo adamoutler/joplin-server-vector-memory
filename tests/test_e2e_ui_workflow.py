@@ -110,7 +110,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
         time.sleep(2)
         context.close()
-        context = browser.new_context(http_credentials={'username': 'admin@localhost', 'password': 'admin'})
+        context = browser.new_context(http_credentials={'username': 'admin@localhost', 'password': os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin")})
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
         page.goto(proxy_url)

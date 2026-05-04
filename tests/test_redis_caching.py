@@ -21,7 +21,7 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     setup_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": "admin",
+        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
         "masterPassword": "admin",
         "memoryServerAddress": "http://localhost:8000"
     }
