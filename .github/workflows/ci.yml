@@ -101,7 +101,7 @@ jobs:
         platforms: linux/amd64
         tags: ${{ env.TEST_IMAGE }}
         labels: ${{ steps.meta.outputs.labels }}
-        outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev,push-by-digest=true,name-canonical=true,push=true
+        push: true
         cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory:latest
         cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:latest,mode=max', github.repository_owner) || '' }}
 
