@@ -72,7 +72,7 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('text/html');
     expect(response.text).toContain('<!DOCTYPE html>');
-    expect(response.text).toContain('<html>');
+    expect(response.text).toContain('<html lang="en">');
   });
 
   test('GET / returns dashboard HTML with API Documentation links and MCP examples', async () => {
