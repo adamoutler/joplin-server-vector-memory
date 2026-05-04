@@ -419,9 +419,3 @@ jobs:
         repository: ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
         short-description: "Joplin Server Vector Memory MCP - Development Build"
         readme-filepath: ./README.md
-md
-}}
-        repository: ${{ secrets.DOCKERHUB_USERNAME }}/joplin-server-vector-memory-dev
-        short-description: "Joplin Server Vector Memory MCP - Development Build"
-        readme-filepath: ./README.md
-md
