@@ -1200,4 +1200,3 @@ if (require.main === module) {
 module.exports = app;
 module.exports.runSyncCycle = runSyncCycle;
 module.exports.syncClient = syncClient;
-syncClient = syncClient;
