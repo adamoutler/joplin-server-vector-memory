@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 import os
 import sys
 import tempfile
@@ -129,10 +128,10 @@ def temp_profile():
 
 
 def test_massive_note_injection(ephemeral_joplin, mock_ollama_server, temp_profile):
-    asyncio.run(run_massive_note_injection(mock_ollama_server, temp_profile))
+    run_massive_note_injection(mock_ollama_server, temp_profile)
 
 
-async def run_massive_note_injection(mock_ollama_server, temp_profile):
+def run_massive_note_injection(mock_ollama_server, temp_profile):
     secret_uuid = str(uuid.uuid4())
     print(f"\nSecret UUID for massive run: {secret_uuid}")
 

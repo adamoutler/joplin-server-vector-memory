@@ -239,7 +239,7 @@ app.use(async (req, res, next) => {
   }
 
   const send401 = (reason) => {
-    console.log(`[Auth Middleware] Rejecting request to ${req.path} - Reason: ${reason}`);
+    console.log(`[Auth Middleware] Rejecting request - Reason: ${reason}`);
     if (req.path === '/' || req.path === '/index.html') {
       res.setHeader('WWW-Authenticate', 'Basic realm="Joplin Sync Client"');
     }

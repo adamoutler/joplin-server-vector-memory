@@ -1,5 +1,4 @@
 import pytest
-import asyncio
 import os
 import sys
 import tempfile
@@ -132,9 +131,9 @@ class TestOperationalSystem:
         5. Exercises secure note deletion request and execution workflow.
         6. Confirms successful data removal from the vector storage.
         """
-        asyncio.run(self.run_full_e2e_workflow(mock_ollama_server, temp_profile))
+        self.run_full_e2e_workflow(mock_ollama_server, temp_profile)
 
-    async def run_full_e2e_workflow(self, mock_ollama_server, temp_profile):
+    def run_full_e2e_workflow(self, mock_ollama_server, temp_profile):
         secret_uuid = str(uuid.uuid4())
         print(f"\n[Test Setup] Secret UUID for this run: {secret_uuid}")
 
