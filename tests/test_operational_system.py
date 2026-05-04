@@ -154,7 +154,7 @@ class TestOperationalSystem:
         # Step 1: Create, sync, and generate embeddings using the Node.js client
         print("[Step 1] Running Node.js client to create note, sync and generate embedding...")
         result = subprocess.run(
-            ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", "JOPLIN_PASSWORD=admin", "app", "node", "client/e2e_create_sync.js", secret_uuid],
+            ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ.get('JOPLIN_ADMIN_PASSWORD', 'admin')}", "app", "node", "client/e2e_create_sync.js", secret_uuid],
             cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
             capture_output=True,
             text=True

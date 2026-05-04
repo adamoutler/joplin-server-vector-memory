@@ -1292,7 +1292,7 @@ class TestModelRequest(BaseModel):
 
 
 @app.post("/api/settings/test-model")
-async def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):
+def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):
     if not request.baseUrl:
         return {"success": True, "dimension": 384}  # Local model
     try:
@@ -1428,7 +1428,7 @@ async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(
 
 
 @app.post("/api/settings/reset", response_model=Settings)
-async def reset_settings(token: str = Depends(verify_token)):
+def reset_settings(token: str = Depends(verify_token)):
     default_settings = Settings()
     current_config = _load_config_file()
 
@@ -1452,6 +1452,7 @@ async def reset_settings(token: str = Depends(verify_token)):
     _config_mtime = 0  # Invalidate cache
 
     return default_settings
+
 
 # Actually, let's just append the routes directly
 for route in fastmcp_app.routes:
@@ -1512,10 +1513,7 @@ class ForceAcceptJSONMiddleware:
                         else:
                             scope["path"] = "/http-api/mcp/stateless"
                     else:
-                        if method == "GET":
-                            scope["path"] = f"/http-api/mcp/sse{subpath}"
-                        else:
-                            scope["path"] = f"/http-api/mcp/sse{subpath}"
+                        scope["path"] = f"/http-api/mcp/sse{subpath}"
 
             logger.info(f"[MIDDLEWARE] {method} {original_path} -> {scope['path']}")
 
