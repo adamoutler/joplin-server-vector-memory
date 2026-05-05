@@ -21,8 +21,8 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     setup_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
-        "masterPassword": "admin",
+        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
+        "masterPassword": os.environ["JOPLIN_ADMIN_PASSWORD"],
         "memoryServerAddress": "http://localhost:8000"
     }
     r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", "1-mcp-server"))

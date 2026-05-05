@@ -94,7 +94,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         # Step 05: populate the settings form
         page.fill("#serverUrl", "http://joplin:22300")
         page.fill("#username", "admin@localhost")
-        page.fill("#password", "admin")
+        page.fill("#password", os.environ["JOPLIN_ADMIN_PASSWORD"])
         page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/05_populate_settings.png")
 
         # Step 06: Observe the backend API port is set to current URL
@@ -110,7 +110,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
         time.sleep(2)
         context.close()
-        context = browser.new_context(http_credentials={'username': 'admin@localhost', 'password': os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin")})
+        context = browser.new_context(http_credentials={'username': 'admin@localhost', 'password': os.environ["JOPLIN_ADMIN_PASSWORD"]})
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
         page.goto(proxy_url)
@@ -189,7 +189,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         if page.locator("#serverUrl").is_visible() and not page.locator("#serverUrl").input_value():
             page.fill("#serverUrl", "http://joplin:22300")
             page.fill("#username", "admin@localhost")
-            page.fill("#password", "admin")
+            page.fill("#password", os.environ["JOPLIN_ADMIN_PASSWORD"])
             page.click("text='Save & Validate'")
             expect(page.locator("#auth-msg")).to_contain_text("Saved successfully", timeout=15000)
         page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/19_allow_login.png")

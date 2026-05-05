@@ -46,7 +46,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     auth_payload = {
         "serverUrl": "http://joplin:22300",  # internal network name
         "username": "admin@localhost",
-        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
+        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": "test_master_password",
         "rotate": True
     }

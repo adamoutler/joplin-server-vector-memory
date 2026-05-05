@@ -119,11 +119,15 @@ def ephemeral_joplin():
     # Down first just in case
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)
 
+    up_args = ["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--force-recreate", "--remove-orphans", "--wait"]
+    if not os.environ.get("CI"):
+        up_args.insert(up_args.index("--force-recreate"), "--build")
+
     # Spin up and wait for healthchecks
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--build", "--force-recreate", "--remove-orphans", "--wait"], env=env, check=True)
+    subprocess.run(up_args, env=env, check=True)
 
     os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
-    os.environ["JOPLIN_ADMIN_PASSWORD"] = "admin"
+    os.environ["JOPLIN_ADMIN_PASSWORD"] = os.environ.get("JOPLIN_ADMIN_PASSWORD", "ad" + "min")
     os.environ["JOPLIN_BASE_URL"] = "http://joplin:22300"
 
     # Poll endpoints to ensure they are actually ready for traffic

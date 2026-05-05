@@ -155,7 +155,7 @@ def run_massive_note_injection(mock_ollama_server, temp_profile):
     print("Running Node.js client for massive note injection...")
     # Increase timeout significantly as per instructions
     result = subprocess.run(
-        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ.get('JOPLIN_ADMIN_PASSWORD', 'admin')}", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid],
+        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid],
         cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
         capture_output=True,
         text=True,
@@ -180,7 +180,7 @@ def run_massive_note_injection(mock_ollama_server, temp_profile):
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
+        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": "test_master_password",
         "rotate": False
     }

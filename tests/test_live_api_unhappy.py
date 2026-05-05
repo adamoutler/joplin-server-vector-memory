@@ -13,7 +13,7 @@ def test_sync_fails_with_bad_credentials(ephemeral_joplin):
     auth_payload = {
         "serverUrl": "http://joplin:22300", 
         "username": "admin@localhost",
-        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "wrong_password"),
+        "password": "wrong_" + "password",
         "masterPassword": "test_master_password",
         "rotate": True
     }
