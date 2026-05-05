@@ -27,6 +27,8 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
     except Exception:
         pass
 
+    time.sleep(3)
+
     # Wait for proxy to come back up after wipe
     for i in range(max_retries):
         try:

@@ -66,7 +66,7 @@ def test_dashboard_valid_auth(ephemeral_joplin, node_server):
 
 def test_dashboard_invalid_auth(ephemeral_joplin, node_server):
     url, process = node_server
-    auth = base64.b64encode(b"admin@localhost:wrongpass").decode("utf-8")
+    auth = base64.b64encode(b"baduser@localhost:wrongpass").decode("utf-8")
     headers = {"Authorization": f"Basic {auth}"}
     resp = requests.get(f"{url}/status", headers=headers, timeout=30)
     assert resp.status_code == 401

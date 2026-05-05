@@ -197,6 +197,7 @@ class JoplinSyncClient extends EventEmitter {
     await Setting.setValue('sync.9.userContentPath', this.serverUrl);
     await Setting.setValue('sync.9.username', this.username);
     await Setting.setValue('sync.9.password', this.password);
+    await Setting.setValue('sync.wipeOutFailSafe', false);
     
     // Ensure resources are downloaded locally
     await Setting.setValue('sync.resourceDownloadMode', 'always');

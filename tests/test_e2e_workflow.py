@@ -108,7 +108,7 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def mock_ollama_server():
-    server = HTTPServer(('127.0.0.1', 0), MockOllamaHandler)
+    server = HTTPServer(('0.0.0.0', 0), MockOllamaHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.daemon = True
@@ -128,10 +128,11 @@ def temp_profile():
 
 
 def test_massive_note_injection(ephemeral_joplin, mock_ollama_server, temp_profile):
-    run_massive_note_injection(mock_ollama_server, temp_profile)
+    import asyncio
+    asyncio.run(run_massive_note_injection(mock_ollama_server, temp_profile))
 
 
-def run_massive_note_injection(mock_ollama_server, temp_profile):
+async def run_massive_note_injection(mock_ollama_server, temp_profile):
     secret_uuid = str(uuid.uuid4())
     print(f"\nSecret UUID for massive run: {secret_uuid}")
 

@@ -21,6 +21,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 # Pre-download the models into the image to avoid runtime downloads
 # This caches both the small fallback and the high-quality Nomic model
+ENV HF_HOME="/opt/hf_cache"
 RUN python3 -c "from sentence_transformers import SentenceTransformer; \
     SentenceTransformer('all-MiniLM-L6-v2'); \
     SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)"
@@ -74,6 +75,10 @@ WORKDIR /app
 # Copy the fully populated python virtual environment
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy the Hugging Face cache containing pre-downloaded models
+COPY --from=python-base /opt/hf_cache /opt/hf_cache
+ENV HF_HOME="/opt/hf_cache"
 
 # Copy the node modules
 COPY --from=builder /app/client/node_modules ./client/node_modules
