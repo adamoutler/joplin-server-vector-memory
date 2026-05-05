@@ -55,5 +55,10 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     data = r.json()
     assert data.get("hasCredentials") is True, "Credentials not loaded from Redis on startup"
 
-    # Teardown the profile properly
-    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "--profile", "redis", "-p", "joplin-test-env", "down"], env=env)
+    # Teardown the profile properly and restore app state
+    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "rm", "-s", "-v", "-f", "redis"], env=env)
+
+    env_clean = os.environ.copy()
+    env_clean.pop("REDIS_URL", None)
+    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "up", "-d", "app"], env=env_clean, check=True)
+    time.sleep(3)

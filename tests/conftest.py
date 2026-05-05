@@ -88,6 +88,17 @@ def reset_docker_state():
     # 1. Truncate Postgres tables to clear Joplin Server data
     subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
 
+    # Restart Joplin Server to clear its in-memory rate limiter
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "restart", "joplin"], check=True)
+    for _ in range(30):
+        try:
+            r = requests.get("http://localhost:22300/api/ping", timeout=2)
+            if r.status_code == 200:
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
     # 2. Call /auth/wipe on the Proxy to clear config and memory (must use admin auth since it might be configured)
     try:
         # Try wiping as admin first, then as setup if it was never configured
@@ -96,6 +107,10 @@ def reset_docker_state():
             requests.post("http://localhost:3001/auth/wipe", auth=("setup", "1-mcp-server"), timeout=5)
     except Exception:
         pass
+
+    # The wipe command restarts the container asynchronously via process.exit. 
+    # Sleep to ensure the container has actually gone down before we start polling for it to come back up.
+    time.sleep(3)
 
     # We must wait for the container to fully reboot and become responsive
     max_retries = 30
