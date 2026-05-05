@@ -1,13 +1,11 @@
 import pytest
 import os
 import sys
+import asyncio
 import tempfile
 import json
 import threading
-import subprocess
 import uuid
-import time
-import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
@@ -155,22 +153,30 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
 
     print("Running Node.js client for massive note injection...")
     # Increase timeout significantly as per instructions
-    result = subprocess.run(
-        ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid],
+    proc = await asyncio.create_subprocess_exec(
+        "docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid,
         cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
-        capture_output=True,
-        text=True,
-        timeout=300
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
     )
-    print("Massive Node.js output:", result.stdout)
-    if result.stderr:
-        print("Massive Node.js error:", result.stderr)
+    # The timeout logic can be added if needed, or we just await
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+    except asyncio.TimeoutError:
+        proc.kill()
+        stdout, stderr = await proc.communicate()
 
-    assert result.returncode == 0, "Massive Node.js client script failed"
+    stdout_str = stdout.decode()
+    stderr_str = stderr.decode()
+    print("Massive Node.js output:", stdout_str)
+    if stderr_str:
+        print("Massive Node.js error:", stderr_str)
+
+    assert proc.returncode == 0, "Massive Node.js client script failed"
 
     # Extract the created note ID from the stdout
     created_note_id = None
-    for line in result.stdout.splitlines():
+    for line in stdout_str.splitlines():
         if "Created note ID:" in line:
             created_note_id = line.split("Created note ID:")[1].strip()
 
@@ -185,28 +191,31 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
         "masterPassword": "test_master_password",
         "rotate": False
     }
-    r = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10)
-    print("Init response:", r.status_code, r.text)
+    import httpx
+    async with httpx.AsyncClient() as client:
+        r = await client.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10.0)
+        print("Init response:", r.status_code, r.text)
 
-    print("Restarting proxy to force it to initialize the sync client...")
-    try:
-        requests.post("http://localhost:3001/node-api/restart", timeout=5)
-    except Exception:
-        pass
-    time.sleep(3)  # Wait for proxy to come back up
-
-    # Wait for proxy to be ready
-    for _ in range(30):
+        print("Restarting proxy to force it to initialize the sync client...")
         try:
-            r = requests.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=2)
-            if r.status_code == 200:
-                break
+            await client.post("http://localhost:3001/node-api/restart", timeout=5.0)
         except Exception:
             pass
-        time.sleep(1)
+        await asyncio.sleep(3)  # Wait for proxy to come back up
+
+        # Wait for proxy to be ready
+        for _ in range(30):
+            try:
+                r = await client.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=2.0)
+                if r.status_code == 200:
+                    break
+            except Exception:
+                pass
+            await asyncio.sleep(1)
 
     # Copy the DB out of the container to the host machine for the python test to read
-    subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
+    proc_cp = await asyncio.create_subprocess_exec("docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path)
+    await proc_cp.communicate()
 
     assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
     # Query Python MCP Server

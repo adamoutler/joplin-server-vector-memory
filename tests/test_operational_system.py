@@ -1,13 +1,12 @@
 import pytest
 import os
 import sys
+import asyncio
 import tempfile
 import json
 import threading
 import subprocess
 import uuid
-import time
-import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from mcp.client.stdio import stdio_client, StdioServerParameters
 from mcp.client.session import ClientSession
@@ -181,29 +180,32 @@ class TestOperationalSystem:
             "masterPassword": "test_master_password",
             "rotate": False
         }
-        r = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10)
-        print("Init response:", r.status_code, r.text)
+        import httpx
+        async with httpx.AsyncClient() as client:
+            r = await client.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10.0)
+            print("Init response:", r.status_code, r.text)
 
-        ready = False
-        for _ in range(30):
-            try:
-                r = requests.get("http://localhost:3001/status", auth=("admin@localhost", "admin"), timeout=2)
-                if r.status_code == 200:
-                    data = r.json()
-                    status = data.get("sync", {}).get("status")
-                    if status in ["idle", "online", "syncing"]:
-                        ready = True
-                        break
-            except Exception:
-                pass
-            time.sleep(1)
+            ready = False
+            for _ in range(30):
+                try:
+                    r = await client.get("http://localhost:3001/status", auth=("admin@localhost", "admin"), timeout=2.0)
+                    if r.status_code == 200:
+                        data = r.json()
+                        status = data.get("sync", {}).get("status")
+                        if status in ["idle", "online", "syncing"]:
+                            ready = True
+                            break
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
 
         if not ready:
             print("Warning: Proxy sync client may not have initialized in time")
 
         # Copy Vector SQLite DB out of container to verify MCP read path
         print("[Step 3] Extracting vector DB from container for Python MCP server...")
-        subprocess.run(["docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path], check=False)
+        proc_cp = await asyncio.create_subprocess_exec("docker", "cp", "joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path)
+        await proc_cp.communicate()
         assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
 
         main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
