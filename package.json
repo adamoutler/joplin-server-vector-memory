@@ -1,6 +1,6 @@
 {
   "name": "adamoutler-joplin-server-vector-memory",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "Joplin Server Vector Memory MCP transforms your personal notes into a universal AI Brain, a secure, centralized, and delightfully interoperable memory engine designed for the multi-agent future.",
   "main": "index.js",
   "repository": {

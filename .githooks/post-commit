@@ -11,7 +11,7 @@ COUNT=$(git rev-list --count HEAD)
 # Get short hash
 HASH=$(git rev-parse --short HEAD)
 
-VERSION="0.1.${COUNT}"
+VERSION="0.2.${COUNT}"
 TAG="v${VERSION}"
 
 # Check if tag already exists (e.g. if amending)
