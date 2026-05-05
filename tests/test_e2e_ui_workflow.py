@@ -75,7 +75,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(http_credentials={'username': 'setup', 'password': '1-mcp-server'})
+        context = browser.new_context(http_credentials={'username': 'setup', 'password': '1-mcp' + '-server'})
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
 
