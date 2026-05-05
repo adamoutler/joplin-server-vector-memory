@@ -15,7 +15,7 @@ jest.mock('../src/sync', () => {
             sync = mockSync;
             decrypt = mockDecrypt;
             generateEmbeddings = mockGenerateEmbeddings;
-            on() {}
+            on() { /* dummy method for testing */ }
         }
     };
 });

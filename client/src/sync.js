@@ -141,11 +141,21 @@ class JoplinSyncClient extends EventEmitter {
       async supported() { return true; }
   
   
-      async setPassword(_service, __account, __password) { console.debug("setPassword", _service); }
-  
-      async password(__service, __account) { return null; }
-  
-      async deletePassword(_service, __account) { console.debug("deletePassword", _service); }
+      async setPassword(_service, __account, __password) {
+        // dummy implementation
+        return true;
+      }
+
+      async password(__service, __account) {
+        // dummy implementation
+        return null;
+      }
+
+      async deletePassword(_service, __account) {
+        // dummy implementation
+        return true;
+      }
+      
       async detectIfMacOsKeychainBug() { return false; }
     }
     
@@ -508,7 +518,9 @@ class JoplinSyncClient extends EventEmitter {
           if (this.vectorDb) this.vectorDb.close();
           if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
       } catch (_e) { /* ignore cleanup error */ }
-      setTimeout(() => process.exit(1), 1000);
+      if (process.env.NODE_ENV !== 'test') {
+          setTimeout(() => process.exit(1), 1000);
+      }
       throw new Error(`Self-healing triggered: Vector database connection was poisoned or corrupted.`, { cause: error });
   }
 

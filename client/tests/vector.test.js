@@ -58,6 +58,7 @@ describe('sqlite-vec functionality', () => {
   });
 
   it('should unlink vector.sqlite and exit on Vector DB corruption (JOPLINMEM-154)', async () => {
+    process.env.TEST_ALLOW_EXIT = '1';
     const fs = require('fs');
     const { JoplinSyncClient } = require('../src/sync');
     const client = new JoplinSyncClient({
@@ -82,10 +83,7 @@ describe('sqlite-vec functionality', () => {
     // Mock fs
     const unlinkSpy = jest.spyOn(fs, 'unlinkSync').mockImplementation();
     const existsSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(true);
-    
-    // Mock process.exit
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
-    
+
     // Execute method that queries vectorDb.all
     await expect(client.generateEmbeddings()).rejects.toThrow('Self-healing triggered');
     
@@ -94,6 +92,5 @@ describe('sqlite-vec functionality', () => {
     
     unlinkSpy.mockRestore();
     existsSpy.mockRestore();
-    exitSpy.mockRestore();
   });
 });

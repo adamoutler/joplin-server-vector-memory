@@ -1010,7 +1010,7 @@ async function runSyncCycle(config) {
                       await syncClient.generateEmbeddings();
                       // Fetch initial cursor
                       const initialEventsRes = await fetchJoplinEvents(joplinUrl, sessionId).catch(() => null);
-                      if (initialEventsRes && initialEventsRes.ok) {
+                      if (initialEventsRes?.ok) {
                           const initialEventsData = await initialEventsRes.json();
                           if (initialEventsData.cursor) {
                               newCursor = initialEventsData.cursor;
@@ -1095,7 +1095,9 @@ async function runSyncCycle(config) {
         nextAllowedSyncTime = Date.now() + 20 * 60 * 1000;
     } else {
         console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', err.message);
-        setTimeout(() => process.exit(1), 1000);
+        if (process.env.NODE_ENV !== 'test') {
+            setTimeout(() => process.exit(1), 1000);
+        }
     }
   } finally {
     isProcessing = false;

@@ -7,6 +7,7 @@ import os
 import shutil
 import pytest_playwright_visual.plugin
 
+DEV_NULL = os.devnull
 original_assert_snapshot = pytest_playwright_visual.plugin.assert_snapshot
 
 
@@ -117,9 +118,9 @@ def ephemeral_joplin():
     env.pop("JOPLIN_MASTER_PASSWORD", None)
 
     # Down first just in case
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", DEV_NULL, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)
 
-    up_args = ["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--force-recreate", "--remove-orphans", "--wait"]
+    up_args = ["docker", "compose", "-p", "joplin-test-env", "--env-file", DEV_NULL, "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--force-recreate", "--remove-orphans", "--wait"]
     if not os.environ.get("CI"):
         up_args.insert(up_args.index("--force-recreate"), "--build")
 
@@ -155,7 +156,7 @@ def ephemeral_joplin():
         yield
     finally:
         # Tear down
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", os.devnull, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], check=True)
+        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", DEV_NULL, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], check=True)
 
 
 def pytest_addoption(parser):

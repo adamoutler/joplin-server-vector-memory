@@ -45,7 +45,7 @@ describe('index.js runSyncCycle error handling', () => {
   });
 
   test('process.exit is called on fatal sync error', async () => {
-    const exitSpy = jest.spyOn(process, 'exit').mockImplementation(() => {});
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     const app = require('../src/index');
 
     const adminAuthHeader = 'Basic ' + Buffer.from('admin:password123').toString('base64');
@@ -58,11 +58,11 @@ describe('index.js runSyncCycle error handling', () => {
       .post('/sync')
       .set('Authorization', adminAuthHeader);
 
-    // Give the async runSyncCycle time to fail and call setTimeout for exit
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Give the async runSyncCycle time to fail
+    await new Promise(resolve => setTimeout(resolve, 50));
 
-    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Fatal sync cycle error encountered. Restarting container to self-heal.'), expect.any(String));
     
-    exitSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 });

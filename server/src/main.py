@@ -1468,12 +1468,13 @@ class ForceAcceptJSONMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        MCP_PREFIX = "/http-api/mcp"
         if scope["type"] == "http":
             original_path = scope["path"]
             method = scope.get("method", "")
 
             # Map exact /http-api/mcp based on method for Gemini CLI compatibility
-            if original_path.startswith("/http-api/mcp") or original_path == "/mcp":
+            if original_path.startswith(MCP_PREFIX) or original_path == "/mcp":
                 auth_header = ""
                 for k, v in scope.get("headers", []):
                     if k.lower() == b"authorization":
@@ -1500,24 +1501,24 @@ class ForceAcceptJSONMiddleware:
                     return
 
                 # If it's explicitly one of the mounted sub-apps, leave it alone
-                if not any(original_path.startswith(p) for p in ["/http-api/mcp/sse", "/http-api/mcp/stream", "/http-api/mcp/stateless"]):
+                if not any(original_path.startswith(p) for p in [f"{MCP_PREFIX}/sse", f"{MCP_PREFIX}/stream", f"{MCP_PREFIX}/stateless"]):
                     # It's a bare /http-api/mcp or a subpath like /http-api/mcp/messages
                     if original_path == "/mcp":
                         subpath = "/"
                     else:
-                        subpath = original_path[len("/http-api/mcp"):]
+                        subpath = original_path[len(MCP_PREFIX):]
 
                     if not subpath or subpath == "/":
                         if method == "GET":
-                            scope["path"] = "/http-api/mcp/sse"
+                            scope["path"] = f"{MCP_PREFIX}/sse"
                         else:
-                            scope["path"] = "/http-api/mcp/stateless"
+                            scope["path"] = f"{MCP_PREFIX}/stateless"
                     else:
-                        scope["path"] = f"/http-api/mcp/sse{subpath}"
+                        scope["path"] = f"{MCP_PREFIX}/sse{subpath}"
 
             logger.info("[MIDDLEWARE] Path rewritten")
 
-            if scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
+            if scope["path"].startswith(MCP_PREFIX) and "sse" not in scope["path"]:
                 headers = dict(scope.get("headers", []))
                 accept_key = b"accept"
                 accept_val = headers.get(accept_key, b"").decode("utf-8")
