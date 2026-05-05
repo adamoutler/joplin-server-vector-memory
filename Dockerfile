@@ -67,6 +67,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     python3 \
     sqlite3 \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/* && \
     npm install -g npm@latest
 
@@ -79,6 +80,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Copy the Hugging Face cache containing pre-downloaded models
 COPY --from=python-base /opt/hf_cache /opt/hf_cache
 ENV HF_HOME="/opt/hf_cache"
+ENV HF_HUB_OFFLINE=1
 
 # Copy the node modules
 COPY --from=builder /app/client/node_modules ./client/node_modules

@@ -52,10 +52,10 @@ def get_local_model():
         logger.info("Loading local sentence-transformers model...")
         try:
             # trust_remote_code=True is required for some models like nomic-embed-text-v1.5
-            _local_model = SentenceTransformer(model_name, trust_remote_code=True)
+            _local_model = SentenceTransformer(model_name, trust_remote_code=True, local_files_only=True)
         except Exception:
             logger.warning("Failed to load preferred model. Falling back to all-MiniLM-L6-v2")
-            _local_model = SentenceTransformer('all-MiniLM-L6-v2')
+            _local_model = SentenceTransformer('all-MiniLM-L6-v2', local_files_only=True)
 
     return _local_model
 
