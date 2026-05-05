@@ -264,34 +264,37 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
     return None
 
 
+def _resolve_folder_id(cursor, folder: str) -> Optional[str]:
+    cursor.execute("SELECT id FROM folders WHERE id = ? OR title = ? COLLATE NOCASE LIMIT 1", (folder, folder))
+    row = cursor.fetchone()
+    return row[0] if row else None
+
+
+def _apply_temporal_boost(rrf_scores: dict, notes_data: dict, target_ms: int, date_weight: float) -> None:
+    import math
+    sigma_ms = 30 * 24 * 60 * 60 * 1000
+    for rowid in rrf_scores:
+        t_diff = abs(target_ms - notes_data[rowid]["updated_time"])
+        decay = math.exp(-(t_diff**2) / (2 * (sigma_ms**2)))
+        rrf_scores[rowid] *= (1.0 + date_weight * decay)
+
+
 @mcp.tool(name="notes_search")
 def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[float] = None, target_date: Optional[str] = None, date_weight: float = 0.0, folder: Optional[str] = None, recursive: bool = False) -> list[Union[dict, TextContent]]:
     """
     Search notes semantically using the provided query.
     Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
-    alpha: Hybrid search balance (1.0 = pure vector, 0.0 = pure FTS). 
-           If None, uses 'hybridAlpha' from settings.
-    target_date: Optional, a date string like '3 years ago' for temporal weighting.
-    date_weight: Optional, weight for the temporal boost [0.0 to 1.0].
-    folder: Optional folder ID to scope the search.
-    recursive: If True, includes notes from all subfolders of the specified folder.
     """
     try:
-        if alpha is None:
-            alpha = float(get_config().get("hybridAlpha", 0.5))
-
-        # nomic-embed-text requires the search_query: prefix
+        alpha = float(get_config().get("hybridAlpha", 0.5)) if alpha is None else alpha
         embedding = get_embedding(f"search_query: {query}")
         db = get_db_connection()
         cursor = db.cursor()
 
         resolved_folder_id = None
         if folder:
-            cursor.execute("SELECT id FROM folders WHERE id = ? OR title = ? COLLATE NOCASE LIMIT 1", (folder, folder))
-            row = cursor.fetchone()
-            if row:
-                resolved_folder_id = row[0]
-            else:
+            resolved_folder_id = _resolve_folder_id(cursor, folder)
+            if not resolved_folder_id:
                 db.close()
                 error_msg = f"Folder '{folder}' not found. Try searching without folder scope."
                 return [
@@ -299,10 +302,9 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
                     TextContent(type="text", text=f"Error: {error_msg}", annotations=Annotations(audience=["user"]))
                 ]
 
-        # Determine how many candidates to fetch from each source to ensure good RRF results
         max_candidates = max(100, (page * limit) + 20)
 
-        # 1. Vector Search using CTE MATCH pattern
+        # 1. Vector Search
         cursor.execute("""
             WITH RECURSIVE subfolders AS (
                 SELECT id FROM folders WHERE id = ?
@@ -326,9 +328,8 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
         """, (resolved_folder_id, serialize_float32(embedding), max_candidates, resolved_folder_id, 1 if recursive else 0, resolved_folder_id, 1 if recursive else 0))
         vec_results = cursor.fetchall()
 
-        # 2. FTS Search for exact keywords
+        # 2. FTS Search
         fts_query = ' '.join(f'"{word}"' for word in query.replace('"', '""').split())
-
         try:
             cursor.execute("""
                 WITH RECURSIVE subfolders AS (
@@ -350,8 +351,7 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
             """, (resolved_folder_id, fts_query, resolved_folder_id, 1 if recursive else 0, resolved_folder_id, 1 if recursive else 0, max_candidates))
             fts_results = cursor.fetchall()
         except Exception as e:
-            logger.warning(
-                f"FTS search failed (likely syntax error in query), proceeding with only vector results: {e}")
+            logger.warning(f"FTS search failed: {e}")
             fts_results = []
 
         db.close()
@@ -377,23 +377,11 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
         # 4. Temporal Boost
         target_ms = parse_temporal_date(target_date) if target_date else None
         if target_ms is not None and date_weight > 0:
-            import math
-            # Sigma for decay: 30 days in milliseconds
-            sigma_ms = 30 * 24 * 60 * 60 * 1000
-            for rowid in rrf_scores:
-                updated_time = notes_data[rowid]["updated_time"]
-                # Gaussian decay: decay = exp(-(t_diff^2) / (2 * sigma^2))
-                t_diff = abs(target_ms - updated_time)
-                decay = math.exp(-(t_diff**2) / (2 * (sigma_ms**2)))
-                rrf_scores[rowid] *= (1.0 + date_weight * decay)
+            _apply_temporal_boost(rrf_scores, notes_data, target_ms, date_weight)
 
-        # Sort by RRF score descending
         sorted_rowids = sorted(rrf_scores.keys(), key=lambda r: rrf_scores[r], reverse=True)
-
-        # Paginate results
         start_idx = (page - 1) * limit
-        end_idx = start_idx + limit
-        paged_rowids = sorted_rowids[start_idx:end_idx]
+        paged_rowids = sorted_rowids[start_idx:start_idx + limit]
 
         notes = []
         for i, rowid in enumerate(paged_rowids):
