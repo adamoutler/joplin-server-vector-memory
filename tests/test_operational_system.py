@@ -95,7 +95,7 @@ class MockOllamaHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def mock_ollama_server():
-    server = HTTPServer(('0.0.0.0', 0), MockOllamaHandler)
+    server = HTTPServer(('127.0.0.1', 0), MockOllamaHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever)
     thread.daemon = True
