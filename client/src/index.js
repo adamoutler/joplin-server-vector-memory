@@ -603,7 +603,7 @@ app.post('/sync', async (req, res) => {
 });
 
 app.post('/auth', async (req, res) => {
-  const { serverUrl, username, password, masterPassword, memoryServerAddress, _rotate } = req.body;
+  const { serverUrl, username, password, masterPassword, memoryServerAddress } = req.body;
 
   let config = {};
   if (fs.existsSync(CONFIG_PATH)) {
@@ -670,7 +670,7 @@ app.post('/auth', async (req, res) => {
 
   if (!config.api_keys || config.api_keys.length === 0) {
     config.api_keys = [{
-      key: 'JMS_' + crypto.randomUUID().replace(/-/g, ''),
+      key: 'JMS_' + crypto.randomUUID().replaceAll('-', ''),
       annotation: 'Default Key',
       expires_at: null
     }];
@@ -784,7 +784,7 @@ app.post('/auth/keys/create', (req, res) => {
     } catch (_e) { /* ignore */ }
   }
   
-  const newKey = 'JMS_' + crypto.randomUUID().replace(/-/g, '');
+  const newKey = 'JMS_' + crypto.randomUUID().replaceAll('-', '');
   const keyObj = {
     key: newKey,
     annotation: annotation || 'Unnamed Key',

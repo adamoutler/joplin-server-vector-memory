@@ -8,8 +8,9 @@ module.exports = {
   v6: () => crypto.randomUUID(),
   v7: () => crypto.randomUUID(),
   NIL: '00000000-0000-0000-0000-000000000000',
-  parse: (str) => Buffer.from(str.replace(/-/g, ''), 'hex'),
+  parse: (str) => Buffer.from(str.replaceAll('-', ''), 'hex'),
   stringify: (arr) => Buffer.from(arr).toString('hex'),
   validate: (_str) => true,
   version: (_str) => 4
+};
 };

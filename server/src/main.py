@@ -23,9 +23,10 @@ from src.db import get_db_connection
 from sqlite_vec import serialize_float32
 from enum import Enum
 from mcp.types import ImageContent, EmbeddedResource, BlobResourceContents, TextContent, Annotations
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Annotated
 
-for key, value in list(os.environ.items()):
+for key in list(os.environ.keys()):
+    value = os.environ[key]
     if isinstance(value, str) and value.strip() == "":
         del os.environ[key]
 
@@ -1012,9 +1013,9 @@ def check_token_validity(token: str) -> bool:
                         expires_date = expires_date.replace(tzinfo=datetime.timezone.utc)
                     if expires_date > current_time:
                         return True
-                except Exception as parse_err:
+                except Exception:
                     logger.error("Error parsing token expiration")
-    except Exception as e:
+    except Exception:
         logger.error("Error reading config for auth")
     return False
 
@@ -1149,7 +1150,7 @@ def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
         }
     }
 )
-async def api_search(request: SearchRequest, token: str = Depends(verify_token)):
+async def api_search(request: SearchRequest, token: Annotated[str, Depends(verify_token)]):
     results = search_notes(
         query=request.query,
         page=request.page,
@@ -1172,7 +1173,7 @@ async def api_search(request: SearchRequest, token: str = Depends(verify_token))
     summary="Get Note",
     description="Get the full content of a specific note by ID.\\n\\n**Workflow Examples**:\\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content."
 )
-async def api_get(request: GetRequest, token: str = Depends(verify_token)):
+async def api_get(request: GetRequest, token: Annotated[str, Depends(verify_token)]):
     result = get_note(request.note_id)
     return extract_result(result)
 
@@ -1205,7 +1206,7 @@ async def api_get(request: GetRequest, token: str = Depends(verify_token)):
         }
     }
 )
-async def api_remember(request: RememberRequest, token: str = Depends(verify_token)):
+async def api_remember(request: RememberRequest, token: Annotated[str, Depends(verify_token)]):
     try:
         result = remember(request.title, request.content, request.folder)
         return extract_result(result)
@@ -1220,7 +1221,7 @@ async def api_remember(request: RememberRequest, token: str = Depends(verify_tok
     summary="Request Note Deletion",
     description="Step 1 of the high-friction deletion process. Request the deletion of a note by ID. Returns a token."
 )
-async def api_request_deletion(request: RequestDeletionRequest, token: str = Depends(verify_token)):
+async def api_request_deletion(request: RequestDeletionRequest, token: Annotated[str, Depends(verify_token)]):
     res = extract_result(request_note_deletion(request.note_id, request.reason))
     if "error" in res:
         return RequestDeletionResponse(error=res["error"])
@@ -1233,7 +1234,7 @@ async def api_request_deletion(request: RequestDeletionRequest, token: str = Dep
     summary="Execute Note Deletion",
     description="Step 2 of the high-friction deletion process. Requires the token from step 1, exact note title, and safety attestation."
 )
-async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Depends(verify_token)):
+async def api_execute_deletion(request: ExecuteDeletionRequest, token: Annotated[str, Depends(verify_token)]):
     res = extract_result(execute_deletion(request.deletion_token, request.confirm_title, request.safety_attestation.model_dump()))
     if "error" in res:
         return ExecuteDeletionResponse(error=res["error"])
@@ -1245,7 +1246,7 @@ async def api_execute_deletion(request: ExecuteDeletionRequest, token: str = Dep
           summary="Update Note",
           description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('full_replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes."
           )
-async def api_update(request: UpdateRequest, token: str = Depends(verify_token)):
+async def api_update(request: UpdateRequest, token: Annotated[str, Depends(verify_token)]):
     try:
         result = update_note(
             note_id=request.note_id,
@@ -1266,7 +1267,7 @@ async def api_update(request: UpdateRequest, token: str = Depends(verify_token))
 
 
 @app.get("/api/settings", response_model=Settings)
-async def get_settings(token: str = Depends(verify_token)):
+async def get_settings(token: Annotated[str, Depends(verify_token)]):
     config = _load_config_file()
     # Extract only valid fields for Settings
     valid_keys = Settings.schema()["properties"].keys() if hasattr(Settings, "schema") else Settings.model_fields.keys()
@@ -1280,7 +1281,7 @@ class TestModelRequest(BaseModel):
 
 
 @app.post("/api/settings/test-model")
-def test_model_connection(request: TestModelRequest, token: str = Depends(verify_token)):
+def test_model_connection(request: TestModelRequest, token: Annotated[str, Depends(verify_token)]):
     if not request.baseUrl:
         return {"success": True, "dimension": 384}  # Local model
     try:
@@ -1301,7 +1302,7 @@ def test_model_connection(request: TestModelRequest, token: str = Depends(verify
 
 
 @app.post("/api/settings", response_model=Settings)
-def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
+def update_settings(settings_update: SettingsUpdate, token: Annotated[str, Depends(verify_token)]):
     global _config_mtime
     _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()
@@ -1331,7 +1332,7 @@ def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify
 
 
 @app.post("/api/reindex", response_model=Settings)
-def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify_token)):
+def trigger_reindex(reindex_request: ReindexRequest, token: Annotated[str, Depends(verify_token)]):
     global _config_mtime
     _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()
@@ -1416,7 +1417,7 @@ def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify
 
 
 @app.post("/api/settings/reset", response_model=Settings)
-def reset_settings(token: str = Depends(verify_token)):
+def reset_settings(token: Annotated[str, Depends(verify_token)]):
     default_settings = Settings()
     current_config = _load_config_file()
 

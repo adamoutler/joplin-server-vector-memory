@@ -124,7 +124,7 @@ describe('Dashboard Endpoints', () => {
       joplinPassword: 'password123'
     }));
 
-    const _response = await request(app)
+    await request(app)
       .post('/auth')
       .set('Authorization', adminAuthHeader)
       .send({

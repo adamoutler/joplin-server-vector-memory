@@ -43,7 +43,7 @@ async function main() {
     parent_id: folder.id
   });
   
-  let __note4 = await Note.save({
+  await Note.save({
     title: "Fourth E2E Note",
     body: "This is the fourth note for the test.",
     parent_id: folder.id
@@ -62,3 +62,4 @@ main().catch(err => {
   console.error(err);
   process.exit(1);
 });
+

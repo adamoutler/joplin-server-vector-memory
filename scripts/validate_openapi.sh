@@ -23,7 +23,7 @@ with open('openapi.json', 'w') as f:
     json.dump(fastapi_app.openapi(), f)
 "
 
-if [ $? -ne 0 ]; then
+if [[ $? -ne 0 ]]; then
   echo "Failed to dump OpenAPI schema."
   exit 1
 fi

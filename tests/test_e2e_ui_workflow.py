@@ -64,7 +64,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
     # Wait for the frontend to be available
     max_retries = 30
-    for i in range(max_retries):
+    for _ in range(max_retries):
         try:
             r = requests.get(f"{proxy_url}/")
             if r.status_code in [200, 401]:
@@ -87,9 +87,9 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
         try:
             page.wait_for_selector("#serverUrl", timeout=5000)
             page.screenshot(path="docs/qa/snapshots/test_e2e_ui_workflow/04_open_settings.png")
-        except Exception as e:
+        except Exception:
             print("Failed to find #serverUrl. Page content:", page.content())
-            raise e
+            raise
 
         # Step 05: populate the settings form
         page.fill("#serverUrl", "http://joplin:22300")

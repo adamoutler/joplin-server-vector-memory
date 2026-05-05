@@ -176,11 +176,9 @@ class JoplinSyncClient extends EventEmitter {
     const RevisionService = require('@joplin/lib/services/RevisionService').default;
     BaseItem.revisionService_ = RevisionService.instance();
     
-    // Monkey-patch revisionService getter to ensure it's never "not set" 
+    // Monkey-patch revisionService getter to ensure it's never "not set"
     // due to Node module caching edge cases or Joplin internals.
-          const _originalRevisionService = BaseItem.revisionService;
-    BaseItem.revisionService = function() {
-        if (!this.revisionService_) {
+    BaseItem.revisionService = function() {        if (!this.revisionService_) {
             this.revisionService_ = require('@joplin/lib/services/RevisionService').default.instance();
         }
         return this.revisionService_;

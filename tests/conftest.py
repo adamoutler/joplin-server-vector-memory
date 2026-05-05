@@ -70,12 +70,7 @@ def assert_snapshot(pytestconfig, request, browser_name):
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
 
-@pytest.fixture(autouse=True)
-def reset_docker_state():
-    """
-    Function-scoped fixture to wipe the app state and Joplin database before each test.
-    """
-    # 0. Wait for Postgres to be ready
+def _wait_for_pg():
     for _ in range(15):
         try:
             res = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "pg_isready", "-U", "joplin"], capture_output=True)
@@ -85,11 +80,8 @@ def reset_docker_state():
             pass
         time.sleep(2)
 
-    # 1. Truncate Postgres tables to clear Joplin Server data
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
 
-    # Restart Joplin Server to clear its in-memory rate limiter
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "restart", "joplin"], check=True)
+def _wait_for_joplin():
     for _ in range(30):
         try:
             r = requests.get("http://localhost:22300/api/ping", timeout=2)
@@ -98,6 +90,33 @@ def reset_docker_state():
         except Exception:
             pass
         time.sleep(1)
+
+
+def _wait_for_proxy():
+    for _ in range(30):
+        try:
+            r = requests.get("http://localhost:3001/status", timeout=2)
+            if r.status_code in [200, 401]:
+                break
+        except Exception:
+            pass
+        time.sleep(1)
+
+
+@pytest.fixture(autouse=True)
+def reset_docker_state():
+    """
+    Function-scoped fixture to wipe the app state and Joplin database before each test.
+    """
+    # 0. Wait for Postgres to be ready
+    _wait_for_pg()
+
+    # 1. Truncate Postgres tables to clear Joplin Server data
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
+
+    # Restart Joplin Server to clear its in-memory rate limiter
+    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "restart", "joplin"], check=True)
+    _wait_for_joplin()
 
     # 2. Call /auth/wipe on the Proxy to clear config and memory (must use admin auth since it might be configured)
     try:
@@ -113,15 +132,7 @@ def reset_docker_state():
     time.sleep(3)
 
     # We must wait for the container to fully reboot and become responsive
-    max_retries = 30
-    for _ in range(max_retries):
-        try:
-            r = requests.get("http://localhost:3001/status", timeout=2)
-            if r.status_code in [200, 401]:
-                break
-        except Exception:
-            pass
-        time.sleep(1)
+    _wait_for_proxy()
 
 
 @pytest.fixture(scope="session")

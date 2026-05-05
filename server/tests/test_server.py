@@ -213,7 +213,7 @@ def test_config_caching():
         initial_call_count = mock_open.call_count
 
         # Second call, should use cache
-        config2 = get_config()
+        _ = get_config()
         assert mock_open.call_count == initial_call_count
 
     # Modify the file and its modification time
