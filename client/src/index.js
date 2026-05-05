@@ -354,7 +354,7 @@ app.use(async (req, res, next) => {
       return send401(`Joplin Server rejected credentials with HTTP ${response.status}`);
     }
   } catch (err) {
-    console.error(`[Auth Middleware] Joplin Server unreachable at ${joplinUrl}:`, err);
+    console.error(`[Auth Middleware] Joplin Server unreachable:`, err);
     return send401("Joplin Server unreachable during validation relay");
   }
 });
@@ -1200,3 +1200,5 @@ if (require.main === module) {
 module.exports = app;
 module.exports.runSyncCycle = runSyncCycle;
 module.exports.syncClient = syncClient;
+ncClient;
+Client;

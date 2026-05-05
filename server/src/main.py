@@ -1515,7 +1515,7 @@ class ForceAcceptJSONMiddleware:
                     else:
                         scope["path"] = f"/http-api/mcp/sse{subpath}"
 
-            logger.info(f"[MIDDLEWARE] {method} {original_path} -> {scope['path']}")
+            logger.info("[MIDDLEWARE] Path rewritten")
 
             if scope["path"].startswith("/http-api/mcp") and "sse" not in scope["path"]:
                 headers = dict(scope.get("headers", []))
