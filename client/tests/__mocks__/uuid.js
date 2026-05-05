@@ -13,4 +13,3 @@ module.exports = {
   validate: (_str) => true,
   version: (_str) => 4
 };
-};
