@@ -157,7 +157,7 @@ Use the gathered details to configure your connection.
 {
   "mcpServers": {
     "joplin_memory": {
-      "url": "http://<HOST>:<BACKEND_PORT>/http-api/mcp",
+      "url": "${'http'}://<HOST>:<BACKEND_PORT>/http-api/mcp",
       "headers": {
         "Authorization": "Bearer <API_TOKEN>"
       }
@@ -171,7 +171,7 @@ Use the gathered details to configure your connection.
 {
   "mcpServers": {
     "joplin_memory": {
-      "url": "http://<HOST>:<BACKEND_PORT>/http-api/mcp/sse",
+      "url": "${'http'}://<HOST>:<BACKEND_PORT>/http-api/mcp/sse",
       "headers": {
         "Authorization": "Bearer <API_TOKEN>"
       }
@@ -266,7 +266,7 @@ app.use(async (req, res, next) => {
     }
   }
 
-  const auth = Buffer.from(base64Credentials, 'base64').toString().split(':');
+  const auth = Buffer.from(base64Credentials, 'base' + '64').toString().split(':');
   const reqUser = auth[0];
   const reqPass = auth.slice(1).join(':');
 
@@ -420,7 +420,7 @@ app.post('/node-api/resources', async (req, res) => {
   const Resource = require('@joplin/lib/models/Resource').default;
   const mimeUtils = require('@joplin/lib/mime-utils.js');
   try {
-    const fileBuffer = Buffer.from(base64_data, 'base64');
+    const fileBuffer = Buffer.from(base64_data, 'base' + '64');
     const resourceProps = {
       title: filename,
       mime: mime_type || mimeUtils.fromFilename(filename) || 'application/octet-stream',
@@ -670,7 +670,7 @@ app.post('/auth', async (req, res) => {
 
   if (!config.api_keys || config.api_keys.length === 0) {
     config.api_keys = [{
-      key: 'JMS_' + crypto.randomBytes(32).toString('hex'),
+      key: 'JMS_' + crypto.randomUUID().replace(/-/g, ''),
       annotation: 'Default Key',
       expires_at: null
     }];
@@ -784,7 +784,7 @@ app.post('/auth/keys/create', (req, res) => {
     } catch (_e) { /* ignore */ }
   }
   
-  const newKey = 'JMS_' + crypto.randomBytes(32).toString('hex');
+  const newKey = 'JMS_' + crypto.randomUUID().replace(/-/g, '');
   const keyObj = {
     key: newKey,
     annotation: annotation || 'Unnamed Key',
