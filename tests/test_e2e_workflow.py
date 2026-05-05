@@ -146,7 +146,7 @@ def run_massive_note_injection(mock_ollama_server, temp_profile):
     env["JOPLIN_PROFILE_DIR"] = temp_profile
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
-    env["JOPLIN_PASSWORD"] = "admin"
+    env["JOPLIN_PASSWORD"] = os.environ["JOPLIN_ADMIN_PASSWORD"]
     env["NODE_PROXY_URL"] = "http://localhost:3001"
 
     # Database is stored in temp_profile/vector.sqlite

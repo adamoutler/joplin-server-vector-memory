@@ -1313,7 +1313,7 @@ def test_model_connection(request: TestModelRequest, token: str = Depends(verify
 
 
 @app.post("/api/settings", response_model=Settings)
-async def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
+def update_settings(settings_update: SettingsUpdate, token: str = Depends(verify_token)):
     global _config_mtime
     _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()
@@ -1343,7 +1343,7 @@ async def update_settings(settings_update: SettingsUpdate, token: str = Depends(
 
 
 @app.post("/api/reindex", response_model=Settings)
-async def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify_token)):
+def trigger_reindex(reindex_request: ReindexRequest, token: str = Depends(verify_token)):
     global _config_mtime
     _config_mtime = 0  # Force reload to prevent caching race conditions
     current_config = _load_config_file()

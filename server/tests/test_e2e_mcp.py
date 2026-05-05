@@ -13,7 +13,7 @@ def get_auth_headers():
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
+        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": "test_master_password",
         "rotate": True
     }

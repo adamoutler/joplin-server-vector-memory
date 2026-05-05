@@ -21,7 +21,7 @@ def populate_joplin(secret_uuid):
              "-e", "OLLAMA_URL=http://ollama:11434",
              "-e", "JOPLIN_SERVER_URL=http://joplin:22300",
              "-e", "JOPLIN_USERNAME=admin@localhost",
-             "-e", "JOPLIN_PASSWORD=admin",
+             "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}",
              "app", "node", "client/e2e_create_sync.js", secret_uuid],
             cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
             capture_output=True,

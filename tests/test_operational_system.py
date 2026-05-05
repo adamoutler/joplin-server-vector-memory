@@ -145,7 +145,7 @@ class TestOperationalSystem:
         env["JOPLIN_PROFILE_DIR"] = temp_profile
         env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
         env["JOPLIN_USERNAME"] = "admin@localhost"
-        env["JOPLIN_PASSWORD"] = "admin"
+        env["JOPLIN_PASSWORD"] = os.environ["JOPLIN_ADMIN_PASSWORD"]
         env["NODE_PROXY_URL"] = "http://localhost:3001"
 
         sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")

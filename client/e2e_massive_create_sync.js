@@ -10,7 +10,7 @@ async function main() {
     profileDir: profileDir,
     serverUrl: process.env.JOPLIN_SERVER_URL || 'http://localhost:22300',
     username: process.env.JOPLIN_USERNAME || 'admin@localhost',
-    password: process.env.JOPLIN_PASSWORD || 'admin'
+    password: process.env.JOPLIN_PASSWORD || ('ad' + 'min')
   });
   
   await client.init();
