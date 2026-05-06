@@ -8,6 +8,8 @@ on:
   schedule:
   - cron: '30 15 * * 1'
 
+permissions: read-all
+
 env:
   TEST_IMAGE: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:test-${{ github.sha }}
 
@@ -15,8 +17,6 @@ jobs:
   commitlint:
     name: Lint Commit Messages
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -28,8 +28,6 @@ jobs:
   lint:
     name: Lint Code Base
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -263,8 +261,6 @@ jobs:
     name: Schemathesis API Fuzzing
     needs: build-amd64
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
@@ -280,8 +276,6 @@ jobs:
   test-agentic-fuzzing:
     name: Promptfoo Agentic Fuzzing
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4

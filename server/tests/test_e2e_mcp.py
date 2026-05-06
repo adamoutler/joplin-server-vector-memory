@@ -4,6 +4,7 @@ import pytest
 import requests
 import json
 import time
+from tests.conftest import ephemeral_joplin  # noqa: F401
 from urllib.parse import urljoin
 from functools import lru_cache
 

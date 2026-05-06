@@ -13,6 +13,12 @@ function safeUrl(urlString) {
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new Error(`Unsafe protocol: ${url.protocol}`);
     }
+    // SSRF protection: prevent accessing sensitive internal networks
+    const hostname = url.hostname;
+    // Allow localhost/127.0.0.1 for development/testing, but block common cloud metadata IPs
+    if (hostname === '169.254.169.254' || hostname.endsWith('.internal')) {
+      throw new Error(`Unsafe host: ${hostname}`);
+    }
     return url.toString();
   } catch (e) {
     throw new Error(`Invalid URL: ${urlString}`, { cause: e });

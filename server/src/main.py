@@ -96,7 +96,7 @@ def _load_config_file() -> dict:
                     _config_cache = json.load(f)
                 _config_mtime = mtime
     except Exception as e:
-        logger.error("Error reading config.json: %s", e)
+        logger.error("Error reading config.json: %s", "Failed to parse or read config file")
         # If the file exists but we failed to read it, do NOT return an empty dict, 
         # otherwise we will wipe the user's settings during a REINDEX merge.
         if os.path.exists(config_path):
@@ -158,7 +158,7 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
                             logger.warning(f"Ollama context length exceeded. Truncating text and retrying (attempt {attempt + 1})...")
                             current_text = current_text[:len(current_text) // 2]
                             continue
-                    logger.error(f"Ollama embedding failed critically on single item: {e}")
+                    logger.error("Ollama embedding failed critically on single item")
                     raise RuntimeError(str(e))
 
         def fetch_chunk(chunk: List[str]) -> List[list[float]]:
@@ -174,7 +174,7 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
                         chunk_embeddings.append(fetch_single_with_retry(t))
                     return chunk_embeddings
                 else:
-                    logger.error(f"Ollama batch embedding failed critically: {e}")
+                    logger.error("Ollama batch embedding failed critically")
                     raise RuntimeError(str(e))
 
         chunks = [texts[i:i + SAFE_BATCH_SIZE] for i in range(0, len(texts), SAFE_BATCH_SIZE)]
@@ -443,7 +443,7 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
             TextContent(type="text", text=display_str, annotations=Annotations(audience=["user"]))
         ]
     except Exception as e:
-        logger.error(f"Error in search_notes: {e}")
+        logger.error("Error in search_notes")
         return [
             TextContent(type="text", text=json.dumps({"error": str(e)}), annotations=Annotations(audience=["assistant"])),
             TextContent(type="text", text=f"Error searching notes: {e}", annotations=Annotations(audience=["user"]))
@@ -544,7 +544,7 @@ def get_note(note_id: str) -> list[Union[dict, TextContent]]:
             if res.status_code == 200:
                 resources = res.json()
         except Exception as e:
-            logger.warning(f"Failed to fetch resources for note {note_id}: {e}")
+            logger.warning(f"Failed to fetch resources for note {note_id}")
 
         result_dict = {
             "id": row[0],
@@ -631,7 +631,7 @@ def remember(title: str, content: str, folder: str = "Agent Memory") -> list[Uni
             TextContent(type="text", text=f"Successfully remembered note: {title} (ID: {note_id})", annotations=Annotations(audience=["user"]))
         ]
     except Exception as e:
-        logger.error(f"Error in remember: {e}")
+        logger.error("Error in remember")
         return [
             TextContent(type="text", text=json.dumps({"error": str(e)}), annotations=Annotations(audience=["assistant"])),
             TextContent(type="text", text=f"Error remembering note: {e}", annotations=Annotations(audience=["user"]))
@@ -1112,7 +1112,7 @@ def internal_embed(request: InternalEmbedRequest):
         embeddings = get_embedding(request.texts)
         return {"embeddings": embeddings}
     except Exception as e:
-        logger.error(f"Error generating internal embedding: {e}")
+        logger.error("Error generating internal embedding")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1213,7 +1213,7 @@ async def api_remember(request: RememberRequest, token: Annotated[str, Depends(v
         result = remember(request.title, request.content, request.folder)
         return extract_result(result)
     except Exception as e:
-        logger.error(f"Error in api_remember: {e}")
+        logger.error("Error in api_remember")
         raise HTTPException(status_code=500, detail="An internal error occurred during remember.")
 
 
@@ -1264,7 +1264,7 @@ async def api_update(request: UpdateRequest, token: Annotated[str, Depends(verif
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in api_update: {e}")
+        logger.error("Error in api_update")
         raise HTTPException(status_code=500, detail="An internal error occurred during update.")
 
 
@@ -1299,7 +1299,7 @@ def test_model_connection(request: TestModelRequest, token: Annotated[str, Depen
         else:
             raise ValueError("Response did not contain an embedding array.")
     except Exception as e:
-        logger.error(f"Model test failed: {e}")
+        logger.error("Model test failed")
         raise HTTPException(status_code=400, detail="Failed to connect to or pull the specified model from the provided base URL. See server logs for details.")
 
 
@@ -1381,7 +1381,7 @@ def trigger_reindex(reindex_request: ReindexRequest, token: Annotated[str, Depen
         import requests
         requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
     except Exception as e:
-        logger.error(f"Failed to signal Node daemon to restart: {e}")
+        logger.error("Failed to signal Node daemon to restart")
 
     # Wait for entrypoint.sh to confirm
     for _ in range(50):
