@@ -152,12 +152,19 @@ class TestOperationalSystem:
 
         # Step 1: Create, sync, and generate embeddings using the Node.js client
         print("[Step 1] Running Node.js client to create note, sync and generate embedding...")
-        result = subprocess.run(
-            ["docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}", "app", "node", "client/e2e_create_sync.js", secret_uuid],
+        process = await asyncio.create_subprocess_exec(
+            "docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}", "app", "node", "client/e2e_create_sync.js", secret_uuid,
             cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
-            capture_output=True,
-            text=True
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
+        stdout_bytes, stderr_bytes = await process.communicate()
+        
+        class _Result: pass
+        result = _Result()
+        result.stdout = stdout_bytes.decode()
+        result.stderr = stderr_bytes.decode()
+        result.returncode = process.returncode
         print("Node.js output:", result.stdout)
         if result.stderr:
             print("Node.js error:", result.stderr)
