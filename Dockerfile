@@ -99,6 +99,10 @@ EXPOSE 8000
 
 RUN chmod +x entrypoint.sh
 
+# Run as non-root user for security
+RUN mkdir -p /app/data && chown -R node:node /app
+USER node
+
 ENTRYPOINT ["./entrypoint.sh"]
 
 # ==========================================
