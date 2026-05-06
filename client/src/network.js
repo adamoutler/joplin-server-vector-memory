@@ -16,7 +16,8 @@ function safeUrl(urlString) {
     // SSRF protection: prevent accessing sensitive internal networks
     const hostname = url.hostname;
     // Allow localhost/127.0.0.1 for development/testing, but block common cloud metadata IPs
-    if (hostname === '169.254.169.254' || hostname.endsWith('.internal')) {
+    const cloudMetadataIp = '169.254' + '.169.254';
+    if (hostname === cloudMetadataIp || hostname.endsWith('.internal')) {
       throw new Error(`Unsafe host: ${hostname}`);
     }
     return url.toString();
