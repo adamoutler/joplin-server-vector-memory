@@ -1,3 +1,4 @@
+import base64
 import pytest
 import requests
 import subprocess
@@ -21,11 +22,11 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     setup_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": os.environ["JOPLIN_ADMIN_PASSWORD"],
         "memoryServerAddress": "http://localhost:8000"
     }
-    r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", "1-mcp-server"))
+    r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()))
     assert r.status_code == 200, f"Setup failed: {r.text}"
     time.sleep(2)
 

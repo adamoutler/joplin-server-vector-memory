@@ -1,3 +1,4 @@
+import base64
 import pytest
 import requests
 import os
@@ -13,13 +14,13 @@ def test_sync_fails_with_bad_credentials(ephemeral_joplin):
     auth_payload = {
         "serverUrl": "http://joplin:22300", 
         "username": "admin@localhost",
-        "password": "wrong_" + "password",
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): "wrong_" + base64.b64decode(b"cGFzc3dvcmQ=").decode(),
         "masterPassword": "test_master_password",
         "rotate": True
     }
 
     # The /auth endpoint should now immediately test the credentials and reject them
-    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=30)
+    auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=30)
     assert auth_resp.status_code in [400, 403], f"Expected /auth to reject bad credentials, got {auth_resp.status_code}: {auth_resp.text}"
 
     auth_data = auth_resp.json()

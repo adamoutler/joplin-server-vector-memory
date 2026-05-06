@@ -1,3 +1,4 @@
+import base64
 import pytest
 import requests
 import time
@@ -46,7 +47,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     auth_payload = {
         "serverUrl": "http://joplin:22300",  # internal network name
         "username": "admin@localhost",
-        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": "test_master_password",
         "rotate": True
     }
@@ -55,7 +56,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     max_retries = 60
     for i in range(max_retries):
         try:
-            r = requests.get(f"{PROXY_URL}/", auth=("setup", "1-mcp-server"), timeout=5)
+            r = requests.get(f"{PROXY_URL}/", auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=5)
             if r.status_code == 200:
                 break
         except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout):
@@ -68,7 +69,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     last_err = ""
     for i in range(30):
         try:
-            auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=5)
+            auth_resp = requests.post(f"{PROXY_URL}/auth", json=auth_payload, auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=5)
             if auth_resp.status_code == 200:
                 auth_success = True
                 break

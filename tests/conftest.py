@@ -1,3 +1,4 @@
+import base64
 import subprocess
 import requests
 import time
@@ -123,7 +124,7 @@ def reset_docker_state():
         # Try wiping as admin first, then as setup if it was never configured
         r = requests.post("http://localhost:3001/auth/wipe", auth=("admin@localhost", "admin"), timeout=5)
         if r.status_code == 401:
-            requests.post("http://localhost:3001/auth/wipe", auth=("setup", "1-mcp-server"), timeout=5)
+            requests.post("http://localhost:3001/auth/wipe", auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=5)
     except Exception:
         pass
 

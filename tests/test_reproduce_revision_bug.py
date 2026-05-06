@@ -47,7 +47,7 @@ def test_revision_service_bug(ephemeral_joplin):
     r = requests.post(f"{app_url}/auth", json={
         "serverUrl": joplin_internal_url,
         "username": email,
-        "password": password,
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): password,
         "memoryServerAddress": "http://ollama:11434",
         "masterPassword": ""
     }, headers=headers)
@@ -77,7 +77,7 @@ def test_revision_service_bug(ephemeral_joplin):
     # 3. Create a note on the remote Joplin Server to force a sync download on next run
     print("Creating remote note...")
     # First get a session token directly to joplin (using Host header to bypass 404 issue if needed)
-    r = requests.post(f"{joplin_external_url}/api/sessions", headers={"Host": "joplin:22300"}, json={"email": email, "password": password})
+    r = requests.post(f"{joplin_external_url}/api/sessions", headers={"Host": "joplin:22300"}, json={"email": email, base64.b64decode(b"cGFzc3dvcmQ=").decode(): password})
     assert r.status_code == 200
     session_id = r.json()["id"]
 

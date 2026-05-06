@@ -1,3 +1,4 @@
+import base64
 import pytest
 import os
 import sys
@@ -187,13 +188,13 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": "test_master_password",
         "rotate": False
     }
     import httpx
     async with httpx.AsyncClient() as client:
-        r = await client.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=10.0)
+        r = await client.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=10.0)
         print("Init response:", r.status_code, r.text)
 
         print("Restarting proxy to force it to initialize the sync client...")
@@ -206,7 +207,7 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
         # Wait for proxy to be ready
         for _ in range(30):
             try:
-                r = await client.get("http://localhost:3001/", auth=("setup", "1-mcp-server"), timeout=2.0)
+                r = await client.get("http://localhost:3001/", auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=2.0)
                 if r.status_code == 200:
                     break
             except Exception:

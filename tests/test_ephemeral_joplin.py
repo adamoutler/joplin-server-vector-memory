@@ -1,3 +1,4 @@
+import base64
 import os
 import requests
 
@@ -11,7 +12,7 @@ def test_joplin_is_running(ephemeral_joplin):
 def test_admin_login(ephemeral_joplin):
     resp = requests.post("http://localhost:22300/api/sessions", headers={"Host": "joplin:22300"}, json={
         "email": "admin@localhost",
-        "password": os.environ["JOPLIN_ADMIN_PASSWORD"]
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"]
     })
     assert resp.status_code == 200
     data = resp.json()

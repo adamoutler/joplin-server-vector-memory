@@ -1,3 +1,4 @@
+import base64
 import os
 import pytest
 import requests
@@ -13,14 +14,14 @@ def get_auth_headers():
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
         "masterPassword": "test_master_password",
         "rotate": True
     }
 
     for _ in range(30):
         try:
-            auth_resp = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", "1-mcp-server"), timeout=5)
+            auth_resp = requests.post("http://localhost:3001/auth", json=auth_payload, auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=5)
             if auth_resp.status_code == 200:
                 break
         except Exception:

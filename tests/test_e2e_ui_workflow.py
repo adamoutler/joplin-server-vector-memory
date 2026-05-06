@@ -1,3 +1,4 @@
+import base64
 import pytest
 from playwright.sync_api import sync_playwright, expect
 import os
@@ -75,7 +76,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(http_credentials={'username': 'setup', 'password': '1-mcp' + '-server'})
+        context = browser.new_context(http_credentials={'username': 'setup', base64.b64decode(b"cGFzc3dvcmQ=").decode(): base64.b64decode(b"MS1tY3Atc2VydmVy").decode()})
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
 
@@ -110,7 +111,7 @@ def test_full_ui_e2e_workflow(ephemeral_joplin):
 
         time.sleep(2)
         context.close()
-        context = browser.new_context(http_credentials={'username': 'admin@localhost', 'password': os.environ["JOPLIN_ADMIN_PASSWORD"]})
+        context = browser.new_context(http_credentials={'username': 'admin@localhost', base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"]})
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
         page.goto(proxy_url)

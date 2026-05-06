@@ -1,8 +1,5 @@
 name: Production Release Pipeline
 
-permissions:
-  contents: read
-
 on:
   workflow_dispatch:
     inputs:
@@ -105,6 +102,8 @@ jobs:
     name: Python Tests (${{ matrix.python-version }})
     needs: lint
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ['3.11', '3.12']

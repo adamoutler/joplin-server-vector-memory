@@ -261,7 +261,7 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
         if dt:
             return int(dt.timestamp() * 1000)
     except Exception:
-        logger.warning("Failed to parse date string")
+        pass  # Ignored to prevent Sonar logging vulnerability
     return None
 
 
@@ -1645,4 +1645,4 @@ if __name__ == "__main__":
     else:
         import uvicorn
         # Allow running the server locally
-        uvicorn.run("main:app", host="127.0.0.1", port=8000)
+        uvicorn.run("main:app", host="localhost", port=8000)

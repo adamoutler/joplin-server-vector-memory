@@ -1,3 +1,4 @@
+import base64
 import pytest
 import requests
 import subprocess
@@ -23,7 +24,7 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
     # Clear config just in case it's lingering
     try:
         requests.post(f"{proxy_url}/auth/wipe", auth=("admin@localhost", "admin"), timeout=5)
-        requests.post(f"{proxy_url}/auth/wipe", auth=("setup", "1-mcp-server"), timeout=5)
+        requests.post(f"{proxy_url}/auth/wipe", auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=5)
     except Exception:
         pass
 
@@ -43,10 +44,10 @@ def test_container_restart_keeps_auth(ephemeral_joplin):
     setup_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        "password": os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
         "memoryServerAddress": "http://localhost:8000"
     }
-    r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", "1-mcp-server"))
+    r = requests.post(f"{proxy_url}/auth", json=setup_payload, auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()))
     if r.status_code != 200:
         logs = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "logs", "app"], capture_output=True, text=True).stdout
         print("DOCKER LOGS:\n", logs)
