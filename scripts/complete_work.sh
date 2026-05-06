@@ -24,11 +24,15 @@ WORKSPACE="joplin-server-vector-memory"
 API_BASE="https://kanban.hackedyour.info/api/v1/workspaces/${WORKSPACE}"
 GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"  # Optional: set env var to override model
 
+CONTENT_TYPE_JSON="Content-Type: application/json"
+BOX_TOP="╔══════════════════════════════════════════════════════════════╗"
+BOX_BOTTOM="╚══════════════════════════════════════════════════════════════╝"
+
 # =============================================================================
 # Argument Parsing
 # =============================================================================
 if [[ $# -ne 1 ]]; then
-    echo "Usage: $0 TICKET-ID (e.g., GEMWEBUI-123)"
+    echo "Usage: $0 TICKET-ID (e.g., GEMWEBUI-123)" >&2
     exit 1
 fi
 
@@ -37,13 +41,13 @@ PREFIX="${TICKET_ID%%-*}"
 NUMBER="${TICKET_ID##*-}"
 
 if [[ -z "$PREFIX" || -z "$NUMBER" || "$PREFIX" == "$NUMBER" ]]; then
-    echo "ERROR: Invalid ticket ID format. Expected PREFIX-NUMBER (e.g., GEMWEBUI-123)"
+    echo "ERROR: Invalid ticket ID format. Expected PREFIX-NUMBER (e.g., GEMWEBUI-123)" >&2
     exit 1
 fi
 
 # Validate NUMBER is numeric
 if ! [[ "$NUMBER" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid ticket number '$NUMBER'. Must be numeric."
+    echo "ERROR: Invalid ticket number '$NUMBER'. Must be numeric." >&2
     exit 1
 fi
 
@@ -51,17 +55,17 @@ fi
 # Environment Checks
 # =============================================================================
 if [[ -z "${KANBAN_API_KEY:-}" ]]; then
-    echo "ERROR: KANBAN_API_KEY is not set in the environment."
+    echo "ERROR: KANBAN_API_KEY is not set in the environment." >&2
     exit 1
 fi
 
 if ! command -v gemini &>/dev/null; then
-    echo "ERROR: gemini CLI is not installed or not in PATH."
+    echo "ERROR: gemini CLI is not installed or not in PATH." >&2
     exit 1
 fi
 
 if ! command -v gh &>/dev/null; then
-    echo "ERROR: gh CLI is not installed or not in PATH."
+    echo "ERROR: gh CLI is not installed or not in PATH." >&2
     exit 1
 fi
 
@@ -73,11 +77,11 @@ echo "=== Resolving ticket $TICKET_ID ==="
 # Get project ID from identifier prefix
 PROJECT_ID=$(curl -s --max-time 30 -X GET "${API_BASE}/projects/" \
     -H "x-api-key: $KANBAN_API_KEY" \
-    -H "Content-Type: application/json" \
+    -H "$CONTENT_TYPE_JSON" \
     | jq -r ".results[] | select(.identifier == \"$PREFIX\") | .id")
 
 if [[ -z "$PROJECT_ID" || "$PROJECT_ID" == "null" ]]; then
-    echo "ERROR: Could not find project with identifier '$PREFIX'"
+    echo "ERROR: Could not find project with identifier '$PREFIX'" >&2
     exit 1
 fi
 
@@ -86,11 +90,11 @@ echo "  Project: $PREFIX ($PROJECT_ID)"
 # Get work item by sequence_id
 WORK_ITEM_ID=$(curl -s --max-time 30 -X GET "${API_BASE}/projects/${PROJECT_ID}/issues/?search=${NUMBER}" \
     -H "x-api-key: $KANBAN_API_KEY" \
-    -H "Content-Type: application/json" \
+    -H "$CONTENT_TYPE_JSON" \
     | jq -r ".results[] | select(.sequence_id == ${NUMBER}) | .id")
 
 if [[ -z "$WORK_ITEM_ID" || "$WORK_ITEM_ID" == "null" ]]; then
-    echo "ERROR: Could not find issue ${TICKET_ID} in project ${PREFIX}"
+    echo "ERROR: Could not find issue ${TICKET_ID} in project ${PREFIX}" >&2
     exit 1
 fi
 
@@ -99,11 +103,11 @@ echo "  Issue: $TICKET_ID ($WORK_ITEM_ID)"
 # Get Done state ID
 DONE_STATE_ID=$(curl -s --max-time 30 -X GET "${API_BASE}/projects/${PROJECT_ID}/states/" \
     -H "x-api-key: $KANBAN_API_KEY" \
-    -H "Content-Type: application/json" \
+    -H "$CONTENT_TYPE_JSON" \
     | jq -r '.results[] | select(.name == "Done") | .id')
 
 if [[ -z "$DONE_STATE_ID" || "$DONE_STATE_ID" == "null" ]]; then
-    echo "ERROR: Could not find 'Done' state in project ${PREFIX}"
+    echo "ERROR: Could not find 'Done' state in project ${PREFIX}" >&2
     exit 1
 fi
 
@@ -119,7 +123,7 @@ PORCELAIN=$(git status --porcelain)
 if [[ -n "$PORCELAIN" ]]; then
     echo "FAIL"
     echo ""
-    echo "ERROR: Repository has uncommitted changes:"
+    echo "ERROR: Repository has uncommitted changes:" >&2
     echo "$PORCELAIN"
     echo ""
     echo "Please commit all project files and delete non-project files."
@@ -132,7 +136,7 @@ echo -n "  [2/3] Git pushed: "
 if git status -sb | grep -q 'ahead'; then
     echo "FAIL"
     echo ""
-    echo "ERROR: Repository has unpushed commits. Please push changes first."
+    echo "ERROR: Repository has unpushed commits. Please push changes first." >&2
     exit 1
 fi
 echo "PASS"
@@ -146,7 +150,7 @@ RUN_IDS=$(echo "$RUNS_JSON" | jq -r '.[].databaseId // empty')
 if [[ -z "$RUN_IDS" ]]; then
     echo "FAIL"
     echo ""
-    echo "ERROR: No GitHub Actions run found for commit $CURRENT_COMMIT."
+    echo "ERROR: No GitHub Actions run found for commit $CURRENT_COMMIT." >&2
     echo "Please push your changes and wait for checks to pass."
     exit 1
 fi
@@ -161,14 +165,14 @@ for RUN_ID in $RUN_IDS; do
         echo "WAITING"
         if ! gh run watch "$RUN_ID" --exit-status >/dev/null; then
             echo ""
-            echo "ERROR: GitHub Actions run $RUN_ID failed after waiting."
+            echo "ERROR: GitHub Actions run $RUN_ID failed after waiting." >&2
             exit 1
         fi
         echo "    Run $RUN_ID: PASS"
     elif [[ "$CONCLUSION" != "success" && "$CONCLUSION" != "skipped" && "$CONCLUSION" != "neutral" ]]; then
         echo "FAIL"
         echo ""
-        echo "ERROR: GitHub Actions run $RUN_ID did not succeed (conclusion: $CONCLUSION)."
+        echo "ERROR: GitHub Actions run $RUN_ID did not succeed (conclusion: $CONCLUSION)." >&2
         echo "Please fix the build before attempting to close the ticket."
         exit 1
     else
@@ -185,14 +189,14 @@ echo "=== Fetching ticket data ==="
 
 TICKET_JSON=$(curl -s --max-time 30 -X GET "${API_BASE}/projects/${PROJECT_ID}/issues/${WORK_ITEM_ID}/" \
     -H "x-api-key: $KANBAN_API_KEY" \
-    -H "Content-Type: application/json")
+    -H "$CONTENT_TYPE_JSON")
 
 TICKET_NAME=$(echo "$TICKET_JSON" | jq -r '.name // "Unknown Ticket"')
 echo "  Ticket: $TICKET_NAME"
 
 TICKET_COMMENTS=$(curl -s --max-time 30 -X GET "${API_BASE}/projects/${PROJECT_ID}/issues/${WORK_ITEM_ID}/comments/" \
     -H "x-api-key: $KANBAN_API_KEY" \
-    -H "Content-Type: application/json" \
+    -H "$CONTENT_TYPE_JSON" \
     | jq -r '
       .results[] | "User Id: \(.created_by)\nLast Updated: \(.updated_at // .created_at)\n\(.comment_html)\nAttachments: \(.attachments | tojson)\n---"
     ')
@@ -246,10 +250,10 @@ RESULT=$(cat "$TICKET_FILE" | "${GEMINI_CMD[@]}" -p \
 GEMINI_EXIT_CODE=$?
 
 # --- Gate: Gemini failure = automatic rejection ---
-if [ $GEMINI_EXIT_CODE -ne 0 ]; then
-    echo "╔══════════════════════════════════════════════════════════════╗"
+if [[ $GEMINI_EXIT_CODE -ne 0 ]]; then
+    echo "$BOX_TOP"
     echo "║  REJECTED — Reality checker unavailable (exit: $GEMINI_EXIT_CODE)"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "$BOX_BOTTOM"
     echo ""
     echo "Gemini stderr:"
     cat "$GEMINI_STDERR"
@@ -262,9 +266,9 @@ fi
 
 # --- Gate: Empty response = automatic rejection ---
 if [[ -z "$RESULT" ]]; then
-    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "$BOX_TOP"
     echo "║  REJECTED — Reality checker returned empty response         ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "$BOX_BOTTOM"
     echo ""
     echo "Gemini stderr:"
     cat "$GEMINI_STDERR"
@@ -283,7 +287,7 @@ echo "  Posting QA results to ticket..."
 COMMENT_PAYLOAD=$(jq -n --arg html "$RESULT" '{"comment_html": $html}')
 curl -s --max-time 30 -X POST "${API_BASE}/projects/${PROJECT_ID}/issues/${WORK_ITEM_ID}/comments/" \
     -H "x-api-key: $KANBAN_API_KEY" \
-    -H "Content-Type: application/json" \
+    -H "$CONTENT_TYPE_JSON" \
     -d "$COMMENT_PAYLOAD" > /dev/null
 
 # =============================================================================
@@ -292,9 +296,9 @@ curl -s --max-time 30 -X POST "${API_BASE}/projects/${PROJECT_ID}/issues/${WORK_
 # Match the pattern from .gemini/hooks/qa-gate.sh
 if grep -qiE "\*\*Status\*\*: READY|^READY$" <<< "$RESULT" || echo "$RESULT" | tail -n 5 | grep -qiE "READY|confirmed.*complet|is now complete|all criteria.*met|production.ready"; then
     echo ""
-    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "$BOX_TOP"
     echo "║  ✅ APPROVED — Reality checker verdict: READY               ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "$BOX_BOTTOM"
     echo ""
     echo "  Transitioning $TICKET_ID to Done..."
 
@@ -302,7 +306,7 @@ if grep -qiE "\*\*Status\*\*: READY|^READY$" <<< "$RESULT" || echo "$RESULT" | t
     HTTP_CODE=$(curl -s --max-time 30 -o /dev/null -w "%{http_code}" -X PATCH \
         "${API_BASE}/projects/${PROJECT_ID}/issues/${WORK_ITEM_ID}/" \
         -H "x-api-key: $KANBAN_API_KEY" \
-        -H "Content-Type: application/json" \
+        -H "$CONTENT_TYPE_JSON" \
         -d "{\"state\": \"$DONE_STATE_ID\"}")
 
     if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
@@ -312,16 +316,16 @@ if grep -qiE "\*\*Status\*\*: READY|^READY$" <<< "$RESULT" || echo "$RESULT" | t
         rm -f "$TICKET_FILE"
         exit 0
     else
-        echo "  ERROR: API call to transition ticket failed (HTTP $HTTP_CODE)."
+        echo "  ERROR: API call to transition ticket failed (HTTP $HTTP_CODE)." >&2
         echo "  The reality checker approved, but the state transition failed."
         echo "  You may need to manually transition the ticket."
         exit 1
     fi
 else
     echo ""
-    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "$BOX_TOP"
     echo "║  ❌ REJECTED — Reality checker verdict: NEEDS WORK          ║"
-    echo "╚══════════════════════════════════════════════════════════════╝"
+    echo "$BOX_BOTTOM"
     echo ""
     echo "  Feedback has been posted to the ticket comments."
     echo "  Address the issues below, then run this script again."
