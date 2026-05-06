@@ -5,7 +5,6 @@ import asyncio
 import tempfile
 import json
 import threading
-import subprocess
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from mcp.client.stdio import stdio_client, StdioServerParameters
@@ -159,8 +158,10 @@ class TestOperationalSystem:
             stderr=asyncio.subprocess.PIPE
         )
         stdout_bytes, stderr_bytes = await process.communicate()
-        
-        class _Result: pass
+
+        class _Result:
+            pass
+
         result = _Result()
         result.stdout = stdout_bytes.decode()
         result.stderr = stderr_bytes.decode()
