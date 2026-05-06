@@ -331,20 +331,27 @@ jobs:
     name: SonarCloud Quality Gate
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      - name: SonarQube Quality Gate check
-        uses: sonarsource/sonarqube-quality-gate-action@master
-        timeout-minutes: 5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Check SonarCloud Quality Gate
+        run: |
+          echo "Waiting for SonarCloud Automatic Analysis for commit $GITHUB_SHA..."
+          for i in {1..30}; do
+            ANALYSIS=$(curl -s "https://sonarcloud.io/api/project_analyses/search?project=adamoutler_joplin-server-vector-memory")
+            REVISION=$(echo "$ANALYSIS" | jq -r '.analyses[0].revision')
+            if [ "$REVISION" = "$GITHUB_SHA" ]; then
+              echo "Analysis for $GITHUB_SHA completed."
+              STATUS=$(curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=adamoutler_joplin-server-vector-memory" | jq -r '.projectStatus.status')
+              echo "Quality Gate Status: $STATUS"
+              if [ "$STATUS" = "ERROR" ]; then
+                echo "SonarCloud Quality Gate failed."
+                exit 1
+              fi
+              exit 0
+            fi
+            echo "Waiting... (Current revision: $REVISION)"
+            sleep 15
+          done
+          echo "Timed out waiting for SonarCloud."
+          exit 1
 
   publish-test-results:
     name: Publish Test Results
