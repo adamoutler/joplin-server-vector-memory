@@ -110,5 +110,7 @@ ENTRYPOINT ["./entrypoint.sh"]
 # ==========================================
 FROM runtime AS tester
 
+USER root
 COPY server/requirements-dev.txt ./server/
 RUN pip install --no-cache-dir -r server/requirements-dev.txt
+USER node
