@@ -14,16 +14,16 @@ from mcp.client.session import ClientSession
 # We import the fixture from server/tests/conftest.py to ensure the ephemeral Joplin Server runs
 # Adding server/tests to sys.path to easily import it, or we can just redefine it.
 # We'll rely on conftest if we run `pytest tests/test_e2e_workflow.py` but let's just make sure.
-# Actually, since it's a fixture in server/tests/conftest.py, we can define a conftest.py in tests/ 
-# or just redefine it here to be safe, or just use `from server.tests.conftest import ephemeral_joplin` 
-# wait, pytest fixtures don't need to be imported if they are in a conftest.py in a parent/sibling 
-# if we run from root, but `tests/` and `server/tests/` are siblings. 
+# Actually, since it's a fixture in server/tests/conftest.py, we can define a conftest.py in tests/
+# or just redefine it here to be safe, or just use `from server.tests.conftest import ephemeral_joplin`
+# wait, pytest fixtures don't need to be imported if they are in a conftest.py in a parent/sibling
+# if we run from root, but `tests/` and `server/tests/` are siblings.
 # Better to import it explicitly or recreate.
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
 
 # Import ephemeral_joplin from test_ephemeral_joplin just in case, but it's local there
-# Let's just redefine a session-scoped ephemeral_joplin here if it doesn't conflict, 
+# Let's just redefine a session-scoped ephemeral_joplin here if it doesn't conflict,
 # or just run it via import.
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'tests')))
 
@@ -131,27 +131,7 @@ def test_massive_note_injection(ephemeral_joplin, mock_ollama_server, temp_profi
     asyncio.run(run_massive_note_injection(mock_ollama_server, temp_profile))
 
 
-async def run_massive_note_injection(mock_ollama_server, temp_profile):
-    secret_uuid = str(uuid.uuid4())
-    print(f"\nSecret UUID for massive run: {secret_uuid}")
-
-    # Paths
-    client_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'client'))
-    script_path = os.path.join(client_dir, 'e2e_massive_create_sync.js')
-
-    # Run Node.js client to create 50 notes, sync them, and generate embeddings
-    env = os.environ.copy()
-    env["OLLAMA_URL"] = mock_ollama_server
-    env["BACKEND_URL"] = mock_ollama_server
-    env["JOPLIN_PROFILE_DIR"] = temp_profile
-    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
-    env["JOPLIN_USERNAME"] = "admin@localhost"
-    env["JOPLIN_PASSWORD"] = os.environ["JOPLIN_ADMIN_PASSWORD"]
-    env["NODE_PROXY_URL"] = "http://localhost:3001"
-
-    # Database is stored in temp_profile/vector.sqlite
-    sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
-
+async def _run_nodejs_client_massive(mock_ollama_server, secret_uuid):
     print("Running Node.js client for massive note injection...")
     # Increase timeout significantly as per instructions
     proc = await asyncio.create_subprocess_exec(
@@ -182,7 +162,10 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
             created_note_id = line.split("Created note ID:")[1].strip()
 
     assert created_note_id is not None, "Failed to capture created note ID from Node script output"
+    return created_note_id
 
+
+async def _init_nodejs_proxy():
     # Initialize the Node.js proxy so it has credentials for deletion
     print("Initializing Node.js proxy...")
     auth_payload = {
@@ -214,13 +197,17 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
                 pass
             await asyncio.sleep(1)
 
-    # Copy the DB out of the container to the host machine for the python test to read
-    proc_cp = await asyncio.create_subprocess_exec("docker", "cp", f"joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path)
-    await proc_cp.communicate()
 
-    assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"    
+async def _query_mcp_server(secret_uuid, sqlite_db_path, created_note_id, mock_ollama_server, temp_profile):
     # Query Python MCP Server
     main_py_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server', 'src', 'main.py'))
+    env = os.environ.copy()
+    env["OLLAMA_URL"] = mock_ollama_server
+    env["BACKEND_URL"] = mock_ollama_server
+    env["JOPLIN_PROFILE_DIR"] = temp_profile
+    env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
+    env["JOPLIN_USERNAME"] = "admin@localhost"
+    env["JOPLIN_PASSWORD"] = os.environ["JOPLIN_ADMIN_PASSWORD"]
     env["SQLITE_DB_PATH"] = sqlite_db_path
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
     env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"
@@ -285,3 +272,23 @@ async def run_massive_note_injection(mock_ollama_server, temp_profile):
             assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
 
             print("Massive test completely successful!")
+
+
+async def run_massive_note_injection(mock_ollama_server, temp_profile):
+    secret_uuid = str(uuid.uuid4())
+    print(f"\nSecret UUID for massive run: {secret_uuid}")
+
+    created_note_id = await _run_nodejs_client_massive(mock_ollama_server, secret_uuid)
+
+    await _init_nodejs_proxy()
+
+    # Database is stored in temp_profile/vector.sqlite
+    sqlite_db_path = os.path.join(temp_profile, "vector.sqlite")
+
+    # Copy the DB out of the container to the host machine for the python test to read
+    proc_cp = await asyncio.create_subprocess_exec("docker", "cp", "joplin-test-env-app-1:/tmp/vector_memory.sqlite", sqlite_db_path)
+    await proc_cp.communicate()
+
+    assert os.path.exists(sqlite_db_path), "Vector SQLite DB was not created"
+
+    await _query_mcp_server(secret_uuid, sqlite_db_path, created_note_id, mock_ollama_server, temp_profile)
