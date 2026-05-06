@@ -74,6 +74,8 @@ logger = logging.getLogger(__name__)
 # Initialize FastMCP server
 mcp = FastMCP("JoplinSemanticSearch")
 
+DEFAULT_CONFIG_PATH = "/app/data/config.json"
+
 _config_cache = {}
 _config_mtime = 0
 
@@ -84,7 +86,7 @@ def _load_config_file() -> dict:
     The cache is invalidated if the file's modification time changes.
     """
     global _config_cache, _config_mtime
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    config_path = os.environ.get("CONFIG_PATH", DEFAULT_CONFIG_PATH)
     try:
         if os.path.exists(config_path):
             mtime = os.path.getmtime(config_path)
@@ -1266,7 +1268,7 @@ async def api_update(request: UpdateRequest, token: Annotated[str, Depends(verif
         raise HTTPException(status_code=500, detail="An internal error occurred during update.")
 
 
-@app.get("/api/settings", response_model=Settings)
+@app.get("/api/settings", response_model=Settings, responses={500: {"description": "Internal Server Error"}})
 async def get_settings(token: Annotated[str, Depends(verify_token)]):
     config = _load_config_file()
     # Extract only valid fields for Settings
@@ -1316,7 +1318,7 @@ def update_settings(settings_update: SettingsUpdate, token: Annotated[str, Depen
     merged_config = {**current_config, **new_config}
 
     # Save to config.json atomically
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    config_path = os.environ.get("CONFIG_PATH", DEFAULT_CONFIG_PATH)
     # Make sure directory exists
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     tmp_config_path = f"{config_path}.tmp"
@@ -1394,7 +1396,7 @@ def trigger_reindex(reindex_request: ReindexRequest, token: Annotated[str, Depen
     merged_config = {**current_config, **new_config}
 
     # Save to config.json atomically
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    config_path = os.environ.get("CONFIG_PATH", DEFAULT_CONFIG_PATH)
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     tmp_config_path = f"{config_path}.tmp"
     with open(tmp_config_path, "w") as f:
@@ -1428,7 +1430,7 @@ def reset_settings(token: Annotated[str, Depends(verify_token)]):
 
     merged_config = {**current_config, **default_dict}
 
-    config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+    config_path = os.environ.get("CONFIG_PATH", DEFAULT_CONFIG_PATH)
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     tmp_config_path = f"{config_path}.tmp"
     with open(tmp_config_path, "w") as f:
