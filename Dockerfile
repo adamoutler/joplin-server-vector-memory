@@ -17,14 +17,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install massive ML libraries separately for caching
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir torch sentence-transformers einops
+    pip install --no-cache-dir torch sentence-transformers einops --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Pre-download the models into the image to avoid runtime downloads
-# This caches both the small fallback and the high-quality Nomic model
+# Pre-download the model into the image to avoid runtime downloads
+# This caches the small fallback model
 ENV HF_HOME="/opt/hf_cache"
 RUN python3 -c "from sentence_transformers import SentenceTransformer; \
-    SentenceTransformer('all-MiniLM-L6-v2'); \
-    SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)"
+    SentenceTransformer('all-MiniLM-L6-v2')"
 
 # ==========================================
 # Stage 2: Builder (Node & Remaining Python)
@@ -60,7 +59,7 @@ RUN cd client && \
 # ==========================================
 # Stage 3: Final Runtime (Lightweight)
 # ==========================================
-FROM node:20-bookworm-slim
+FROM node:20-bookworm-slim AS runtime
 
 # Install runtime essentials and upgrade OS packages for security
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
@@ -101,3 +100,11 @@ EXPOSE 8000
 RUN chmod +x entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]
+
+# ==========================================
+# Stage 4: Testing (Includes dev dependencies)
+# ==========================================
+FROM runtime AS tester
+
+COPY server/requirements-dev.txt ./server/
+RUN pip install --no-cache-dir -r server/requirements-dev.txt

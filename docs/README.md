@@ -22,7 +22,7 @@ The system utilizes a headless daemon powered by the official `@joplin/lib` pack
 * By hooking into Joplin's internal `ResourceService` and `Synchronizer` event emitters, it intercepts fully synced and decrypted notes in real-time.
 
 ### 2. Local Embedding Generation
-Once a note is intercepted and decrypted, the Markdown text is passed through an embedding model (such as `nomic-embed-text` running locally via Ollama). This translates the textual content into a high-dimensional vector array representing the semantic meaning of the note.
+Once a note is intercepted and decrypted, the Markdown text is passed through an embedding model (such as `all-minilm` running locally via Ollama). This translates the textual content into a high-dimensional vector array representing the semantic meaning of the note.
 
 ### 3. Fast Vector Storage (SQLite + sqlite-vec)
 Instead of relying on heavy external vector databases (like Milvus or dedicated MySQL vector extensions), the system leverages `sqlite-vec`—an embedded SQLite extension optimized for extremely fast vector similarity search.

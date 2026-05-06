@@ -114,7 +114,7 @@ def get_config() -> dict:
             embedding_config = {
                 "provider": "ollama",
                 "baseUrl": legacy_url,
-                "model": config.get("embeddingModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "nomic-embed-text")))
+                "model": config.get("embeddingModel", config.get("EMBEDDING_MODEL", os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")))
             }
         else:
             embedding_config = {"provider": "internal"}

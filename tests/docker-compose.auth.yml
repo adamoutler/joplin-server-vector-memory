@@ -15,7 +15,7 @@ services:
       # - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
       # - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
       - OLLAMA_URL=http://ollama:11434
-      - EMBEDDING_MODEL=nomic-embed-text
+      - EMBEDDING_MODEL=all-minilm
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
       - REDIS_URL=${REDIS_URL:-redis://:joplin_redis@redis:6379}
     depends_on:
@@ -53,7 +53,7 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama_data:/root/.ollama
-    entrypoint: [ "/bin/sh", "-c", "ollama serve & (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 2; done' && ollama pull nomic-embed-text) & wait" ]
+    entrypoint: [ "/bin/sh", "-c", "ollama serve & (timeout 60s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 2; done' && ollama pull all-minilm) & wait" ]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "ollama", "list"]

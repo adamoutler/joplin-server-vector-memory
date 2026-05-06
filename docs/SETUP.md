@@ -6,7 +6,7 @@ This guide walks you through setting up the Joplin Server Vector Memory MCP, con
 
 - **Joplin Server**: An active Joplin Server instance with your notes (optionally E2EE enabled).
 - **Docker & Docker Compose**: To run the memory server components.
-- **Ollama**: Running locally or remotely, with the `nomic-embed-text` model pulled.
+- **Ollama**: Running locally or remotely, with the `all-minilm` model pulled.
 
 ## 1. Quick Start Installation
 

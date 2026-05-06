@@ -10,3 +10,6 @@ root_venv/
 venv/
 node_modules/
 .ipynb_checkpoints/
+docs/
+tests/
+repro_data/

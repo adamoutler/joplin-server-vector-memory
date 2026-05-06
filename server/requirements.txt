@@ -2,7 +2,6 @@ fastmcp
 mcp
 ollama
 sqlite-vec
-pytest
 uvicorn
 fastapi
 httpx
@@ -11,10 +10,3 @@ sentence-transformers
 einops
 dateparser
 torch
-pytest-playwright
-playwright
-pytest-playwright-visual
-pytest-timeout
-flake8
-pytest-cov
-pytest-xdist

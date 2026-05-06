@@ -93,7 +93,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     time.sleep(2)
 
     # Wait for Ollama to pull the model
-    print("Waiting for Ollama to pull nomic-embed-text...")
+    print("Waiting for Ollama to pull all-minilm...")
     for _ in range(60):
         try:
             # We can hit the backend's get_embedding by proxying through, but it's simpler to just retry remember
@@ -107,7 +107,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
             ollama_resp = requests.get("http://localhost:11434/api/tags", timeout=30)
             if ollama_resp.status_code == 200:
                 models = ollama_resp.json().get("models", [])
-                if any("nomic-embed-text" in m.get("name", "") for m in models):
+                if any("all-minilm" in m.get("name", "") for m in models):
                     print("Ollama model ready!")
                     break
         except requests.exceptions.ConnectionError:
@@ -167,23 +167,23 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     probe_fail_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=fake_probe_payload, headers=headers, timeout=30)
     assert probe_fail_resp.status_code in [400, 422], f"Expected probe to fail for fake model, got {probe_fail_resp.status_code}"
 
-    # 2. Test a valid model probe (should succeed since docker-compose.test.yml runs ollama with nomic-embed-text)
+    # 2. Test a valid model probe (should succeed since docker-compose.test.yml runs ollama with all-minilm)
     valid_probe_payload = {
         "provider": "ollama",
         "baseUrl": "http://ollama:11434",
-        "model": "nomic-embed-text"
+        "model": "all-minilm"
     }
     probe_success_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=valid_probe_payload, headers=headers, timeout=30)
     assert probe_success_resp.status_code == 200, f"Expected probe to succeed, got: {probe_success_resp.text}"
     probe_data = probe_success_resp.json()
-    assert probe_data.get("dimension") == 768, f"Expected dimension 768 from nomic-embed-text, got {probe_data}"
+    assert probe_data.get("dimension") == 768, f"Expected dimension 768 from all-minilm, got {probe_data}"
 
     # 3. Update settings and trigger a reindex
     update_payload = {
         "embedding": {
             "provider": "ollama",
             "baseUrl": "http://ollama:11434",
-            "model": "nomic-embed-text"
+            "model": "all-minilm"
         }
     }
     try:

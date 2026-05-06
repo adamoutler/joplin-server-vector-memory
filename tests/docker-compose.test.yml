@@ -9,7 +9,7 @@ services:
     - test_data:/app/data
     environment:
     - OLLAMA_URL=http://ollama:11434
-    - EMBEDDING_MODEL=nomic-embed-text
+    - EMBEDDING_MODEL=all-minilm
     - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     - TEST_MODE_ALLOW_ALL_IPS=true
     - REDIS_URL=${REDIS_URL}
@@ -62,7 +62,7 @@ services:
       ollama serve &
       # Only pull model if it is not already present to save time and memory
       (timeout 120s /bin/sh -c 'until ollama list >/dev/null 2>&1; do sleep 5; done' && \
-       ollama list | grep -q "nomic-embed-text" || ollama pull nomic-embed-text) &
+       ollama list | grep -q "all-minilm" || ollama pull all-minilm) &
       wait
     restart: unless-stopped
     healthcheck:

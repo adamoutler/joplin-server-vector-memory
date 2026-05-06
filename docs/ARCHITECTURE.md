@@ -100,7 +100,7 @@ A local embedded database using `sqlite3` enhanced with extensions:
 ### 4. Embeddings (Python Backend / Ollama)
 Embedding generation is managed entirely by the Python backend.
 - **Models:** 
-  - Primarily attempts to use a local Ollama container (e.g., `nomic-embed-text` to map text into 768-dimensional vectors).
+  - Primarily attempts to use a local Ollama container (e.g., `all-minilm` to map text into 768-dimensional vectors).
   - If Ollama is unavailable, gracefully falls back to an embedded local CPU model (`all-MiniLM-L6-v2` via `sentence-transformers`, generating 384-dimensional vectors).
 - Used both during the sync process (embedding notes via the internal API) and during search queries.
 

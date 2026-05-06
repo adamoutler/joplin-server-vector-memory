@@ -502,7 +502,7 @@ class JoplinSyncClient extends EventEmitter {
     }
     return {
       ollamaUrl: config.ollamaUrl || config.OLLAMA_URL || process.env.OLLAMA_URL || 'http://localhost:11434',
-      embeddingModel: config.embeddingModel || config.EMBEDDING_MODEL || process.env.EMBEDDING_MODEL || 'nomic-embed-text',
+      embeddingModel: config.embeddingModel || config.EMBEDDING_MODEL || process.env.EMBEDDING_MODEL || 'all-MiniLM-L6-v2',
       chunkSize: config.chunkSize || 1000,
       chunkOverlap: config.chunkOverlap || 200
     };

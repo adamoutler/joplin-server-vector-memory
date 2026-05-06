@@ -406,7 +406,7 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockImplementation((url) => {
         if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'all-MiniLM-L6-v2' }] }) });
         }
         return Promise.reject(new Error('Network error'));
       });
@@ -455,7 +455,7 @@ describe('JoplinSyncClient', () => {
 
       global.fetch.mockImplementation((url, _options) => {
         if (url && url.includes('/api/tags')) {
-          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'nomic-embed-text' }] }) });
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({ models: [{ name: 'all-MiniLM-L6-v2' }] }) });
         }
         return Promise.resolve({
           ok: true,

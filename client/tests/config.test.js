@@ -30,7 +30,7 @@ describe('JoplinSyncClient Configuration Fallback', () => {
     const client = new JoplinSyncClient();
     const config = await client.getConfig();
     expect(config.ollamaUrl).toBe('http://localhost:11434');
-    expect(config.embeddingModel).toBe('nomic-embed-text');
+    expect(config.embeddingModel).toBe('all-MiniLM-L6-v2');
   });
 
   it('should use environment variables if set and no config file exists', async () => {

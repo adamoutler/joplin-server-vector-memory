@@ -14,7 +14,7 @@ services:
       # - JOPLIN_PASSWORD=${JOPLIN_PASSWORD}
       # - JOPLIN_MASTER_PASSWORD=${JOPLIN_MASTER_PASSWORD}
       # - OLLAMA_URL=${OLLAMA_URL}
-      # - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      # - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
       - SQLITE_DB_PATH=/app/data/vector_memory.sqlite
     restart: unless-stopped
 

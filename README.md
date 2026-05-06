@@ -53,7 +53,7 @@ The architecture is split into robust, specialized components to keep your data 
 *   🔄 **Sync Client (`client/`)**: A Node.js headless daemon that synchronizes and decrypts your notes using `@joplin/lib`. It features a snazzy web dashboard at `http://localhost:3000` providing distinct "Sync Status" and "Embedding Status" indicators for transparent, real-time feedback while your brain gets indexed.
 *   🚀 **MCP Server (`server/`)**: A high-performance Python FastMCP server exposing robust semantic search and note management tools directly to your AI clients.
 *   🗄️ **Vector Database (`database/`)**: Built on a trusty local SQLite database utilizing `sqlite-vec` for embedded vector distance calculations so fast, if you blink, you'll miss them. ⚡
-*   🪄 **Adaptive Embeddings**: Powered by Ollama (`nomic-embed-text`) for high-performance vector embeddings by default. Don't have Ollama running? No worries! The system features a **zero-configuration local fallback** using an embedded CPU model (`all-MiniLM-L6-v2`) ensuring seamless, out-of-the-box operation.
+*   🪄 **Adaptive Embeddings**: Powered by Ollama (`all-minilm`) for high-performance vector embeddings by default. Don't have Ollama running? No worries! The system features a **zero-configuration local fallback** using an embedded CPU model (`all-MiniLM-L6-v2`) ensuring seamless, out-of-the-box operation.
 
 ---
 

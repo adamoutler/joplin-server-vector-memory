@@ -24,7 +24,7 @@ If the core Joplin credentials (`JOPLIN_SERVER_URL`, `JOPLIN_USERNAME`, `JOPLIN_
     *   *Example:* `http://192.168.1.100:11434`
 *   **`EMBEDDING_MODEL`**
     *   *Description:* The name of the Ollama model to use for embeddings if `OLLAMA_URL` is set.
-    *   *Default:* `nomic-embed-text`
+    *   *Default:* `all-minilm`
 
 ## Security & API Access
 
