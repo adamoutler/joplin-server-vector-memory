@@ -874,231 +874,250 @@ app.post('/auth/wipe', async (req, res) => {
 
 let syncIntervalId = null;
 
+
+async function initializeSyncClient(config) {
+  if (syncClient) return;
+  
+  syncClient = new JoplinSyncClient({
+    serverUrl: config.joplinServerUrl,
+    username: config.joplinUsername,
+    password: config.joplinPassword || globalCredentials.password,
+    masterPassword: config.joplinMasterPassword || globalCredentials.masterPassword,
+    profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
+  });
+  
+  syncClient.on('syncStart', () => { 
+    syncState.status = 'syncing'; 
+    syncState.progress = null; 
+    syncState.error = null; 
+    
+    embeddingState.status = 'waiting';
+    embeddingState.progress = null;
+    embeddingState.error = null;
+    
+    console.log('Sync started...'); 
+  });
+  syncClient.on('syncComplete', () => { 
+    if (syncState.status !== 'error') {
+      syncState.status = 'ready'; 
+      console.log('Sync completed successfully.'); 
+    }
+  });
+  syncClient.on('syncError', (err) => { syncState.status = 'error'; syncState.error = err.message; console.error('Sync error:', err); });
+
+  syncClient.on('decryptStart', () => console.log('Decryption started...'));
+  syncClient.on('decryptComplete', () => console.log('Decryption completed.'));
+  
+  syncClient.on('embeddingStart', () => { embeddingState.status = 'embedding'; embeddingState.progress = null; embeddingState.error = null; console.log('Embedding generation started...'); });
+  syncClient.on('embeddingComplete', () => { embeddingState.status = 'ready'; console.log('Embedding generation completed.'); });
+  syncClient.on('embeddingError', (err) => { embeddingState.status = 'error'; embeddingState.error = err.message; console.error('Embedding error:', err); });
+
+  syncClient.on('progress', (data) => { 
+    if (data.phase === 'download') {
+      syncState.progress = data.report;
+    } else if (data.phase === 'embedding') {
+      embeddingState.progress = data;
+    }
+  });
+  
+  await syncClient.init();
+}
+
+function getJoplinUrl(config) {
+  if (!config.joplinServerUrl) return null;
+  try {
+    const parsed = new URL(config.joplinServerUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      throw new Error('Invalid protocol');
+    }
+    return parsed.toString().replace(/\/$/, '');
+  } catch (err) {
+    throw new Error('Invalid Joplin Server URL format or protocol in config.', { cause: err });
+  }
+}
+
+async function validateAndRunSync(config, joplinUrl) {
+  const syncPass = config.joplinPassword || globalCredentials.password;
+  if (!syncPass) return false;
+
+  const sessionRes = await validateJoplinSession(joplinUrl, config.joplinUsername, syncPass).catch(() => null);
+  console.log(`[Explicit Check] /api/sessions returned status: ${sessionRes ? sessionRes.status : 'null'}`);
+
+  if (sessionRes && !sessionRes.ok) {
+    throw new Error(`Authentication failed during explicit check. Server returned HTTP ${sessionRes.status}. Please verify your username and password.`);
+  }
+
+  if (sessionRes && sessionRes.ok) {
+    const sessionData = await sessionRes.json();
+    const sessionId = sessionData.id;
+    
+    const syncCheckRes = await checkJoplinSyncInfo(joplinUrl, sessionId).catch(() => null);
+    if (syncCheckRes && !syncCheckRes.ok && syncCheckRes.status !== 404) {
+      throw new Error(`Joplin Server rejected sync access (HTTP ${syncCheckRes.status}: ${syncCheckRes.statusText}). Ensure your account has sync permissions and you have accepted the Terms of Service on the Joplin Server web UI.`);
+    }
+
+    await processSyncEvents(joplinUrl, sessionId, config);
+    return true;
+  }
+  return false;
+}
+
+async function pollEvents(joplinUrl, sessionId, cursor) {
+  let hasMore = true;
+  let hasNoteEvents = false;
+  const changedNoteIds = new Set();
+  const deletedNoteIds = new Set();
+  let newCursor = cursor;
+
+  console.log(`Polling /api/events with cursor: ${cursor}`);
+  while (hasMore) {
+    const eventsRes = await fetchJoplinEvents(joplinUrl, sessionId, newCursor).catch(() => null);
+
+    if (eventsRes && eventsRes.ok) {
+      const eventsData = await eventsRes.json();
+      for (const item of (eventsData.items || [])) {
+        if (item.item_type === 1) { // 1 is Note
+          hasNoteEvents = true;
+          if (item.type === 3) { // 3 is Delete
+            deletedNoteIds.add(item.item_id);
+          } else {
+            changedNoteIds.add(item.item_id);
+          }
+        }
+      }
+      hasMore = eventsData.has_more;
+      if (eventsData.cursor) {
+        newCursor = eventsData.cursor;
+      } else {
+        hasMore = false;
+      }
+    } else {
+      hasMore = false; 
+      hasNoteEvents = true; // Force sync on error
+    }
+  }
+
+  return { hasNoteEvents, changedNoteIds, deletedNoteIds, newCursor };
+}
+
+async function executeSyncAndEmbeddings(joplinUrl, sessionId, config, cursor, pollResult) {
+  const { hasNoteEvents, changedNoteIds, deletedNoteIds } = pollResult;
+
+  if (hasNoteEvents || !cursor) {
+    console.log(`Changes detected (or initial run). Proceeding with sync...`);
+    await syncClient.sync();
+    await syncClient.decrypt();
+    
+    if (!cursor) {
+      await syncClient.generateEmbeddings();
+      const initialEventsRes = await fetchJoplinEvents(joplinUrl, sessionId).catch(() => null);
+      if (initialEventsRes?.ok) {
+        const initialEventsData = await initialEventsRes.json();
+        if (initialEventsData.cursor) {
+          pollResult.newCursor = initialEventsData.cursor;
+        }
+      }
+    } else {
+      await syncClient.generateEmbeddings(Array.from(changedNoteIds), Array.from(deletedNoteIds));
+    }
+  } else {
+    console.log(`No note changes detected. Skipping sync.`);
+    if (syncState.status === 'syncing') syncState.status = 'ready';
+    if (embeddingState.status === 'waiting' || embeddingState.status === 'embedding') embeddingState.status = 'ready';
+  }
+
+  if (pollResult.newCursor && pollResult.newCursor !== cursor) {
+    config.lastEventCursor = pollResult.newCursor;
+    try {
+      const fs = require('fs');
+      const cfgRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
+      const cfgObj = JSON.parse(cfgRaw);
+      cfgObj.lastEventCursor = pollResult.newCursor;
+      fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(cfgObj, null, 2));
+      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+    } catch (e) {
+      console.error('Failed to save cursor to config.json:', e);
+    }
+  }
+}
+
+async function processSyncEvents(joplinUrl, sessionId, config) {
+  const cursor = config.lastEventCursor;
+  let pollResult = { hasNoteEvents: true, changedNoteIds: new Set(), deletedNoteIds: new Set(), newCursor: cursor };
+
+  if (cursor) {
+    pollResult = await pollEvents(joplinUrl, sessionId, cursor);
+  }
+
+  await executeSyncAndEmbeddings(joplinUrl, sessionId, config, cursor, pollResult);
+}
+
+function handleSyncCycleError(err) {
+  console.error('Cycle top-level error:', err);
+  if (err.message && err.message.includes('Embedding')) {
+    embeddingState.status = 'error';
+    embeddingState.error = err.message;
+  } else if (err.message && err.message.includes('Joplin Server')) {
+    syncState.status = 'error';
+    syncState.error = err.message;
+  } else if (syncState.status === 'syncing') {
+    syncState.status = 'error';
+    syncState.error = err.message;
+  } else if (embeddingState.status === 'embedding') {
+    embeddingState.status = 'error';
+    embeddingState.error = err.message;
+  } else {
+    if (syncState.status !== 'ready') {
+      syncState.status = 'error';
+      syncState.error = 'Initialization failed: ' + err.message;
+    } else {
+      embeddingState.status = 'error';
+      embeddingState.error = 'Cycle failed: ' + err.message;
+    }
+  }
+  
+  const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || (err.message && (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('timeout') || err.message.includes('Joplin Server') || err.message.includes('Sync failed')));
+  const isAuthError = err.message && (err.message.includes('invalid credentials') || err.message.includes('403') || err.message.includes('401'));
+
+  if (isNetworkError || isAuthError) {
+    consecutiveSyncErrors++;
+    if (consecutiveSyncErrors === 1) {
+      console.error('Transient or Auth error during sync. Will retry silently in 20 minutes.', err.message);
+    }
+    nextAllowedSyncTime = Date.now() + 20 * 60 * 1000;
+  } else {
+    console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', err.message);
+    if (process.env.NODE_ENV !== 'test') {
+      setTimeout(() => process.exit(1), 1000);
+    }
+  }
+}
+
 async function runSyncCycle(config) {
   if (Date.now() < nextAllowedSyncTime) return;
   console.log('runSyncCycle triggered with config:', Object.keys(config || {}));
   if (isProcessing) return;
   isProcessing = true;
+  
   try {
-    if (!syncClient) {
-      syncClient = new JoplinSyncClient({
-        serverUrl: config.joplinServerUrl,
-        username: config.joplinUsername,
-        password: config.joplinPassword || globalCredentials.password,
-        masterPassword: config.joplinMasterPassword || globalCredentials.masterPassword,
-        profileDir: process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile'),
-      });
-      
-      syncClient.on('syncStart', () => { 
-        syncState.status = 'syncing'; 
-        syncState.progress = null; 
-        syncState.error = null; 
-        
-        embeddingState.status = 'waiting';
-        embeddingState.progress = null;
-        embeddingState.error = null;
-        
-        console.log('Sync started...'); 
-      });
-      syncClient.on('syncComplete', () => { 
-        if (syncState.status !== 'error') {
-          syncState.status = 'ready'; 
-          console.log('Sync completed successfully.'); 
-        }
-      });
-      syncClient.on('syncError', (err) => { syncState.status = 'error'; syncState.error = err.message; console.error('Sync error:', err); });
-
-      syncClient.on('decryptStart', () => console.log('Decryption started...'));
-      syncClient.on('decryptComplete', () => console.log('Decryption completed.'));
-      
-      syncClient.on('embeddingStart', () => { embeddingState.status = 'embedding'; embeddingState.progress = null; embeddingState.error = null; console.log('Embedding generation started...'); });
-      syncClient.on('embeddingComplete', () => { embeddingState.status = 'ready'; console.log('Embedding generation completed.'); });
-      syncClient.on('embeddingError', (err) => { embeddingState.status = 'error'; embeddingState.error = err.message; console.error('Embedding error:', err); });
-
-      syncClient.on('progress', (data) => { 
-        if (data.phase === 'download') {
-          syncState.progress = data.report;
-        } else if (data.phase === 'embedding') {
-          embeddingState.progress = data;
-        }
-      });
-      
-      await syncClient.init();
-    }
+    await initializeSyncClient(config);
     
-    // Explicitly validate sync access before starting to catch 403s immediately
-    if (config.joplinServerUrl) {
-       let joplinUrl;
-       try {
-         const parsed = new URL(config.joplinServerUrl);
-         if (!['http:', 'https:'].includes(parsed.protocol)) {
-           throw new Error('Invalid protocol');
-         }
-         joplinUrl = parsed.toString().replace(/\/$/, '');
-       } catch (err) {
-         throw new Error('Invalid Joplin Server URL format or protocol in config.', { cause: err });
-       }
-       
-       const syncPass = config.joplinPassword || globalCredentials.password;
-       if (syncPass) {
-           const sessionRes = await validateJoplinSession(joplinUrl, config.joplinUsername, syncPass).catch(() => null);
-
-           console.log(`[Explicit Check] /api/sessions returned status: ${sessionRes ? sessionRes.status : 'null'}`);
-
-           if (sessionRes && !sessionRes.ok) {
-               throw new Error(`Authentication failed during explicit check. Server returned HTTP ${sessionRes.status}. Please verify your username and password.`);
-           }
-
-           if (sessionRes && sessionRes.ok) {
-              const sessionData = await sessionRes.json();
-              const sessionId = sessionData.id;
-              
-              const syncCheckRes = await checkJoplinSyncInfo(joplinUrl, sessionId).catch(() => null);
-
-              if (syncCheckRes && !syncCheckRes.ok && syncCheckRes.status !== 404) {
-                  throw new Error(`Joplin Server rejected sync access (HTTP ${syncCheckRes.status}: ${syncCheckRes.statusText}). Ensure your account has sync permissions and you have accepted the Terms of Service on the Joplin Server web UI.`);
-              }
-
-              // --- EVENT POLLING LOGIC ---
-              let cursor = config.lastEventCursor;
-              let hasMore = true;
-              let hasNoteEvents = false;
-              let changedNoteIds = new Set();
-              let deletedNoteIds = new Set();
-              let newCursor = cursor;
-
-              if (cursor) {
-                  console.log(`Polling /api/events with cursor: ${cursor}`);
-                  while (hasMore) {
-                      const eventsRes = await fetchJoplinEvents(joplinUrl, sessionId, newCursor).catch(() => null);
-
-                      if (eventsRes && eventsRes.ok) {
-                          const eventsData = await eventsRes.json();
-                          for (const item of (eventsData.items || [])) {
-                              if (item.item_type === 1) { // 1 is Note
-                                  hasNoteEvents = true;
-                                  if (item.type === 3) { // 3 is Delete
-                                      deletedNoteIds.add(item.item_id);
-                                  } else {
-                                      changedNoteIds.add(item.item_id);
-                                  }
-                              }
-                          }
-                          hasMore = eventsData.has_more;
-                          if (eventsData.cursor) {
-                              newCursor = eventsData.cursor;
-                          } else {
-                              hasMore = false;
-                          }
-                      } else {
-                          hasMore = false; 
-                          hasNoteEvents = true; // Force sync on error
-                      }
-                  }
-              } else {
-                  // No cursor, force full sync
-                  hasNoteEvents = true;
-              }
-
-              if (hasNoteEvents || !cursor) {
-                  console.log(`Changes detected (or initial run). Proceeding with sync...`);
-                  await syncClient.sync();
-                  await syncClient.decrypt();
-                  
-                  if (!cursor) {
-                      // First run, do full embedding
-                      await syncClient.generateEmbeddings();
-                      // Fetch initial cursor
-                      const initialEventsRes = await fetchJoplinEvents(joplinUrl, sessionId).catch(() => null);
-                      if (initialEventsRes?.ok) {
-                          const initialEventsData = await initialEventsRes.json();
-                          if (initialEventsData.cursor) {
-                              newCursor = initialEventsData.cursor;
-                          }
-                      }
-                  } else {
-                      // Targeted embedding
-                      await syncClient.generateEmbeddings(Array.from(changedNoteIds), Array.from(deletedNoteIds));
-                  }
-              } else {
-                  console.log(`No note changes detected. Skipping sync.`);
-                  // Keep status ready
-                  if (syncState.status === 'syncing') {
-                      syncState.status = 'ready';
-                  }
-                  if (embeddingState.status === 'waiting' || embeddingState.status === 'embedding') {
-                      embeddingState.status = 'ready';
-                  }
-              }
-
-              // Save new cursor to config
-              if (newCursor && newCursor !== cursor) {
-                  config.lastEventCursor = newCursor;
-                  try {
-                      const fs = require('fs');
-                      const cfgRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
-                      const cfgObj = JSON.parse(cfgRaw);
-                      cfgObj.lastEventCursor = newCursor;
-                      fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(cfgObj, null, 2));
-                      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
-                  } catch (e) {
-                      console.error('Failed to save cursor to config.json:', e);
-                  }
-              }
-              
-              return; // We have handled everything inside the session logic
-           }
-       }
+    const joplinUrl = getJoplinUrl(config);
+    if (joplinUrl) {
+      const handled = await validateAndRunSync(config, joplinUrl);
+      if (handled) {
+        return;
+      }
     }
 
-    // Fallback if we couldn't do the session checks (e.g. no config)
+    // Fallback
     await syncClient.sync();
     await syncClient.decrypt();
     await syncClient.generateEmbeddings();
     
     consecutiveSyncErrors = 0;
   } catch (err) {
-    console.error('Cycle top-level error:', err);
-    // Determine the source of the error to avoid cross-contamination of status states
-    if (err.message && err.message.includes('Embedding')) {
-        embeddingState.status = 'error';
-        embeddingState.error = err.message;
-    } else if (err.message && err.message.includes('Joplin Server')) {
-        syncState.status = 'error';
-        syncState.error = err.message;
-    } else if (syncState.status === 'syncing') {
-        syncState.status = 'error';
-        syncState.error = err.message;
-    } else if (embeddingState.status === 'embedding') {
-        embeddingState.status = 'error';
-        embeddingState.error = err.message;
-    } else {
-        // Only fallback to sync error if we literally don't know where it came from, 
-        // but avoid overwriting a 'ready' sync state if embedding just failed.
-        if (syncState.status !== 'ready') {
-           syncState.status = 'error';
-           syncState.error = 'Initialization failed: ' + err.message;
-        } else {
-           embeddingState.status = 'error';
-           embeddingState.error = 'Cycle failed: ' + err.message;
-        }
-    }
-    
-    const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || (err.message && (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('timeout') || err.message.includes('Joplin Server') || err.message.includes('Sync failed')));
-    const isAuthError = err.message && (err.message.includes('invalid credentials') || err.message.includes('403') || err.message.includes('401'));
-
-    if (isNetworkError || isAuthError) {
-        consecutiveSyncErrors++;
-        if (consecutiveSyncErrors === 1) {
-            console.error('Transient or Auth error during sync. Will retry silently in 20 minutes.', err.message);
-        }
-        nextAllowedSyncTime = Date.now() + 20 * 60 * 1000;
-    } else {
-        console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', err.message);
-        if (process.env.NODE_ENV !== 'test') {
-            setTimeout(() => process.exit(1), 1000);
-        }
-    }
+    handleSyncCycleError(err);
   } finally {
     isProcessing = false;
   }

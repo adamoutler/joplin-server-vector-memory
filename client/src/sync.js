@@ -241,28 +241,21 @@ class JoplinSyncClient extends EventEmitter {
 
       if (isFullSync && this.vectorDb) {
           console.log('Full sync detected. Wiping existing vector DB tables...');
-          await new Promise((resolve) => {
-              this.vectorDb.serialize(() => {
-                  this.vectorDb.run(`DROP TABLE IF EXISTS vec_notes`, () => {});
-                  this.vectorDb.run(`DROP TABLE IF EXISTS notes_fts`, () => {});
-                  this.vectorDb.run(`DROP TABLE IF EXISTS note_metadata`, () => resolve());
-              });
-          });
           
-          await new Promise((resolve, reject) => {
-            this.vectorDb.serialize(() => {
-              this.vectorDb.run(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, folder_path TEXT, updated_time INTEGER DEFAULT 0)`, err => {
-                if (err) return reject(err);
-                this.vectorDb.run(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`, err => err && reject(err));
-                this.vectorDb.run(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`, err => err && reject(err));
-                this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => err && reject(err));
-                this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); END;`, err => err && reject(err));
-                this.vectorDb.run(`CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`, err => {
-                  if (err) reject(err); else resolve();
-                });
-              });
-            });
+          const runVectorSql = (sql) => new Promise((resolve, reject) => {
+            this.vectorDb.run(sql, err => err ? reject(err) : resolve());
           });
+
+          await runVectorSql(`DROP TABLE IF EXISTS vec_notes`).catch(() => {});
+          await runVectorSql(`DROP TABLE IF EXISTS notes_fts`).catch(() => {});
+          await runVectorSql(`DROP TABLE IF EXISTS note_metadata`).catch(() => {});
+          
+          await runVectorSql(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, folder_path TEXT, updated_time INTEGER DEFAULT 0)`);
+          await runVectorSql(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`);
+          await runVectorSql(`CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(title, content, content="note_metadata", content_rowid="rowid")`);
+          await runVectorSql(`CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON note_metadata BEGIN INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`);
+          await runVectorSql(`CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); END;`);
+          await runVectorSql(`CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON note_metadata BEGIN INSERT INTO notes_fts(notes_fts, rowid, title, content) VALUES ('delete', old.rowid, old.title, old.content); INSERT INTO notes_fts(rowid, title, content) VALUES (new.rowid, new.title, new.content); END;`);
       }
     } catch (e) {
       console.error('Failed to check or wipe vector db on full sync:', e);
