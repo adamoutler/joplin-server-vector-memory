@@ -440,7 +440,7 @@ app.post('/node-api/resources', async (req, res) => {
     
     // Trigger sync to push to server
     if (syncClient.synchronizer) {
-      syncClient.synchronizer.start().catch(e => console.error('Sync failed after resource upload:', e));
+      nextAllowedSyncTime = 0; // Schedule sync on next interval tick
     }
     
     res.json({ id: newResource.id, status: 'success' });
@@ -476,7 +476,7 @@ app.post('/node-api/notes', async (req, res) => {
     const newNote = await Note.save(noteProps, { isNew: true });
     
     if (syncClient.synchronizer) {
-      syncClient.synchronizer.start().catch(e => console.error('Sync failed after note creation:', e));
+      nextAllowedSyncTime = 0; // Schedule sync on next interval tick
     }
     
     res.json({ id: newNote.id, parent_id: newNote.parent_id, status: 'success' });
@@ -506,7 +506,7 @@ app.put('/node-api/notes/:id', async (req, res) => {
     await Note.save(noteProps);
     
     if (syncClient.synchronizer) {
-      syncClient.synchronizer.start().catch(e => console.error('Sync failed after note update:', e));
+      nextAllowedSyncTime = 0; // Schedule sync on next interval tick
     }
     
     res.json({ status: 'success' });
@@ -526,7 +526,7 @@ app.delete('/node-api/notes/:id', async (req, res) => {
     await Note.delete(req.params.id);
     
     if (syncClient.synchronizer) {
-      syncClient.synchronizer.start().catch(e => console.error('Sync failed after note deletion:', e));
+      nextAllowedSyncTime = 0; // Schedule sync on next interval tick
     }
     
     res.json({ status: 'success' });
