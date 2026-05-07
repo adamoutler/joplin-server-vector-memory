@@ -289,7 +289,7 @@ class JoplinSyncClient extends EventEmitter {
       }
     } catch (err) {
       const errMsg = err.message || String(err);
-      if (errMsg.includes('SQLITE_CORRUPT') || errMsg.includes('SQLITE_FULL') || errMsg.includes('SQLITE_IOERR') || errMsg.includes('database disk image is malformed')) {
+      if (errMsg.includes('SQLITE_CORRUPT') || errMsg.includes('SQLITE_FULL') || errMsg.includes('SQLITE_IOERR') || errMsg.includes('SQLITE_READONLY') || errMsg.includes('database disk image is malformed')) {
         console.error('Fatal database error during sync. Wiping databases and restarting...', err);
         const fs = require('fs');
         const path = require('path');

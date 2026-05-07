@@ -1,6 +1,24 @@
 #!/bin/bash
 set -e
 
+# ============================================================
+# Ownership Repair: Fix volume-mounted data directory
+# Docker volumes are often created as root. Our app runs as
+# 'node' (UID 1000). Without this, SQLITE_READONLY errors
+# will occur on any write to the Joplin profile database.
+# ============================================================
+if [ "$(id -u)" = "0" ]; then
+    echo "Running as root. Fixing /app/data ownership for 'node' user..."
+    chown -R node:node /app/data 2>/dev/null || true
+    
+    # Re-exec this script as the 'node' user via gosu
+    exec gosu node "$0" "$@"
+fi
+
+# ============================================================
+# From this point, we are running as 'node' (UID 1000)
+# ============================================================
+
 # Start the Python MCP Server in the background
 echo "Starting Python Backend (FastMCP)..."
 cd /app/server

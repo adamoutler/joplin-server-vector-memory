@@ -67,6 +67,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     sqlite3 \
     curl \
     ca-certificates \
+    gosu \
     && rm -rf /var/lib/apt/lists/* && \
     npm install -g npm@latest
 
@@ -99,8 +100,9 @@ EXPOSE 8000
 
 RUN chmod +x entrypoint.sh \
     && mkdir -p /app/data && chown -R node:node /app
-USER node
 
+# Note: We start as root so the entrypoint can fix ownership of
+# volume-mounted /app/data, then drop to 'node' via gosu/exec.
 ENTRYPOINT ["./entrypoint.sh"]
 
 # ==========================================
