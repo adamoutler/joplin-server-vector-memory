@@ -283,11 +283,18 @@
         if (syncState.status === 'syncing' && syncState.progress) {
           const p = syncState.progress;
           let msgs = [];
-          if (p.fetchingTotal) msgs.push(`Fetching: ${p.fetchingProcessed || 0} / ${p.fetchingTotal}`);
-          if (p.createLocal) msgs.push(`Creating local: ${p.createLocal}`);
-          if (p.updateLocal) msgs.push(`Updating local: ${p.updateLocal}`);
-          if (p.deleteLocal) msgs.push(`Deleting local: ${p.deleteLocal}`);
-          syncProgEl.innerText = msgs.length > 0 ? `(${msgs.join(', ')})` : '(Preparing...)';
+          if (p.fetchingTotal) {
+            const processed = p.fetchingProcessed || 0;
+            const total = p.fetchingTotal;
+            msgs.push(`Fetching: ${processed} / ${total}`);
+            if (processed >= total) {
+              msgs.push('Loading next batch...');
+            }
+          }
+          if (p.createLocal) msgs.push(`Created: ${p.createLocal}`);
+          if (p.updateLocal) msgs.push(`Updated: ${p.updateLocal}`);
+          if (p.deleteLocal) msgs.push(`Deleted: ${p.deleteLocal}`);
+          syncProgEl.innerText = msgs.length > 0 ? `(${msgs.join(' | ')})` : '(Preparing...)';
           syncProgEl.style.color = '#555';
         } else if (syncState.error) {
           syncProgEl.innerText = syncState.error;
