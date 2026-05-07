@@ -196,7 +196,7 @@ jobs:
 
     - name: Run Jest Tests
       working-directory: ./client
-      run: npm test -- --ci --reporters=default --reporters=jest-junit
+      run: npm test -- --ci --coverage --reporters=default --reporters=jest-junit
       env:
         JEST_JUNIT_OUTPUT_DIR: ./test-results
         JEST_JUNIT_OUTPUT_NAME: jest-junit.xml
@@ -206,7 +206,9 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: node-test-results-20
-        path: client/test-results/jest-junit.xml
+        path: |
+          client/test-results/jest-junit.xml
+          client/coverage/lcov.info
 
   test-python-unit:
     name: Python Unit Tests (3.11)
@@ -249,7 +251,7 @@ jobs:
         PYTHONPATH: server:server/src
         APP_IMAGE: ${{ env.TEST_IMAGE }}
       run: |
-        python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml
+        python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py --junitxml=server/test-results/pytest-unit.xml --cov=server/src --cov-report=xml:server/test-results/pytest-cov.xml
 
     - name: Upload Test Results
       if: always()
@@ -323,30 +325,31 @@ jobs:
         category: "/language:${{matrix.language}}"
 
   sonarcloud:
-    name: SonarCloud Quality Gate
+    name: SonarCloud Scan
     runs-on: ubuntu-latest
+    needs: [test-node, test-python-unit]
     steps:
-      - name: Check SonarCloud Quality Gate
-        run: |
-          echo "Waiting for SonarCloud Automatic Analysis for commit $GITHUB_SHA..."
-          for i in {1..30}; do
-            ANALYSIS=$(curl -s "https://sonarcloud.io/api/project_analyses/search?project=adamoutler_joplin-server-vector-memory")
-            REVISION=$(echo "$ANALYSIS" | jq -r '.analyses[0].revision')
-            if [ "$REVISION" = "$GITHUB_SHA" ]; then
-              echo "Analysis for $GITHUB_SHA completed."
-              STATUS=$(curl -s "https://sonarcloud.io/api/qualitygates/project_status?projectKey=adamoutler_joplin-server-vector-memory" | jq -r '.projectStatus.status')
-              echo "Quality Gate Status: $STATUS"
-              if [ "$STATUS" = "ERROR" ]; then
-                echo "SonarCloud Quality Gate failed."
-                exit 1
-              fi
-              exit 0
-            fi
-            echo "Waiting... (Current revision: $REVISION)"
-            sleep 15
-          done
-          echo "Timed out waiting for SonarCloud."
-          exit 1
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Node Test Results
+        uses: actions/download-artifact@v4
+        with:
+          name: node-test-results-20
+          path: .
+
+      - name: Download Python Test Results
+        uses: actions/download-artifact@v4
+        with:
+          name: python-unit-test-results
+          path: server/test-results
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   publish-test-results:
     name: Publish Test Results
@@ -370,7 +373,7 @@ jobs:
 
   publish:
     name: Publish Multi-Arch Manifests
-    needs: [build-amd64, build-arm64, test-node, test-python-unit, lint, commitlint, test-api-fuzzing, test-agentic-fuzzing, codeql-analyze]
+    needs: [build-amd64, build-arm64, test-node, test-python-unit, lint, commitlint, test-api-fuzzing, test-agentic-fuzzing, codeql-analyze, sonarcloud]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     permissions:

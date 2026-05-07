@@ -96,7 +96,7 @@ def _load_config_file() -> dict:
                     _config_cache = json.load(f)
                 _config_mtime = mtime
     except Exception as e:
-        logger.error("Error reading config.json: %s", "Failed to parse or read config file")
+        logger.error(f"Error reading config.json: {e}")
         # If the file exists but we failed to read it, do NOT return an empty dict, 
         # otherwise we will wipe the user's settings during a REINDEX merge.
         if os.path.exists(config_path):
@@ -544,7 +544,7 @@ def get_note(note_id: str) -> list[Union[dict, TextContent]]:
             if res.status_code == 200:
                 resources = res.json()
         except Exception as e:
-            logger.warning(f"Failed to fetch resources for note {note_id}")
+            logger.warning(f"Failed to fetch resources for note {note_id}: {e}")
 
         result_dict = {
             "id": row[0],
@@ -1112,7 +1112,7 @@ def internal_embed(request: InternalEmbedRequest):
         embeddings = get_embedding(request.texts)
         return {"embeddings": embeddings}
     except Exception as e:
-        logger.error("Error generating internal embedding")
+        logger.error(f"Error generating internal embedding: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1213,7 +1213,7 @@ async def api_remember(request: RememberRequest, token: Annotated[str, Depends(v
         result = remember(request.title, request.content, request.folder)
         return extract_result(result)
     except Exception as e:
-        logger.error("Error in api_remember")
+        logger.error(f"Error in api_remember: {e}")
         raise HTTPException(status_code=500, detail="An internal error occurred during remember.")
 
 
@@ -1264,7 +1264,7 @@ async def api_update(request: UpdateRequest, token: Annotated[str, Depends(verif
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Error in api_update")
+        logger.error(f"Error in api_update: {e}")
         raise HTTPException(status_code=500, detail="An internal error occurred during update.")
 
 
@@ -1299,7 +1299,7 @@ def test_model_connection(request: TestModelRequest, token: Annotated[str, Depen
         else:
             raise ValueError("Response did not contain an embedding array.")
     except Exception as e:
-        logger.error("Model test failed")
+        logger.error(f"Model test failed: {e}")
         raise HTTPException(status_code=400, detail="Failed to connect to or pull the specified model from the provided base URL. See server logs for details.")
 
 
@@ -1381,7 +1381,7 @@ def trigger_reindex(reindex_request: ReindexRequest, token: Annotated[str, Depen
         import requests
         requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
     except Exception as e:
-        logger.error("Failed to signal Node daemon to restart")
+        logger.error(f"Failed to signal Node daemon to restart: {e}")
 
     # Wait for entrypoint.sh to confirm
     for _ in range(50):

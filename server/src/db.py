@@ -57,13 +57,12 @@ def _get_vector_dimension(explicit_dim=None):
                 if config.get("embeddingDimension"):
                     dim = int(config.get("embeddingDimension"))
                 elif embed_config.get("provider") == "ollama":
-                    model_name = embed_config.get("model", config.get("embeddingModel", env_model))
                     dim = 384
     except Exception as e:
         import logging
         logging.error(f"Error reading vector dimension from config: {e}")
 
-    return 384
+    return dim
 
 
 def init_db(db, explicit_dim=None):

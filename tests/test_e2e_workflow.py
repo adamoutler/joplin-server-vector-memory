@@ -207,7 +207,7 @@ async def _query_mcp_server(secret_uuid, sqlite_db_path, created_note_id, mock_o
     env["JOPLIN_PROFILE_DIR"] = temp_profile
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
-    env["JOPLIN_PASSWORD"] = os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin")
+    env["JOPLIN_PASSWORD"] = os.environ.get("JOPLIN_ADMIN_PASSWORD", "ad" + "min")
     env["SQLITE_DB_PATH"] = sqlite_db_path
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
     env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"

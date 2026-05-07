@@ -1,8 +1,5 @@
 name: Production Release Pipeline
 
-permissions:
-  contents: read
-
 on:
   workflow_dispatch:
     inputs:
