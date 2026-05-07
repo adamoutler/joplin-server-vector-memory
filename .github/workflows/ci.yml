@@ -425,14 +425,30 @@ jobs:
 
     - name: Create and push manifest
       run: |
-        TAGS_ARGS=""
+        # Create manifest for GHCR
+        GHCR_TAGS=""
         while IFS= read -r tag; do
-          if [ -n "$tag" ]; then
-            TAGS_ARGS="$TAGS_ARGS -t $tag"
+          if [[ -n "$tag" && "$tag" == ghcr.io* ]]; then
+            GHCR_TAGS="$GHCR_TAGS -t $tag"
           fi
         done <<< "${{ steps.meta.outputs.tags }}"
         
-        docker buildx imagetools create $TAGS_ARGS ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:test-${{ github.sha }} ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:arm64-${{ github.sha }}
+        if [ -n "$GHCR_TAGS" ]; then
+            docker buildx imagetools create $GHCR_TAGS ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:test-${{ github.sha }} ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:arm64-${{ github.sha }}
+        fi
+        
+        # Create manifest for Docker Hub
+        DOCKERHUB_TAGS=""
+        while IFS= read -r tag; do
+          if [[ -n "$tag" && "$tag" != ghcr.io* ]]; then
+            DOCKERHUB_TAGS="$DOCKERHUB_TAGS -t $tag"
+          fi
+        done <<< "${{ steps.meta.outputs.tags }}"
+        
+        if [ -n "$DOCKERHUB_TAGS" ]; then
+            # Must pull from GHCR and push to Docker Hub
+            docker buildx imagetools create $DOCKERHUB_TAGS ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:test-${{ github.sha }} ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:arm64-${{ github.sha }}
+        fi
 
     - name: Update Docker Hub Description
       uses: peter-evans/dockerhub-description@v4
