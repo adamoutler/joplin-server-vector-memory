@@ -1076,17 +1076,23 @@ function handleSyncCycleError(err) {
     }
   }
   
-  const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || (err.message && (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('timeout') || err.message.includes('Joplin Server') || err.message.includes('Sync failed')));
-  const isAuthError = err.message && (err.message.includes('invalid credentials') || err.message.includes('403') || err.message.includes('401'));
+  const errMsg = err.message || '';
+  const isTimeoutError = errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT') || err.code === 'ETIMEDOUT';
+  const isNetworkError = err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET' || errMsg.includes('network') || errMsg.includes('ECONNREFUSED');
+  const isAuthError = errMsg.includes('invalid credentials') || errMsg.includes('403') || errMsg.includes('401');
 
-  if (isNetworkError || isAuthError) {
+  if (isTimeoutError || isNetworkError) {
     consecutiveSyncErrors++;
-    if (consecutiveSyncErrors === 1) {
-      console.error('Transient or Auth error during sync. Will retry silently in 20 minutes.', err.message);
-    }
+    // Short retry for timeouts — the server was just slow, not down
+    const backoffSeconds = Math.min(60 * consecutiveSyncErrors, 300);
+    console.error(`Transient error (attempt ${consecutiveSyncErrors}). Will retry in ${backoffSeconds}s.`, errMsg.substring(0, 200));
+    nextAllowedSyncTime = Date.now() + backoffSeconds * 1000;
+  } else if (isAuthError) {
+    consecutiveSyncErrors++;
+    console.error('Authentication error during sync. Will retry in 20 minutes.', errMsg.substring(0, 200));
     nextAllowedSyncTime = Date.now() + 20 * 60 * 1000;
   } else {
-    console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', err.message);
+    console.error('Fatal sync cycle error encountered. Restarting container to self-heal.', errMsg.substring(0, 200));
     if (process.env.NODE_ENV !== 'test') {
       setTimeout(() => process.exit(1), 1000);
     }

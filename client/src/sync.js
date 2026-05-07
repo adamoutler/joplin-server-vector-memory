@@ -34,17 +34,18 @@ class JoplinSyncClient extends EventEmitter {
     shimInit({ nodeSqlite: sqlite3 });
 
     // Enforce a default timeout on all Joplin API requests.
-    // Joplin's shim.fetch has no timeout by default, and fetchWithRetry uses
-    // 120s × 5 retries = 12+ min for a single stalled endpoint. This patch
-    // ensures every request times out after 30s max, preventing indefinite hangs.
+    // Joplin's shim.fetch has no timeout by default — a stalled server endpoint
+    // blocks sync forever. 120s matches Joplin's own fetchWithRetry default
+    // and is long enough for the /delta endpoint's heavy changeset computation.
     const shim = require('@joplin/lib/shim').default;
     const _originalShimFetch = shim.fetch;
     shim.fetch = function(url, options) {
       if (!options) options = {};
-      if (!options.timeout) options.timeout = 30000; // 30 seconds
+      if (!options.timeout) options.timeout = 120000; // 120 seconds
       return _originalShimFetch(url, options);
     };
-    // Also reduce retry aggressiveness: 3 retries instead of 5
+    // Reduce retry aggressiveness: 3 retries instead of default 5
+    // Worst case: 120s × 3 retries = ~6 min, vs original infinite hang
     shim.fetchMaxRetry_ = 3;
 
     if (!fs.existsSync(this.profileDir)) {
@@ -288,7 +289,10 @@ class JoplinSyncClient extends EventEmitter {
     
     const interceptLog = (...args) => {
         const msg = args.map(a => typeof a === 'object' && a instanceof Error ? (a.stack || a.message) : String(a)).join(' ');
-        if (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError') || msg.toLowerCase().includes('error')) {
+        // Only capture genuine auth/permission errors. Exclude timeouts and transient
+        // network errors that Joplin's Synchronizer handles internally and recovers from.
+        const isTransient = msg.includes('timeout') || msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED') || msg.includes('request-timeout');
+        if (!isTransient && (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError'))) {
             this._lastSyncErrors.push(msg);
         }
     };
