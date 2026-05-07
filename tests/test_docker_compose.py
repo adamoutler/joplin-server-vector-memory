@@ -2,10 +2,12 @@ import os
 import subprocess
 import yaml
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
 
 def test_docker_compose_ports_parameterized(ephemeral_joplin):
     # Test that docker-compose.yml has parameterized ports
-    with open("docker-compose.yml", "r") as f:
+    with open(os.path.join(PROJECT_ROOT, "docker-compose.yml"), "r") as f:
         compose_content = yaml.safe_load(f)
 
     # Check app service ports
@@ -21,7 +23,7 @@ def test_docker_compose_config_with_env(ephemeral_joplin):
     env["BACKEND_PORT"] = "8888"
 
     result = subprocess.run(
-        ["docker", "compose", "config"],
+        ["docker", "compose", "-f", os.path.join(PROJECT_ROOT, "docker-compose.yml"), "config"],
         env=env,
         capture_output=True,
         text=True,

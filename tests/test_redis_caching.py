@@ -5,15 +5,18 @@ import subprocess
 import time
 import os
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
 
 @pytest.mark.enable_socket
 def test_redis_credential_caching_on_restart(ephemeral_joplin):
     # Enable the redis profile and REDIS_URL for this specific test
     env = os.environ.copy()
     env["REDIS_URL"] = "redis://:joplin_redis@redis:6379"
+    compose_path = os.path.join(PROJECT_ROOT, "tests", "docker-compose.test.yml")
 
     # Start the test environment with redis profile
-    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "--profile", "redis", "-p", "joplin-test-env", "up", "-d"], env=env, check=True)
+    subprocess.run(["docker", "compose", "-f", compose_path, "--profile", "redis", "-p", "joplin-test-env", "up", "-d"], env=env, check=True)
     time.sleep(5)  # give it time to fully initialize
 
     proxy_url = "http://127.0.0.1:3001"
@@ -35,11 +38,11 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     assert r.status_code == 200
 
     # Take down the app container (simulating crash or restart)
-    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "stop", "app"], check=True)
+    subprocess.run(["docker", "compose", "-f", compose_path, "-p", "joplin-test-env", "stop", "app"], check=True)
     time.sleep(2)
 
     # Bring app container back up
-    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "start", "app"], check=True)
+    subprocess.run(["docker", "compose", "-f", compose_path, "-p", "joplin-test-env", "start", "app"], check=True)
 
     # Wait for the node app to come back online
     for _ in range(25):
@@ -57,9 +60,9 @@ def test_redis_credential_caching_on_restart(ephemeral_joplin):
     assert data.get("hasCredentials") is True, "Credentials not loaded from Redis on startup"
 
     # Teardown the profile properly and restore app state
-    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "rm", "-s", "-v", "-f", "redis"], env=env)
+    subprocess.run(["docker", "compose", "-f", compose_path, "-p", "joplin-test-env", "rm", "-s", "-v", "-f", "redis"], env=env)
 
     env_clean = os.environ.copy()
     env_clean.pop("REDIS_URL", None)
-    subprocess.run(["docker", "compose", "-f", "tests/docker-compose.test.yml", "-p", "joplin-test-env", "up", "-d", "app"], env=env_clean, check=True)
+    subprocess.run(["docker", "compose", "-f", compose_path, "-p", "joplin-test-env", "up", "-d", "app"], env=env_clean, check=True)
     time.sleep(3)

@@ -33,7 +33,7 @@ def temp_config_and_db():
 def mock_ollama():
     with patch('src.main.get_embedding') as mock_embed:
         def side_effect(text):
-            vec = [0.0] * 768
+            vec = [0.0] * 384
             if "test query" in text.lower():
                 vec[0] = 1.0
             elif "apple" in text.lower():
@@ -244,7 +244,7 @@ def test_settings_api(client, temp_config_and_db):
     # We need to patch the actual model probe since the server will try to reach out
     with patch("ollama.Client") as mock_ollama:
         mock_client = MagicMock()
-        mock_client.embeddings.return_value = {"embedding": [0.1] * 768}
+        mock_client.embeddings.return_value = {"embedding": [0.1] * 384}
         mock_ollama.return_value = mock_client
 
         with patch("src.db.reset_database") as mock_reset:
@@ -268,7 +268,7 @@ def test_settings_api(client, temp_config_and_db):
                 assert saved_config["embedding"]["baseUrl"] == "http://ollama-test:11434"
                 assert saved_config["chunkSize"] == 3000
 
-                mock_reset.assert_called_once_with(768)
+                mock_reset.assert_called_once_with(384)
 
     # 5. Reset settings
     response = client.post("/api/settings/reset", headers=headers)

@@ -135,7 +135,7 @@ async def _run_nodejs_client_massive(mock_ollama_server, secret_uuid):
     print("Running Node.js client for massive note injection...")
     # Increase timeout significantly as per instructions
     proc = await asyncio.create_subprocess_exec(
-        "docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ['JOPLIN_ADMIN_PASSWORD']}", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid,
+        "docker", "compose", "-p", "joplin-test-env", "-f", DOCKER_COMPOSE_FILE, "exec", "-T", "-e", f"OLLAMA_URL={mock_ollama_server}", "-e", f"BACKEND_URL={mock_ollama_server}", "-e", "SQLITE_DB_PATH=/tmp/vector_memory.sqlite", "-e", "JOPLIN_SERVER_URL=http://joplin:22300", "-e", "JOPLIN_USERNAME=admin@localhost", "-e", f"JOPLIN_PASSWORD={os.environ.get('JOPLIN_ADMIN_PASSWORD', 'admin')}", "app", "node", "client/e2e_massive_create_sync.js", secret_uuid,
         cwd=os.path.dirname(DOCKER_COMPOSE_FILE),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
@@ -171,7 +171,7 @@ async def _init_nodejs_proxy():
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
         "masterPassword": "test_master_password",
         "rotate": False
     }
@@ -207,7 +207,7 @@ async def _query_mcp_server(secret_uuid, sqlite_db_path, created_note_id, mock_o
     env["JOPLIN_PROFILE_DIR"] = temp_profile
     env["JOPLIN_SERVER_URL"] = "http://joplin:22300"
     env["JOPLIN_USERNAME"] = "admin@localhost"
-    env["JOPLIN_PASSWORD"] = os.environ["JOPLIN_ADMIN_PASSWORD"]
+    env["JOPLIN_PASSWORD"] = os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin")
     env["SQLITE_DB_PATH"] = sqlite_db_path
     env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'server'))
     env["NODE_PROXY_URL"] = "http://127.0.0.1:3001"

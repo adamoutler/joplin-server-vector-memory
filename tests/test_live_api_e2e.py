@@ -47,11 +47,10 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     auth_payload = {
         "serverUrl": "http://joplin:22300",  # internal network name
         "username": "admin@localhost",
-        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
         "masterPassword": "test_master_password",
         "rotate": True
     }
-
     # Actually wait for the app service to be fully up
     max_retries = 60
     for i in range(max_retries):
@@ -177,7 +176,7 @@ def test_api_server_live_endpoints(ephemeral_joplin):
     probe_success_resp = requests.post(f"{PROXY_URL}/api/settings/test-model", json=valid_probe_payload, headers=headers, timeout=30)
     assert probe_success_resp.status_code == 200, f"Expected probe to succeed, got: {probe_success_resp.text}"
     probe_data = probe_success_resp.json()
-    assert probe_data.get("dimension") == 768, f"Expected dimension 768 from all-minilm, got {probe_data}"
+    assert probe_data.get("dimension") == 384, f"Expected dimension 384 from all-minilm, got {probe_data}"
 
     # 3. Update settings and trigger a reindex
     update_payload = {

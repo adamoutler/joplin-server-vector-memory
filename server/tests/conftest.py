@@ -1,9 +1,12 @@
 import pytest
 import os
+import sys
 import uuid
 from unittest.mock import patch, MagicMock
 
-import src.main
+# Ensure src is in the path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'tests', 'docker-compose.test.yml'))
 
@@ -11,6 +14,7 @@ DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '.
 @pytest.fixture(autouse=True)
 def clear_config_cache():
     """Ensure src.main._config_cache is cleared between tests."""
+    import src.main
     src.main._config_cache = {}
     src.main._config_mtime = 0
     yield

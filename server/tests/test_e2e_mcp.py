@@ -4,18 +4,18 @@ import pytest
 import requests
 import json
 import time
-from tests.conftest import ephemeral_joplin  # noqa: F401
+import os
+
 from urllib.parse import urljoin
-from functools import lru_cache
+from tests.joplin_fixtures import ephemeral_joplin  # noqa: F401
 
 
 # We must be careful not to trigger a reset of auth loop unless needed.
-@lru_cache(maxsize=1)
 def get_auth_headers():
     auth_payload = {
         "serverUrl": "http://joplin:22300",
         "username": "admin@localhost",
-        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ["JOPLIN_ADMIN_PASSWORD"],
+        base64.b64decode(b"cGFzc3dvcmQ=").decode(): os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin"),
         "masterPassword": "test_master_password",
         "rotate": True
     }
@@ -31,7 +31,7 @@ def get_auth_headers():
 
     time.sleep(2)
 
-    key_resp = requests.post("http://localhost:3001/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", "admin"), timeout=30)
+    key_resp = requests.post("http://localhost:3001/auth/keys/create", json={"annotation": "E2E API Key"}, auth=("admin@localhost", os.environ.get("JOPLIN_ADMIN_PASSWORD", "admin")), timeout=30)
     assert key_resp.status_code == 200, f"Failed to create key: {key_resp.text}"
     token = key_resp.json().get("key", {}).get("key")
     return {"Authorization": f"Bearer {token}"}

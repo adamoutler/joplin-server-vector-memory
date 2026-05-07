@@ -35,9 +35,12 @@ def _get_vector_dimension(explicit_dim=None):
         return explicit_dim
 
     config_path = os.environ.get("CONFIG_PATH", "/app/data/config.json")
+
+    # Base fallback
     dim = 384
+    env_model = os.environ.get("EMBEDDING_MODEL", "all-minilm")
     if os.environ.get("OLLAMA_URL"):
-        dim = 768
+        dim = 384 if "minilm" in env_model.lower() else 768
 
     try:
         import json
@@ -45,18 +48,22 @@ def _get_vector_dimension(explicit_dim=None):
             with open(config_path, "r") as f:
                 config = json.load(f)
                 embed_config = config.get("embedding", {})
+
+                # Check for older configs where embedding isn't nested
                 if not embed_config:
-                    if config.get("ollamaBaseUrl") or config.get("OLLAMA_URL"):
+                    if config.get("ollamaBaseUrl") or config.get("OLLAMA_URL") or os.environ.get("OLLAMA_URL"):
                         embed_config = {"provider": "ollama"}
 
                 if config.get("embeddingDimension"):
                     dim = int(config.get("embeddingDimension"))
                 elif embed_config.get("provider") == "ollama":
-                    dim = 768
-    except Exception:
-        pass
+                    model_name = embed_config.get("model", config.get("embeddingModel", env_model))
+                    dim = 384
+    except Exception as e:
+        import logging
+        logging.error(f"Error reading vector dimension from config: {e}")
 
-    return dim
+    return 384
 
 
 def init_db(db, explicit_dim=None):

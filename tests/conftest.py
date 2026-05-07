@@ -1,12 +1,10 @@
-import base64
-import subprocess
-import requests
-import time
 import pytest
 from pathlib import Path
 import os
 import shutil
 import pytest_playwright_visual.plugin
+
+pytest_plugins = ["tests.joplin_fixtures"]
 
 DEV_NULL = os.devnull
 original_assert_snapshot = pytest_playwright_visual.plugin.assert_snapshot
@@ -66,132 +64,3 @@ def assert_snapshot(pytestconfig, request, browser_name):
             pytest.fail("--> Snapshots DO NOT match!")
 
     return compare
-
-
-DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), 'docker-compose.test.yml'))
-
-
-def _wait_for_pg():
-    for _ in range(15):
-        try:
-            res = subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "pg_isready", "-U", "joplin"], capture_output=True)
-            if res.returncode == 0:
-                break
-        except Exception:
-            pass
-        time.sleep(2)
-
-
-def _wait_for_joplin():
-    for _ in range(30):
-        try:
-            r = requests.get("http://localhost:22300/api/ping", timeout=2)
-            if r.status_code == 200:
-                break
-        except Exception:
-            pass
-        time.sleep(1)
-
-
-def _wait_for_proxy():
-    for _ in range(30):
-        try:
-            r = requests.get("http://localhost:3001/status", timeout=2)
-            if r.status_code in [200, 401]:
-                break
-        except Exception:
-            pass
-        time.sleep(1)
-
-
-@pytest.fixture(autouse=True)
-def reset_docker_state():
-    """
-    Function-scoped fixture to wipe the app state and Joplin database before each test.
-    """
-    # 0. Wait for Postgres to be ready
-    _wait_for_pg()
-
-    # 1. Truncate Postgres tables to clear Joplin Server data
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "exec", "-T", "db", "psql", "-U", "joplin", "-d", "joplin", "-c", "TRUNCATE TABLE items, user_items, item_resources, changes, notifications, shares, share_users CASCADE;"], check=True)
-
-    # Restart Joplin Server to clear its in-memory rate limiter
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "restart", "joplin"], check=True)
-    _wait_for_joplin()
-
-    # 2. Call /auth/wipe on the Proxy to clear config and memory (must use admin auth since it might be configured)
-    try:
-        # Try wiping as admin first, then as setup if it was never configured
-        r = requests.post("http://localhost:3001/auth/wipe", auth=("admin@localhost", "admin"), timeout=5)
-        if r.status_code == 401:
-            requests.post("http://localhost:3001/auth/wipe", auth=("setup", base64.b64decode(b"MS1tY3Atc2VydmVy").decode()), timeout=5)
-    except Exception:
-        pass
-
-    # The wipe command restarts the container asynchronously via process.exit. 
-    # Sleep to ensure the container has actually gone down before we start polling for it to come back up.
-    time.sleep(3)
-
-    # We must wait for the container to fully reboot and become responsive
-    _wait_for_proxy()
-
-
-@pytest.fixture(scope="session")
-def ephemeral_joplin():
-    env = os.environ.copy()
-    env.pop("JOPLIN_SERVER_URL", None)
-    env.pop("JOPLIN_USERNAME", None)
-    env.pop("JOPLIN_PASSWORD", None)
-    env.pop("JOPLIN_MASTER_PASSWORD", None)
-
-    # Down first just in case
-    subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", DEV_NULL, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], env=env, check=False)
-
-    up_args = ["docker", "compose", "-p", "joplin-test-env", "--env-file", DEV_NULL, "-f", DOCKER_COMPOSE_FILE, "up", "-d", "--force-recreate", "--remove-orphans", "--wait"]
-    if not os.environ.get("CI"):
-        up_args.insert(up_args.index("--force-recreate"), "--build")
-
-    # Spin up and wait for healthchecks
-    subprocess.run(up_args, env=env, check=True)
-
-    os.environ["JOPLIN_ADMIN_EMAIL"] = "admin@localhost"
-    os.environ["JOPLIN_ADMIN_PASSWORD"] = os.environ.get("JOPLIN_ADMIN_PASSWORD", "ad" + "min")
-    os.environ["JOPLIN_BASE_URL"] = "http://joplin:22300"
-
-    # Poll endpoints to ensure they are actually ready for traffic
-    max_retries = 30
-    for _ in range(max_retries):
-        try:
-            # Check Joplin
-            resp1 = requests.get("http://localhost:22300/api/ping", timeout=2)
-            # Check Node Proxy
-            resp2 = requests.get("http://localhost:3001/status", timeout=2)
-            # Check FastAPI backend
-            resp3 = requests.get("http://localhost:8002/", timeout=2)
-
-            if resp1.status_code == 200 and resp2.status_code in [200, 401] and resp3.status_code == 200:
-                break
-            time.sleep(1)
-        except requests.exceptions.ConnectionError:
-            time.sleep(1)
-            continue
-        except requests.exceptions.Timeout:
-            time.sleep(1)
-            continue
-
-    try:
-        yield
-    finally:
-        # Tear down
-        subprocess.run(["docker", "compose", "-p", "joplin-test-env", "--env-file", DEV_NULL, "-f", DOCKER_COMPOSE_FILE, "down", "-v", "--remove-orphans"], check=True)
-
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--e2e", action="store_true", default=False, help="run e2e tests (now enabled by default, this flag is a no-op)"
-    )
-
-
-def pytest_configure(config):
-    config.addinivalue_line("markers", "e2e: mark test as e2e")
-    config.addinivalue_line("markers", "enable_socket: enable socket marker")
