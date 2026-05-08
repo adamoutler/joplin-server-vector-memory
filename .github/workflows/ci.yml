@@ -59,7 +59,7 @@ jobs:
       working-directory: ./server
       run: |
         python -m pip install --upgrade pip
-        pip install flake8
+        python -m pip install flake8
 
     - name: Run Flake8
       working-directory: ./server
@@ -242,8 +242,8 @@ jobs:
       working-directory: ./server
       run: |
         python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+        if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+        if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
 
     - name: Run Pytest (Unit Tests)
       working-directory: ./

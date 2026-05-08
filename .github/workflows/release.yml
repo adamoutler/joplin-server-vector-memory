@@ -1,6 +1,8 @@
 name: Production Release Pipeline
 
 on:
+  push:
+    branches: ["main"]
   workflow_dispatch:
     inputs:
       version_override:
@@ -136,8 +138,8 @@ jobs:
         working-directory: ./server
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+          if [ -f requirements.txt ]; then python -m pip install -r requirements.txt; fi
+          if [ -f requirements-dev.txt ]; then python -m pip install -r requirements-dev.txt; fi
           python -m playwright install chromium
 
       - name: Run Pytest (Unit Tests)
