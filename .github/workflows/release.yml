@@ -203,7 +203,10 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: github.event_name == 'pull_request'
         with:
-          files: "artifacts/**/*.xml"
+          files: |
+            artifacts/**/jest-junit.xml
+            artifacts/**/pytest-unit.xml
+            artifacts/**/pytest-e2e.xml
 
   build-container:
     name: Build and Push Production Container
