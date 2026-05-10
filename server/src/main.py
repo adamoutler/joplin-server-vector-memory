@@ -357,25 +357,59 @@ def search_notes(query: str, page: int = 1, limit: int = 5, alpha: Optional[floa
             logger.warning(f"FTS search failed: {e}")
             fts_results = []
 
+        # 2.5. Exact Substring Match (for special characters and literals)
+        try:
+            like_query = f"%{query}%"
+            cursor.execute("""
+                WITH RECURSIVE subfolders AS (
+                    SELECT id FROM folders WHERE id = ?
+                    UNION ALL
+                    SELECT f.id FROM folders f
+                    JOIN subfolders s ON f.parent_id = s.id
+                )
+                SELECT m.rowid, m.note_id, m.title, m.content, m.updated_time, m.parent_id, m.folder_path
+                FROM note_metadata m
+                WHERE (m.title LIKE ? OR m.content LIKE ?)
+                  AND (? IS NULL OR (
+                    (? = 0 AND m.parent_id = ?) OR
+                    (? = 1 AND m.parent_id IN (SELECT id FROM subfolders))
+                  ))
+                LIMIT ?
+            """, (resolved_folder_id, like_query, like_query, resolved_folder_id, 1 if recursive else 0, resolved_folder_id, 1 if recursive else 0, max_candidates))
+            exact_results = cursor.fetchall()
+        except Exception as e:
+            logger.warning(f"Exact match search failed: {e}")
+            exact_results = []
+
         db.close()
 
-        # 3. Reciprocal Rank Fusion (RRF)
+        # 3. Reciprocal Rank Fusion (RRF) & Exact Match Boost
         rrf_scores = {}
         notes_data = {}
+
+        for rank, row in enumerate(exact_results):
+            rowid, note_id, title, content, updated_time, parent_id, folder_path = row
+            if rowid not in rrf_scores:
+                # Artificial massive boost for exact literal matches
+                rrf_scores[rowid] = 1000.0 - rank
+                notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
 
         for rank, row in enumerate(vec_results):
             rowid, note_id, title, content, distance, updated_time, parent_id, folder_path = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
                 notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
-            rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
+            # Only apply RRF if it hasn't received the exact match boost
+            if rrf_scores[rowid] < 100.0:
+                rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
 
         for rank, row in enumerate(fts_results):
             rowid, note_id, title, content, score, updated_time, parent_id, folder_path = row
             if rowid not in rrf_scores:
                 rrf_scores[rowid] = 0
                 notes_data[rowid] = {"id": note_id, "title": title, "content": content, "updated_time": updated_time, "parent_id": parent_id, "folder_path": folder_path}
-            rrf_scores[rowid] += (1.0 - alpha) * (1.0 / (rank + 60))
+            if rrf_scores[rowid] < 100.0:
+                rrf_scores[rowid] += (1.0 - alpha) * (1.0 / (rank + 60))
 
         # 4. Temporal Boost
         target_ms = parse_temporal_date(target_date) if target_date else None
