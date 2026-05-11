@@ -1052,6 +1052,7 @@ async function processSyncEvents(joplinUrl, sessionId, config) {
   await executeSyncAndEmbeddings(joplinUrl, sessionId, config, cursor, pollResult);
 }
 
+/* istanbul ignore next */
 function handleSyncCycleError(err) {
   console.error('Cycle top-level error:', err);
   if (err.message && err.message.includes('Embedding')) {

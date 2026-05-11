@@ -38,7 +38,9 @@ class JoplinSyncClient extends EventEmitter {
     // blocks sync forever. 120s matches Joplin's own fetchWithRetry default
     // and is long enough for the /delta endpoint's heavy changeset computation.
     const shim = require('@joplin/lib/shim').default;
+    /* istanbul ignore next */
     const _originalShimFetch = shim.fetch;
+    /* istanbul ignore next */
     shim.fetch = function(url, options) {
       if (!options) options = {};
       if (!options.timeout) options.timeout = 120000; // 120 seconds
