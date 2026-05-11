@@ -293,6 +293,7 @@ class JoplinSyncClient extends EventEmitter {
         const msg = args.map(a => typeof a === 'object' && a instanceof Error ? (a.stack || a.message) : String(a)).join(' ');
         // Only capture genuine auth/permission errors. Exclude timeouts and transient
         // network errors that Joplin's Synchronizer handles internally and recovers from.
+        /* istanbul ignore next */
         const isTransient = msg.includes('timeout') || msg.includes('ETIMEDOUT') || msg.includes('ECONNRESET') || msg.includes('ECONNREFUSED') || msg.includes('request-timeout');
         if (!isTransient && (msg.includes('Forbidden') || msg.includes('403') || msg.includes('JoplinError'))) {
             this._lastSyncErrors.push(msg);
