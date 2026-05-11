@@ -338,7 +338,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-test-results-20
-          path: .
+          path: client
 
       - name: Download Python Test Results
         uses: actions/download-artifact@v4
