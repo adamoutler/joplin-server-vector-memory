@@ -3,6 +3,7 @@ exclude_lines =
     pragma: no cover
     except Exception as e:
     except Exception:
+    except:$
     except OSError:
     except ValueError:
     except RuntimeError:

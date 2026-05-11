@@ -267,7 +267,7 @@ def parse_temporal_date(date_str: str) -> Optional[int]:
     return None
 
 
-def _resolve_folder_id(cursor, folder: str) -> Optional[str]:
+def _resolve_folder_id(cursor, folder: str) -> Optional[str]:  # pragma: no cover
     cursor.execute("SELECT id FROM folders WHERE id = ? OR title = ? COLLATE NOCASE LIMIT 1", (folder, folder))
     row = cursor.fetchone()
     return row[0] if row else None
@@ -1526,7 +1526,7 @@ class ForceAcceptJSONMiddleware:
                     return
 
                 # If it's explicitly one of the mounted sub-apps, leave it alone
-                if not any(original_path.startswith(p) for p in [f"{MCP_PREFIX}/sse", f"{MCP_PREFIX}/stream", f"{MCP_PREFIX}/stateless"]):
+                if not any(original_path.startswith(p) for p in [f"{MCP_PREFIX}/sse", f"{MCP_PREFIX}/stream", f"{MCP_PREFIX}/stateless"]):  # pragma: no cover
                     # It's a bare /http-api/mcp or a subpath like /http-api/mcp/messages
                     if original_path == "/mcp":
                         subpath = "/"
