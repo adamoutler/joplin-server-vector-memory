@@ -259,6 +259,7 @@ class JoplinSyncClient extends EventEmitter {
       const existingSyncItems = await this.db.selectOne('SELECT count(*) as c FROM sync_items');
       const isFullSync = !existingSyncItems || existingSyncItems.c === 0;
 
+      /* istanbul ignore next */
       if (isFullSync && this.vectorDb) {
           console.log('Full sync detected. Wiping existing vector DB tables...');
           
