@@ -1,8 +1,6 @@
 name: Production Release Pipeline
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
     inputs:
       version_override:

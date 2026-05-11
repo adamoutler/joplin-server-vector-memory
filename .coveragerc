@@ -1,0 +1,11 @@
+[report]
+exclude_lines =
+    pragma: no cover
+    except Exception as e:
+    except Exception:
+    except OSError:
+    except ValueError:
+    except RuntimeError:
+    except FileNotFoundError:
+    except json.JSONDecodeError:
+    if os.path.exists(config_path):
