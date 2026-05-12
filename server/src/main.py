@@ -1306,7 +1306,7 @@ async def api_update(request: UpdateRequest, token: Annotated[str, Depends(verif
 async def get_settings(token: Annotated[str, Depends(verify_token)]):
     config = _load_config_file()
     # Extract only valid fields for Settings
-    valid_keys = Settings.schema()["properties"].keys() if hasattr(Settings, "schema") else Settings.model_fields.keys()
+    valid_keys = Settings.model_fields.keys() if hasattr(Settings, "model_fields") else Settings.schema()["properties"].keys()
     settings_dict = {k: v for k, v in config.items() if k in valid_keys}
     return Settings(**settings_dict)
 
