@@ -81,7 +81,7 @@ describe('Dashboard Endpoints', () => {
     expect(response.status).toBe(200);
     expect(response.text).toContain('href="/docs"');
     expect(response.text).toContain('href="/openapi.json"');
-    expect(response.text).toContain('const memAddr = window.location.origin;');
+    expect(response.text).toContain('const memAddr = globalThis.location.origin;');
     expect(response.text).toContain('/http-api/');
     expect(response.text).toContain('/http-api/mcp');
     expect(response.text).toContain('/http-api/mcp/sse');
