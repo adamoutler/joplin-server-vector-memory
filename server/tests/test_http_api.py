@@ -7,7 +7,7 @@ import json
 from unittest.mock import patch, MagicMock
 from starlette.testclient import TestClient
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 @pytest.fixture
@@ -16,7 +16,11 @@ def temp_config_and_db():
     os.environ["SQLITE_DB_PATH"] = db_path
 
     fd_conf, conf_path = tempfile.mkstemp()
-    config_data = {"api_keys": [{"key": "test-secret-token", "annotation": "test", "expires_at": None}]}
+    config_data = {
+        "api_keys": [
+            {"key": "test-secret-token", "annotation": "test", "expires_at": None}
+        ]
+    }
     with open(conf_path, "w") as f:
         json.dump(config_data, f)
     os.environ["CONFIG_PATH"] = conf_path
@@ -31,7 +35,8 @@ def temp_config_and_db():
 
 @pytest.fixture
 def mock_ollama():
-    with patch('src.main.get_embedding') as mock_embed:
+    with patch("src.main.get_embedding") as mock_embed:
+
         def side_effect(text):
             vec = [0.0] * 384
             if "test query" in text.lower():
@@ -41,6 +46,7 @@ def mock_ollama():
             else:
                 vec[2] = 1.0
             return vec
+
         mock_embed.side_effect = side_effect
         yield mock_embed
 
@@ -56,7 +62,11 @@ def test_unauthorized(client, temp_config_and_db):
     assert response.status_code == 401
 
     # Test with wrong token
-    response = client.post("/http-api/search", json={"query": "test"}, headers={"Authorization": "Bearer wrong-token"})
+    response = client.post(
+        "/http-api/search",
+        json={"query": "test"},
+        headers={"Authorization": "Bearer wrong-token"},
+    )
     assert response.status_code == 401
 
 
@@ -65,12 +75,21 @@ def test_negative_friction_search(client, temp_config_and_db, mock_ollama):
     headers = {"Authorization": f"Bearer {token}"}
 
     # Insert multiple notes so we get multiple results
-    client.post("/http-api/remember", json={"title": "Apple Recipe 1",
-                "content": "How to make apple pie 1. " * 100}, headers=headers)
-    client.post("/http-api/remember", json={"title": "Apple Recipe 2",
-                "content": "How to make apple pie 2. " * 100}, headers=headers)
-    client.post("/http-api/remember", json={"title": "Apple Recipe 3",
-                "content": "How to make apple pie 3. " * 100}, headers=headers)
+    client.post(
+        "/http-api/remember",
+        json={"title": "Apple Recipe 1", "content": "How to make apple pie 1. " * 100},
+        headers=headers,
+    )
+    client.post(
+        "/http-api/remember",
+        json={"title": "Apple Recipe 2", "content": "How to make apple pie 2. " * 100},
+        headers=headers,
+    )
+    client.post(
+        "/http-api/remember",
+        json={"title": "Apple Recipe 3", "content": "How to make apple pie 3. " * 100},
+        headers=headers,
+    )
 
     # Search for apple to get multiple results
     response = client.post("/http-api/search", json={"query": "apple"}, headers=headers)
@@ -94,8 +113,11 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
     headers = {"Authorization": f"Bearer {token}"}
 
     # 1. Remember
-    response = client.post("/http-api/remember", json={"title": "Apple Recipe",
-                           "content": "How to make apple pie"}, headers=headers)
+    response = client.post(
+        "/http-api/remember",
+        json={"title": "Apple Recipe", "content": "How to make apple pie"},
+        headers=headers,
+    )
     assert response.status_code == 200
     data = response.json()
     assert data.get("status") == "success"
@@ -117,7 +139,7 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
         "content": " with cinnamon",
         "update_mode": "append",
         "last_modified_timestamp": updated_time,
-        "summary_of_changes": "Added cinnamon"
+        "summary_of_changes": "Added cinnamon",
     }
     response = client.post("/http-api/update", json=update_req, headers=headers)
     assert response.status_code == 200
@@ -137,8 +159,11 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
 
     # 5. Delete (2-step friction process)
     # Step 1: Request Deletion
-    response = client.post("/http-api/request-deletion",
-                           json={"note_id": note_id, "reason": "Test cleanup"}, headers=headers)
+    response = client.post(
+        "/http-api/request-deletion",
+        json={"note_id": note_id, "reason": "Test cleanup"},
+        headers=headers,
+    )
     assert response.status_code == 200
     data = response.json()
     assert "deletion_token" in data
@@ -153,14 +178,18 @@ def test_authorized_flow(client, temp_config_and_db, mock_ollama):
 
     attestation = {
         "content_hash": content_hash,
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
 
-    response = client.post("/http-api/execute-deletion", json={
-        "deletion_token": deletion_token,
-        "confirm_title": confirm_title,
-        "safety_attestation": attestation
-    }, headers=headers)
+    response = client.post(
+        "/http-api/execute-deletion",
+        json={
+            "deletion_token": deletion_token,
+            "confirm_title": confirm_title,
+            "safety_attestation": attestation,
+        },
+        headers=headers,
+    )
     if response.status_code != 200:
         print("EXECUTE DELETION ERROR:", response.json())
     assert response.status_code == 200
@@ -184,7 +213,9 @@ def test_bad_requests(client, temp_config_and_db):
     assert response.status_code == 422
 
     # Test missing parameters for each endpoint
-    response = client.post("/http-api/search", json={"wrong_key": "apple"}, headers=headers)
+    response = client.post(
+        "/http-api/search", json={"wrong_key": "apple"}, headers=headers
+    )
     assert response.status_code == 422
 
     response = client.post("/http-api/get", json={"wrong_key": "123"}, headers=headers)
@@ -193,13 +224,19 @@ def test_bad_requests(client, temp_config_and_db):
     response = client.post("/http-api/remember", json={"title": "T"}, headers=headers)
     assert response.status_code == 422
 
-    response = client.post("/http-api/update", json={"wrong_key": "123"}, headers=headers)
+    response = client.post(
+        "/http-api/update", json={"wrong_key": "123"}, headers=headers
+    )
     assert response.status_code == 422
 
-    response = client.post("/http-api/request-deletion", json={"wrong_key": "123"}, headers=headers)
+    response = client.post(
+        "/http-api/request-deletion", json={"wrong_key": "123"}, headers=headers
+    )
     assert response.status_code == 422
 
-    response = client.post("/http-api/execute-deletion", json={"wrong_key": "123"}, headers=headers)
+    response = client.post(
+        "/http-api/execute-deletion", json={"wrong_key": "123"}, headers=headers
+    )
     assert response.status_code == 422
 
 
@@ -236,9 +273,9 @@ def test_settings_api(client, temp_config_and_db):
         "embedding": {
             "provider": "ollama",
             "baseUrl": "http://ollama-test:11434",
-            "model": "test-model"
+            "model": "test-model",
         },
-        "chunkSize": 3000
+        "chunkSize": 3000,
     }
 
     # We need to patch the actual model probe since the server will try to reach out
@@ -250,7 +287,9 @@ def test_settings_api(client, temp_config_and_db):
         with patch("src.db.reset_database") as mock_reset:
             # We must mock requests.post to stop it hitting Node proxy during tests
             with patch("requests.post"):
-                response = client.post("/api/reindex", json=reindex_data, headers=headers)
+                response = client.post(
+                    "/api/reindex", json=reindex_data, headers=headers
+                )
                 assert response.status_code == 200
 
                 res_data = response.json()
@@ -265,7 +304,9 @@ def test_settings_api(client, temp_config_and_db):
                 # Verify nested structure was flattened or saved perfectly based on how backend handles it
                 # Since we changed it to just serialize the nested dict, it should be nested in the JSON file
                 assert saved_config["embedding"]["provider"] == "ollama"
-                assert saved_config["embedding"]["baseUrl"] == "http://ollama-test:11434"
+                assert (
+                    saved_config["embedding"]["baseUrl"] == "http://ollama-test:11434"
+                )
                 assert saved_config["chunkSize"] == 3000
 
                 mock_reset.assert_called_once_with(384)
@@ -294,22 +335,32 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
 
     def get_free_port():
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(('127.0.0.1', 0))
+        s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
         s.close()
         return port
+
     port = get_free_port()
     conf_path, db_path, token = temp_config_and_db
     env = os.environ.copy()
     env["SQLITE_DB_PATH"] = db_path
     env["CONFIG_PATH"] = conf_path
-    env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    env["PYTHONPATH"] = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 
     server_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", str(port)],
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "src.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
         env=env,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.PIPE,
     )
 
     try:
@@ -325,7 +376,9 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
         if not ready:
             server_process.terminate()
             stdout, stderr = server_process.communicate()
-            pytest.fail(f"Server failed to start. Stdout: {stdout.decode()} \n Stderr: {stderr.decode()}")
+            pytest.fail(
+                f"Server failed to start. Stdout: {stdout.decode()} \n Stderr: {stderr.decode()}"
+            )
 
         request_data = {
             "jsonrpc": "2.0",
@@ -333,23 +386,23 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {
-                    "name": "test-client",
-                    "version": "1.0.0"
-                }
+                "clientInfo": {"name": "test-client", "version": "1.0.0"},
             },
-            "id": 1
+            "id": 1,
         }
 
-        headers = {
-            "Accept": "application/json",
-            "Authorization": f"Bearer {token}"
-        }
+        headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
 
         # Test 1: no trailing slash, no redirect
-        response = requests.post(f"http://127.0.0.1:{port}/http-api/mcp/stateless",
-                                 json=request_data, headers=headers, allow_redirects=False)
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}. Response: {response.text}"
+        response = requests.post(
+            f"http://127.0.0.1:{port}/http-api/mcp/stateless",
+            json=request_data,
+            headers=headers,
+            allow_redirects=False,
+        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200, got {response.status_code}. Response: {response.text}"
         data = response.json()
         assert data.get("jsonrpc") == "2.0"
         assert "result" in data
@@ -366,8 +419,16 @@ def test_expired_token(client):
     fd_conf, conf_path = tempfile.mkstemp()
     config_data = {
         "api_keys": [
-            {"key": "expired-token", "annotation": "test1", "expires_at": "2020-01-01T00:00:00Z"},
-            {"key": "valid-token", "annotation": "test2", "expires_at": "2099-01-01T00:00:00Z"}
+            {
+                "key": "expired-token",
+                "annotation": "test1",
+                "expires_at": "2020-01-01T00:00:00Z",
+            },
+            {
+                "key": "valid-token",
+                "annotation": "test2",
+                "expires_at": "2099-01-01T00:00:00Z",
+            },
         ]
     }
     with open(conf_path, "w") as f:
@@ -376,14 +437,22 @@ def test_expired_token(client):
 
     # Need to clear cache in main so it re-reads
     import src.main as main_module
+
     main_module._config_cache = {}
     main_module._config_mtime = 0
 
-    response = client.post("/http-api/search", json={"query": "test"},
-                           headers={"Authorization": "Bearer expired-token"})
+    response = client.post(
+        "/http-api/search",
+        json={"query": "test"},
+        headers={"Authorization": "Bearer expired-token"},
+    )
     assert response.status_code == 401
 
-    response2 = client.post("/http-api/search", json={"query": "test"}, headers={"Authorization": "Bearer valid-token"})
+    response2 = client.post(
+        "/http-api/search",
+        json={"query": "test"},
+        headers={"Authorization": "Bearer valid-token"},
+    )
     # It might fail with 500 or something if DB not mocked perfectly, but it should NOT be 401
     assert response2.status_code != 401
 
@@ -395,12 +464,7 @@ def test_maintenance_handshake(client, temp_config_and_db):
     conf_path, db_path, token = temp_config_and_db
     headers = {"Authorization": f"Bearer {token}"}
 
-    update_data = {
-        "embedding": {
-            "provider": "internal"
-        },
-        "chunkSize": 3000
-    }
+    update_data = {"embedding": {"provider": "internal"}, "chunkSize": 3000}
 
     import threading
     import time
@@ -428,7 +492,7 @@ def test_maintenance_handshake(client, temp_config_and_db):
     t = threading.Thread(target=simulate_entrypoint)
     t.start()
 
-    with patch("src.db.reset_database") as mock_reset:
+    with patch("src.db.reset_database"):
         with patch("requests.post"):
             start_time = time.time()
             response = client.post("/api/reindex", json=update_data, headers=headers)
@@ -452,23 +516,46 @@ def test_mcp_notes_search(client, temp_config_and_db, mock_ollama):
 
     # Insert notes to test FTS AND matching
     # Note 1 has both words but NOT explicitly adjacent
-    client.post("/http-api/remember", json={"title": "Protocol Doc",
-                "content": "This is a document about Samsung. It mentions SIPC later on."}, headers=headers)
+    client.post(
+        "/http-api/remember",
+        json={
+            "title": "Protocol Doc",
+            "content": "This is a document about Samsung. It mentions SIPC later on.",
+        },
+        headers=headers,
+    )
 
     # Note 2 has only one word
-    client.post("/http-api/remember", json={"title": "TV Guide",
-                "content": "This is a document about Samsung TVs."}, headers=headers)
+    client.post(
+        "/http-api/remember",
+        json={"title": "TV Guide", "content": "This is a document about Samsung TVs."},
+        headers=headers,
+    )
 
     # Note 3 is just filler to test limits
     for i in range(25):
-        client.post("/http-api/remember", json={"title": f"Filler {i}",
-                    "content": f"Filler content {i}"}, headers=headers)
+        client.post(
+            "/http-api/remember",
+            json={"title": f"Filler {i}", "content": f"Filler content {i}"},
+            headers=headers,
+        )
 
     # Instead of hanging TestClient over ASGI submounts, call the underlying function!
     from src.main import search_notes, extract_result
 
     # Search for "samsung SIPC". The tool should parse it to ("samsung" "SIPC") and apply Limit=5
-    results = extract_result(search_notes("samsung SIPC", page=1, limit=5, alpha=0.5, target_date=None, date_weight=0.0, folder=None, recursive=False))
+    results = extract_result(
+        search_notes(
+            "samsung SIPC",
+            page=1,
+            limit=5,
+            alpha=0.5,
+            target_date=None,
+            date_weight=0.0,
+            folder=None,
+            recursive=False,
+        )
+    )
 
     # test limit
     assert len(results) == 5

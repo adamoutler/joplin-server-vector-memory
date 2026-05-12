@@ -5,16 +5,21 @@ import uuid
 from unittest.mock import patch, MagicMock
 
 # Ensure src is in the path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-DOCKER_COMPOSE_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'tests', 'docker-compose.test.yml'))
+DOCKER_COMPOSE_FILE = os.path.abspath(
+    os.path.join(
+        os.path.dirname(__file__), "..", "..", "tests", "docker-compose.test.yml"
+    )
+)
 
 
 @pytest.fixture(autouse=True)
 def clear_config_cache():
     """Ensure src.main._config_cache is cleared between tests."""
     import src.main
+
     src.main._config_cache = {}
     src.main._config_mtime = 0
     yield
@@ -30,7 +35,8 @@ def setup_test_env(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def mock_node_proxy():
-    with patch('src.main._call_node_proxy') as mock:
+    with patch("src.main._call_node_proxy") as mock:
+
         def side_effect(method, path, json_data=None):
             resp = MagicMock()
             resp.status_code = 200
@@ -38,5 +44,6 @@ def mock_node_proxy():
             # Usually we need to return an "id" for POST /node-api/notes
             resp.json.return_value = {"id": uuid.uuid4().hex, "status": "success"}
             return resp
+
         mock.side_effect = side_effect
         yield mock

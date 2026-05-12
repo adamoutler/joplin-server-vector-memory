@@ -1,4 +1,12 @@
-from src.main import search_notes, extract_result, get_note, remember, request_note_deletion, execute_deletion, update_note
+from src.main import (
+    search_notes,
+    extract_result,
+    get_note,
+    remember,
+    request_note_deletion,
+    execute_deletion,
+    update_note,
+)
 import pytest
 import os
 import sys
@@ -6,7 +14,7 @@ import tempfile
 from unittest.mock import patch
 
 # Add src to python path so we can import main and db
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 @pytest.fixture
@@ -24,7 +32,7 @@ def temp_db():
 
 @pytest.fixture
 def mock_ollama():
-    with patch('src.main.get_embedding') as mock_embed:
+    with patch("src.main.get_embedding") as mock_embed:
         # Return a simple mock embedding of 384 zeros
         # We can modify a specific index based on the prompt for testing
         def side_effect(text):
@@ -109,7 +117,7 @@ def test_delete_note_flow(temp_db, mock_ollama):
     # Execute deletion
     attestation = {
         "content_hash": content_hash,
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
     exec_result = extract_result(execute_deletion(token, "To be deleted", attestation))
     assert exec_result.get("status") == "success"
@@ -141,7 +149,9 @@ def test_update_note_success(temp_db, mock_ollama):
     assert timestamp is not None
 
     # Update the note (append)
-    update_res = extract_result(update_note(note_id, "Appended content", "append", timestamp, "Test append"))
+    update_res = extract_result(
+        update_note(note_id, "Appended content", "append", timestamp, "Test append")
+    )
     assert update_res.get("status") == "success"
 
     # Verify the update
@@ -161,7 +171,9 @@ def test_update_note_prepend(temp_db, mock_ollama):
     timestamp = note.get("updated_time")
 
     # Update the note (prepend)
-    update_res = extract_result(update_note(note_id, "Prepended content", "prepend", timestamp, "Test prepend"))
+    update_res = extract_result(
+        update_note(note_id, "Prepended content", "prepend", timestamp, "Test prepend")
+    )
     assert update_res.get("status") == "success"
 
     # Verify the update
@@ -183,9 +195,15 @@ def test_update_note_occ_failure(temp_db, mock_ollama):
     stale_timestamp = initial_timestamp - 1000
 
     # Update should fail
-    update_res = extract_result(update_note(note_id, "This should fail", "full_replace", stale_timestamp, "Test OCC"))
-    assert update_res.get(
-        "error") == "Error: Note has been modified since you last read it. Retrieve the note again before updating."
+    update_res = extract_result(
+        update_note(
+            note_id, "This should fail", "full_replace", stale_timestamp, "Test OCC"
+        )
+    )
+    assert (
+        update_res.get("error")
+        == "Error: Note has been modified since you last read it. Retrieve the note again before updating."
+    )
 
 
 def test_config_caching():
@@ -201,7 +219,17 @@ def test_config_caching():
 
     fd, path = tempfile.mkstemp()
     with open(path, "w") as f:
-        json.dump({"token": "test-token", "embedding": {"provider": "ollama", "baseUrl": "http://test-url", "model": "test-model"}}, f)
+        json.dump(
+            {
+                "token": "test-token",
+                "embedding": {
+                    "provider": "ollama",
+                    "baseUrl": "http://test-url",
+                    "model": "test-model",
+                },
+            },
+            f,
+        )
 
     os.environ["CONFIG_PATH"] = path
 
@@ -219,8 +247,17 @@ def test_config_caching():
     # Modify the file and its modification time
     new_time = time.time() + 10
     with open(path, "w") as f:
-        json.dump({"api_keys": [{"key": "new-token"}],
-                  "embedding": {"provider": "ollama", "baseUrl": "http://new-url", "model": "test-model"}}, f)
+        json.dump(
+            {
+                "api_keys": [{"key": "new-token"}],
+                "embedding": {
+                    "provider": "ollama",
+                    "baseUrl": "http://new-url",
+                    "model": "test-model",
+                },
+            },
+            f,
+        )
     os.utime(path, (new_time, new_time))
 
     with patch("builtins.open", side_effect=open) as mock_open:

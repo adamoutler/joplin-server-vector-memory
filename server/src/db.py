@@ -22,11 +22,13 @@ def get_db_connection(explicit_dim=None):
 def _migrate_note_metadata(cursor):
     cursor.execute("PRAGMA table_info(note_metadata)")
     columns = [col[1] for col in cursor.fetchall()]
-    if 'updated_time' not in columns:
-        cursor.execute("ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0")
-    if 'parent_id' not in columns:
+    if "updated_time" not in columns:
+        cursor.execute(
+            "ALTER TABLE note_metadata ADD COLUMN updated_time INTEGER DEFAULT 0"
+        )
+    if "parent_id" not in columns:
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN parent_id TEXT")
-    if 'folder_path' not in columns:
+    if "folder_path" not in columns:
         cursor.execute("ALTER TABLE note_metadata ADD COLUMN folder_path TEXT")
 
 
@@ -44,6 +46,7 @@ def _get_vector_dimension(explicit_dim=None):
 
     try:
         import json
+
         if os.path.exists(config_path):
             with open(config_path, "r") as f:
                 config = json.load(f)
@@ -51,7 +54,11 @@ def _get_vector_dimension(explicit_dim=None):
 
                 # Check for older configs where embedding isn't nested
                 if not embed_config:
-                    if config.get("ollamaBaseUrl") or config.get("OLLAMA_URL") or os.environ.get("OLLAMA_URL"):
+                    if (
+                        config.get("ollamaBaseUrl")
+                        or config.get("OLLAMA_URL")
+                        or os.environ.get("OLLAMA_URL")
+                    ):
                         embed_config = {"provider": "ollama"}
 
                 if config.get("embeddingDimension"):
@@ -60,6 +67,7 @@ def _get_vector_dimension(explicit_dim=None):
                     dim = 384
     except Exception as e:
         import logging
+
         logging.error(f"Error reading vector dimension from config: {e}")
 
     return dim

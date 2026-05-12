@@ -1,4 +1,11 @@
-from src.main import remember, get_note, request_note_deletion, execute_deletion, _deletion_tokens, extract_result
+from src.main import (
+    remember,
+    get_note,
+    request_note_deletion,
+    execute_deletion,
+    _deletion_tokens,
+    extract_result,
+)
 import pytest
 import os
 import sys
@@ -6,7 +13,7 @@ import tempfile
 from unittest.mock import patch
 import time
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 @pytest.fixture
@@ -20,9 +27,11 @@ def temp_db():
 
 @pytest.fixture
 def mock_ollama():
-    with patch('src.main.get_embedding') as mock_embed:
+    with patch("src.main.get_embedding") as mock_embed:
+
         def side_effect(text):
             return [0.0] * 384
+
         mock_embed.side_effect = side_effect
         yield mock_embed
 
@@ -37,10 +46,12 @@ def test_extreme_friction_invalid_token(temp_db, mock_ollama):
 
     attestation = {
         "content_hash": note["content_hash"],
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
 
-    exec_result = extract_result(execute_deletion("invalid_token", note["title"], attestation))
+    exec_result = extract_result(
+        execute_deletion("invalid_token", note["title"], attestation)
+    )
     assert exec_result.get("error") == "Invalid or expired deletion token."
 
 
@@ -54,11 +65,14 @@ def test_extreme_friction_incorrect_title(temp_db, mock_ollama):
 
     attestation = {
         "content_hash": note["content_hash"],
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
 
     exec_result = extract_result(execute_deletion(token, "Wrong Title", attestation))
-    assert exec_result.get("error") == "confirm_title does not match the requested note's title."
+    assert (
+        exec_result.get("error")
+        == "confirm_title does not match the requested note's title."
+    )
 
 
 def test_extreme_friction_incorrect_hash(temp_db, mock_ollama):
@@ -71,7 +85,7 @@ def test_extreme_friction_incorrect_hash(temp_db, mock_ollama):
 
     attestation = {
         "content_hash": "sha256:wronghash",
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
 
     exec_result = extract_result(execute_deletion(token, note["title"], attestation))
@@ -88,7 +102,7 @@ def test_extreme_friction_incorrect_statement(temp_db, mock_ollama):
 
     attestation = {
         "content_hash": note["content_hash"],
-        "confirmation_statement": "I want to delete this"
+        "confirmation_statement": "I want to delete this",
     }
 
     exec_result = extract_result(execute_deletion(token, note["title"], attestation))
@@ -105,7 +119,7 @@ def test_extreme_friction_successful_loop(temp_db, mock_ollama):
 
     attestation = {
         "content_hash": note["content_hash"],
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
 
     exec_result = extract_result(execute_deletion(token, note["title"], attestation))
@@ -127,7 +141,7 @@ def test_extreme_friction_expired_token(temp_db, mock_ollama):
 
     attestation = {
         "content_hash": note["content_hash"],
-        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered."
+        "confirmation_statement": "I confirm the user explicitly requested the permanent, irreversible destruction of this note, and I understand this data cannot be recovered.",
     }
 
     _deletion_tokens[token]["expires_at"] = time.time() - 10
