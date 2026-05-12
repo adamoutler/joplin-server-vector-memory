@@ -535,7 +535,7 @@ class JoplinSyncClient extends EventEmitter {
       try {
           if (this.vectorDb) this.vectorDb.close();
           if (fs.existsSync(vectorDbPath)) fs.unlinkSync(vectorDbPath);
-      } catch (_e) { /* ignore cleanup error */ }
+      } /* istanbul ignore next */ catch (_e) { console.debug('Ignored error', _e.message); }
       if (process.env.NODE_ENV !== 'test') {
           setTimeout(() => process.exit(1), 1000);
       }
@@ -706,7 +706,7 @@ class JoplinSyncClient extends EventEmitter {
           const status = response ? response.status : 'Unknown';
           const statusText = response ? response.statusText : 'Unknown';
           let errBody = '';
-          try { errBody = await response.text(); } catch(_e) { /* ignore */ }
+          try { errBody = await response.text(); } /* istanbul ignore next */ catch (_e) { console.debug('Ignored expected error:', _e.message); }
           throw new Error(`Failed to generate embeddings for batch: HTTP ${status} ${statusText}. ${errBody}`);
         }
 

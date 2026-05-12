@@ -68,7 +68,7 @@ def _get_vector_dimension(explicit_dim=None):
     except Exception as e:
         import logging
 
-        logging.error(f"Error reading vector dimension from config: {e}")
+        logging.exception("Error reading vector dimension from config:")
 
     return dim
 

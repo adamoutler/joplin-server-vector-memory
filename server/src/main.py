@@ -115,8 +115,8 @@ def _load_config_file() -> dict:
                 with open(config_path, "r") as f:
                     _config_cache = json.load(f)
                 _config_mtime = mtime
-    except Exception as e:
-        logger.error(f"Error reading config.json: {e}")
+    except Exception:
+        logger.exception("Error reading config.json:")
         # If the file exists but we failed to read it, do NOT return an empty dict,
         # otherwise we will wipe the user's settings during a REINDEX merge.
         if os.path.exists(config_path):
@@ -349,6 +349,63 @@ def _apply_temporal_boost(
         rrf_scores[rowid] *= 1.0 + date_weight * decay
 
 
+def _merge_rrf_scores(
+    exact_results, vec_results, fts_results, alpha: float
+) -> tuple[dict, dict]:
+    rrf_scores = {}
+    notes_data = {}
+
+    def _ensure_row(
+        rowid, note_id, title, content, updated_time, parent_id, folder_path
+    ):
+        if rowid not in rrf_scores:
+            rrf_scores[rowid] = 0
+            notes_data[rowid] = {
+                "id": note_id,
+                "title": title,
+                "content": content,
+                "updated_time": updated_time,
+                "parent_id": parent_id,
+                "folder_path": folder_path,
+            }
+
+    for rank, row in enumerate(exact_results):
+        rowid, note_id, title, content, updated_time, parent_id, folder_path = row
+        _ensure_row(
+            rowid, note_id, title, content, updated_time, parent_id, folder_path
+        )
+        rrf_scores[rowid] = 1000.0 - rank
+
+    for rank, row in enumerate(vec_results):
+        (
+            rowid,
+            note_id,
+            title,
+            content,
+            distance,
+            updated_time,
+            parent_id,
+            folder_path,
+        ) = row
+        _ensure_row(
+            rowid, note_id, title, content, updated_time, parent_id, folder_path
+        )
+        if rrf_scores[rowid] < 100.0:
+            rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
+
+    for rank, row in enumerate(fts_results):
+        rowid, note_id, title, content, score, updated_time, parent_id, folder_path = (
+            row
+        )
+        _ensure_row(
+            rowid, note_id, title, content, updated_time, parent_id, folder_path
+        )
+        if rrf_scores[rowid] < 100.0:
+            rrf_scores[rowid] += (1.0 - alpha) * (1.0 / (rank + 60))
+
+    return rrf_scores, notes_data
+
+
 @mcp.tool(name="notes_search")
 def search_notes(
     query: str,
@@ -504,71 +561,9 @@ def search_notes(
         db.close()
 
         # 3. Reciprocal Rank Fusion (RRF) & Exact Match Boost
-        rrf_scores = {}
-        notes_data = {}
-
-        for rank, row in enumerate(exact_results):
-            rowid, note_id, title, content, updated_time, parent_id, folder_path = row
-            if rowid not in rrf_scores:
-                # Artificial massive boost for exact literal matches
-                rrf_scores[rowid] = 1000.0 - rank
-                notes_data[rowid] = {
-                    "id": note_id,
-                    "title": title,
-                    "content": content,
-                    "updated_time": updated_time,
-                    "parent_id": parent_id,
-                    "folder_path": folder_path,
-                }
-
-        for rank, row in enumerate(vec_results):
-            (
-                rowid,
-                note_id,
-                title,
-                content,
-                distance,
-                updated_time,
-                parent_id,
-                folder_path,
-            ) = row
-            if rowid not in rrf_scores:
-                rrf_scores[rowid] = 0
-                notes_data[rowid] = {
-                    "id": note_id,
-                    "title": title,
-                    "content": content,
-                    "updated_time": updated_time,
-                    "parent_id": parent_id,
-                    "folder_path": folder_path,
-                }
-            # Only apply RRF if it hasn't received the exact match boost
-            if rrf_scores[rowid] < 100.0:
-                rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
-
-        for rank, row in enumerate(fts_results):
-            (
-                rowid,
-                note_id,
-                title,
-                content,
-                score,
-                updated_time,
-                parent_id,
-                folder_path,
-            ) = row
-            if rowid not in rrf_scores:
-                rrf_scores[rowid] = 0
-                notes_data[rowid] = {
-                    "id": note_id,
-                    "title": title,
-                    "content": content,
-                    "updated_time": updated_time,
-                    "parent_id": parent_id,
-                    "folder_path": folder_path,
-                }
-            if rrf_scores[rowid] < 100.0:
-                rrf_scores[rowid] += (1.0 - alpha) * (1.0 / (rank + 60))
+        rrf_scores, notes_data = _merge_rrf_scores(
+            exact_results, vec_results, fts_results, alpha
+        )
 
         # 4. Temporal Boost
         target_ms = parse_temporal_date(target_date) if target_date else None
@@ -1043,7 +1038,7 @@ def update_note(
             ),
         ]
     except Exception as e:
-        logger.error(f"Error in update_note: {e}")
+        logger.exception("Error in update_note:")
         db.rollback()
         db.close()
         return _err(str(e))
@@ -1339,7 +1334,9 @@ class GetRequest(BaseModel):
 
 class GetResponse(BaseModel):
     id: Optional[str] = Field(
-        None, description=DESC_NOTE_ID, examples=["123e4567-e89b-12d3-a456-426614174000"]
+        None,
+        description=DESC_NOTE_ID,
+        examples=["123e4567-e89b-12d3-a456-426614174000"],
     )
     title: Optional[str] = Field(
         None, description="Note Title", examples=["Pasta Recipe"]
@@ -1590,7 +1587,10 @@ async def mcp_endpoint(request: dict):
     pass
 
 
-@app.post("/http-api/internal/embed", responses={500: {"description": "Internal server error"}})
+@app.post(
+    "/http-api/internal/embed",
+    responses={500: {"description": "Internal server error"}},
+)
 def internal_embed(request: InternalEmbedRequest):
     """
     Internal endpoint for the Node.js sync daemon to request embeddings
@@ -1599,8 +1599,8 @@ def internal_embed(request: InternalEmbedRequest):
     try:
         embeddings = get_embedding(request.texts)
         return {"embeddings": embeddings}
-    except Exception as e:
-        logger.error(f"Error generating internal embedding: {e}")
+    except Exception:
+        logger.exception("Error generating internal embedding:")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -1639,7 +1639,8 @@ def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
                     "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/request-deletion`.",
                 },
             },
-        }
+        },
+        500: {"description": "Internal server error"},
     },
 )
 async def api_search(
@@ -1666,6 +1667,7 @@ async def api_search(
     response_model=GetResponse,
     summary="Get Note",
     description="Get the full content of a specific note by ID.\\n\\n**Workflow Examples**:\\n* **Search -> Get**: Use `/api/search` to find notes, then pass the returned `id` here to retrieve the full content.\\n* **Remember -> Get**: Use `/api/remember` to create a note, then pass the returned `id` here to verify its content.",
+    responses={500: {"description": "Internal server error"}},
 )
 async def api_get(request: GetRequest, token: Annotated[str, Depends(verify_token)]):
     result = get_note(request.note_id)
@@ -1678,6 +1680,7 @@ async def api_get(request: GetRequest, token: Annotated[str, Depends(verify_toke
     summary="Remember Note",
     description="Remember a new note by storing its title and content.\\n\\n**Workflow Examples**:\\n* **Remember -> Get**: Use the `id` from the response to fetch the newly created note via `/api/get`.\\n* **Remember -> Delete**: Use the `id` from the response to delete the newly created note via `/api/delete`.",
     responses={
+        500: {"description": "Internal server error"},
         200: {
             "description": "Successful Response",
             "links": {
@@ -1695,7 +1698,7 @@ async def api_get(request: GetRequest, token: Annotated[str, Depends(verify_toke
                     "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/request-deletion`.",
                 },
             },
-        }
+        },
     },
 )
 async def api_remember(
@@ -1704,8 +1707,8 @@ async def api_remember(
     try:
         result = remember(request.title, request.content, request.folder)
         return extract_result(result)
-    except Exception as e:
-        logger.error(f"Error in api_remember: {e}")
+    except Exception:
+        logger.exception("Error in api_remember:")
         raise HTTPException(
             status_code=500, detail="An internal error occurred during remember."
         )
@@ -1752,6 +1755,7 @@ async def api_execute_deletion(
     response_model=UpdateResponse,
     summary="Update Note",
     description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('full_replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes.",
+    responses={500: {"description": "Internal server error"}},
 )
 async def api_update(
     request: UpdateRequest, token: Annotated[str, Depends(verify_token)]
@@ -1770,8 +1774,8 @@ async def api_update(
         return extracted
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error in api_update: {e}")
+    except Exception:
+        logger.exception("Error in api_update:")
         raise HTTPException(
             status_code=500, detail="An internal error occurred during update."
         )
@@ -1818,15 +1822,19 @@ def test_model_connection(
             return {"success": True, "dimension": len(res["embedding"])}
         else:
             raise ValueError("Response did not contain an embedding array.")
-    except Exception as e:
-        logger.error(f"Model test failed: {e}")
+    except Exception:
+        logger.exception("Model test failed:")
         raise HTTPException(
             status_code=400,
             detail="Failed to connect to or pull the specified model from the provided base URL. See server logs for details.",
         )
 
 
-@app.post("/api/settings", response_model=Settings, responses={500: {"description": "Internal server error"}})
+@app.post(
+    "/api/settings",
+    response_model=Settings,
+    responses={500: {"description": "Internal server error"}},
+)
 def update_settings(
     settings_update: SettingsUpdate, token: Annotated[str, Depends(verify_token)]
 ):
@@ -1858,22 +1866,7 @@ def update_settings(
     return Settings(**merged_config)
 
 
-@app.post("/api/reindex", response_model=Settings, responses={500: {"description": "Internal server error"}, 400: {"description": "Bad Request"}})
-def trigger_reindex(
-    reindex_request: ReindexRequest, token: Annotated[str, Depends(verify_token)]
-):
-    global _config_mtime
-    _config_mtime = 0  # Force reload to prevent caching race conditions
-    current_config = _load_config_file()
-
-    if hasattr(reindex_request, "model_dump"):
-        new_config = reindex_request.model_dump(exclude_none=True)
-    else:
-        new_config = reindex_request.dict(exclude_none=True)
-
-    new_embed = new_config.get("embedding", current_config.get("embedding", {}))
-
-    # Determine actual dimensionality before wiping
+def _get_embedding_dimension(new_embed: dict) -> int:
     new_dim = 384
     if new_embed.get("provider") == "ollama" and new_embed.get("baseUrl"):
         try:
@@ -1889,18 +1882,46 @@ def trigger_reindex(
             res = client.embeddings(model=new_embed["model"], prompt="test")
             if "embedding" in res:
                 new_dim = len(res["embedding"])
-        except Exception as e:
-            logger.error(
-                "Failed to determine dimensions for model %s: %s",
-                new_embed.get("model"),
-                e,
+        except Exception:
+            # Mask user input to prevent log forging
+            safe_model_name = (
+                str(new_embed.get("model", "unknown"))
+                .replace("\n", "")
+                .replace("\r", "")
+            )
+            logger.exception(
+                "Failed to determine dimensions for model %s:",
+                safe_model_name,
             )
             raise HTTPException(
                 status_code=400,
                 detail="Failed to connect to the specified model at the provided base URL. See server logs for details.",
             )
+    return new_dim
 
-    new_config["embeddingDimension"] = new_dim
+
+@app.post(
+    "/api/reindex",
+    response_model=Settings,
+    responses={
+        500: {"description": "Internal server error"},
+        400: {"description": "Bad Request"},
+    },
+)
+def trigger_reindex(
+    reindex_request: ReindexRequest, token: Annotated[str, Depends(verify_token)]
+):
+    global _config_mtime
+    _config_mtime = 0  # Force reload to prevent caching race conditions
+    current_config = _load_config_file()
+
+    if hasattr(reindex_request, "model_dump"):
+        new_config = reindex_request.model_dump(exclude_none=True)
+    else:
+        new_config = reindex_request.dict(exclude_none=True)
+
+    new_embed = new_config.get("embedding", current_config.get("embedding", {}))
+    new_config["embeddingDimension"] = _get_embedding_dimension(new_embed)
 
     # Maintenance Shutdown Procedure:
     import os
@@ -1917,8 +1938,8 @@ def trigger_reindex(
         import requests
 
         requests.post("http://127.0.0.1:3000/node-api/restart", timeout=2)
-    except Exception as e:
-        logger.error(f"Failed to signal Node daemon to restart: {e}")
+    except Exception:
+        logger.exception("Failed to signal Node daemon to restart:")
 
     # Wait for entrypoint.sh to confirm
     for _ in range(50):
@@ -1929,7 +1950,7 @@ def trigger_reindex(
     # 1. Safely drop DB
     from src.db import reset_database
 
-    reset_database(new_dim)
+    reset_database(new_config["embeddingDimension"])
 
     merged_config = {**current_config, **new_config}
 
@@ -1956,7 +1977,11 @@ def trigger_reindex(
     return Settings(**merged_config)
 
 
-@app.post("/api/settings/reset", response_model=Settings, responses={500: {"description": "Internal server error"}})
+@app.post(
+    "/api/settings/reset",
+    response_model=Settings,
+    responses={500: {"description": "Internal server error"}},
+)
 def reset_settings(token: Annotated[str, Depends(verify_token)]):
     default_settings = Settings()
     current_config = _load_config_file()

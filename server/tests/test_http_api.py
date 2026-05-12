@@ -400,9 +400,9 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
             headers=headers,
             allow_redirects=False,
         )
-        assert (
-            response.status_code == 200
-        ), f"Expected 200, got {response.status_code}. Response: {response.text}"
+        assert response.status_code == 200, (
+            f"Expected 200, got {response.status_code}. Response: {response.text}"
+        )
         data = response.json()
         assert data.get("jsonrpc") == "2.0"
         assert "result" in data
@@ -563,3 +563,50 @@ def test_mcp_notes_search(client, temp_config_and_db, mock_ollama):
     # Check if our target document is found
     titles = [item["title"] for item in results]
     assert any("Protocol" in t for t in titles)
+
+
+def test_get_embedding_dimension_mock():
+    from src.main import _get_embedding_dimension
+    from fastapi import HTTPException
+
+    # Should default to 384
+    assert _get_embedding_dimension({}) == 384
+    assert _get_embedding_dimension({"provider": "openai"}) == 384
+
+    # Test ollama with exception
+    with patch("src.main.ollama.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.embeddings.side_effect = Exception("Network error")
+        mock_client_cls.return_value = mock_client
+
+        with pytest.raises(HTTPException):
+            _get_embedding_dimension(
+                {"provider": "ollama", "baseUrl": "http://mock", "model": "test-model"}
+            )
+
+    # Test ollama success
+    with patch("src.main.ollama.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.embeddings.return_value = {"embedding": [0.1] * 512}
+        mock_client_cls.return_value = mock_client
+
+        dim = _get_embedding_dimension(
+            {"provider": "ollama", "baseUrl": "http://mock", "model": "test-model"}
+        )
+        assert dim == 512
+
+
+def test_merge_rrf_scores():
+    from src.main import _merge_rrf_scores
+
+    exact = [(1, "id1", "title1", "content1", 100, "pid1", "path1")]
+    vec = [(2, "id2", "title2", "content2", 0.5, 200, "pid2", "path2")]
+    fts = [(3, "id3", "title3", "content3", 0.9, 300, "pid3", "path3")]
+    rrf, data = _merge_rrf_scores(exact, vec, fts, 0.5)
+    assert 1 in rrf
+    assert 2 in rrf
+    assert 3 in rrf
+    assert rrf[1] == 1000.0  # Exact match boost
+    assert rrf[2] > 0
+    assert rrf[3] > 0
+    assert data[1]["id"] == "id1"

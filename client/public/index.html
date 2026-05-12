@@ -246,142 +246,146 @@
         memoryInput.value = globalThis.location.origin;
       }
     });
+    function _updateSyncStatus(syncState, data) {
+      const syncEl = document.getElementById('sync-status-text');
+      syncEl.innerText = syncState.status;
+      syncEl.className = 'status-' + syncState.status;
+      
+      const hasCredentials = data.hasCredentials;
+      const isMarriage = !data.config || !data.config.joplinUsername;
+      
+      if (hasCredentials) {
+        document.getElementById('auth-form').style.display = 'none';
+        document.getElementById('trigger-sync-btn').style.display = 'inline-block';
+      } else if (isMarriage) {
+        document.getElementById('auth-form').style.display = 'block';
+        document.getElementById('trigger-sync-btn').style.display = 'none';
+      } else {
+        document.getElementById('auth-form').style.display = 'none';
+        document.getElementById('trigger-sync-btn').style.display = 'none';
+        if (!globalThis.hasAlertedSession) {
+            globalThis.hasAlertedSession = true;
+            alert("Session state reset (e.g. after a restart). The page will now reload to securely authenticate your credentials.");
+            globalThis.location.reload();
+        }
+      }
+      
+      const syncProgEl = document.getElementById('sync-progress-text');
+      if (syncState.status === 'syncing' && syncState.progress) {
+        const p = syncState.progress;
+        let msgs = [];
+        if (p.fetchingTotal) {
+          const processed = p.fetchingProcessed || 0;
+          const total = p.fetchingTotal;
+          msgs.push(`Fetching: ${processed} / ${total}`);
+          if (processed >= total) {
+            msgs.push('Loading next batch...');
+          }
+        }
+        if (p.createLocal) msgs.push(`Created: ${p.createLocal}`);
+        if (p.updateLocal) msgs.push(`Updated: ${p.updateLocal}`);
+        if (p.deleteLocal) msgs.push(`Deleted: ${p.deleteLocal}`);
+        syncProgEl.innerText = msgs.length > 0 ? `(${msgs.join(' | ')})` : '(Preparing...)';
+        syncProgEl.style.color = '#555';
+      } else if (syncState.error) {
+        syncProgEl.innerText = syncState.error;
+        syncProgEl.style.color = 'red';
+      } else {
+        syncProgEl.innerText = '';
+      }
+    }
+
+    function _updateEmbedStatus(embedState) {
+      const embedEl = document.getElementById('embed-status-text');
+      embedEl.innerText = embedState.status;
+      embedEl.className = 'status-' + embedState.status;
+      
+      const embedProgEl = document.getElementById('embed-progress-text');
+      if (embedState.status === 'embedding' && embedState.progress && embedState.progress.percent !== undefined) {
+        embedProgEl.innerText = `${embedState.progress.percent}% (${embedState.progress.current} out of ${embedState.progress.total} notes)`;
+      } else if (embedState.error) {
+        embedProgEl.innerText = embedState.error;
+        embedProgEl.style.color = 'red';
+      } else {
+        embedProgEl.innerText = '';
+      }
+    }
+
+    function _renderMcpExamples(data, isInitialLoad) {
+      if (data.config && data.config.api_keys && data.config.api_keys.length > 0) {
+         const firstKey = data.config.api_keys[0].key;
+         globalThis.currentApiKey = firstKey;
+         
+         if (isInitialLoad) {
+           const setVal = (id, val) => {
+             if (val) document.getElementById(id).value = val;
+           };
+           setVal('serverUrl', data.config.joplinServerUrl);
+           setVal('username', data.config.joplinUsername);
+           setVal('memoryServerAddress', data.config.memoryServerAddress);
+           
+           if (data.hasCredentials) {
+               document.getElementById('auth-msg').innerText = '✅ Sync Unlocked via Browser Auth or Active Session.';
+               document.getElementById('auth-msg').className = 'messages success';
+               document.querySelector('details').removeAttribute('open');
+               document.getElementById('auth-form').style.display = 'none';
+           } else {
+               document.getElementById('auth-msg').innerText = '';
+               document.getElementById('auth-form').style.display = 'block';
+           }
+         }
+         
+         renderApiKeys(data.config.api_keys);
+         
+         const memAddr = globalThis.location.origin;
+         document.getElementById('mcp-examples').style.display = 'block';
+         document.getElementById('example-http').innerText = memAddr + '/http-api/';
+         document.getElementById('example-mcp-stateless').innerText = memAddr + '/http-api/mcp';
+         document.getElementById('example-mcp-streamable').innerText = memAddr + '/http-api/mcp/stream';
+         document.getElementById('example-mcp-sse').innerText = memAddr + '/http-api/mcp/sse';
+         document.getElementById('example-cli').innerText = JSON.stringify({
+           "mcpServers": {
+             "joplin_memory": {
+               "url": memAddr + "/http-api/mcp",
+               "headers": {
+                 "Authorization": "Bearer " + firstKey
+               }
+             }
+           }
+         }, null, 2);
+         document.getElementById('example-streamable-config').innerText = JSON.stringify({
+           "mcpServers": {
+             "joplin_memory": {
+               "url": memAddr + "/http-api/mcp/stream",
+               "headers": {
+                 "Authorization": "Bearer " + firstKey
+               }
+             }
+           }
+         }, null, 2);
+         document.getElementById('example-sse-config').innerText = JSON.stringify({
+           "mcpServers": {
+             "joplin_memory": {
+               "url": memAddr + "/http-api/mcp/sse",
+               "headers": {
+                 "Authorization": "Bearer " + firstKey
+               }
+             }
+           }
+         }, null, 2);
+      }
+    }
+
     async function fetchStatus(isInitialLoad = false) {
       try {
         const res = await fetch('/status');
         const data = await res.json();
         
-        // Sync Status
-        const syncEl = document.getElementById('sync-status-text');
-        const syncState = data.syncState || { status: 'offline' };
-        syncEl.innerText = syncState.status;
-        syncEl.className = 'status-' + syncState.status;
-        
-        const hasCredentials = data.hasCredentials;
-        const isMarriage = !data.config || !data.config.joplinUsername;
-        
-        if (hasCredentials) {
-          document.getElementById('auth-form').style.display = 'none';
-          document.getElementById('trigger-sync-btn').style.display = 'inline-block';
-        } else if (isMarriage) {
-          // Unmarried, show the full setup form
-          document.getElementById('auth-form').style.display = 'block';
-          document.getElementById('trigger-sync-btn').style.display = 'none';
-        } else {
-          // Married but no credentials (e.g. after a reboot)
-          // Hide the form, tell the user to reload to trigger Basic Auth
-          document.getElementById('auth-form').style.display = 'none';
-          document.getElementById('trigger-sync-btn').style.display = 'none';
-          if (!globalThis.hasAlertedSession) {
-              globalThis.hasAlertedSession = true;
-              alert("Session state reset (e.g. after a restart). The page will now reload to securely authenticate your credentials.");
-              globalThis.location.reload();
-          }
-        }
-        
-        const syncProgEl = document.getElementById('sync-progress-text');
-        if (syncState.status === 'syncing' && syncState.progress) {
-          const p = syncState.progress;
-          let msgs = [];
-          if (p.fetchingTotal) {
-            const processed = p.fetchingProcessed || 0;
-            const total = p.fetchingTotal;
-            msgs.push(`Fetching: ${processed} / ${total}`);
-            if (processed >= total) {
-              msgs.push('Loading next batch...');
-            }
-          }
-          if (p.createLocal) msgs.push(`Created: ${p.createLocal}`);
-          if (p.updateLocal) msgs.push(`Updated: ${p.updateLocal}`);
-          if (p.deleteLocal) msgs.push(`Deleted: ${p.deleteLocal}`);
-          syncProgEl.innerText = msgs.length > 0 ? `(${msgs.join(' | ')})` : '(Preparing...)';
-          syncProgEl.style.color = '#555';
-        } else if (syncState.error) {
-          syncProgEl.innerText = syncState.error;
-          syncProgEl.style.color = 'red';
-        } else {
-          syncProgEl.innerText = '';
-        }
-
-        // Embedding Status
-        const embedEl = document.getElementById('embed-status-text');
-        const embedState = data.embeddingState || { status: 'offline' };
-        embedEl.innerText = embedState.status;
-        embedEl.className = 'status-' + embedState.status;
-        
-        const embedProgEl = document.getElementById('embed-progress-text');
-        if (embedState.status === 'embedding' && embedState.progress && embedState.progress.percent !== undefined) {
-          embedProgEl.innerText = `${embedState.progress.percent}% (${embedState.progress.current} out of ${embedState.progress.total} notes)`;
-        } else if (embedState.error) {
-          embedProgEl.innerText = embedState.error;
-          embedProgEl.style.color = 'red';
-        } else {
-          embedProgEl.innerText = '';
-        }
-
-        if (data.config && data.config.api_keys && data.config.api_keys.length > 0) {
-           const firstKey = data.config.api_keys[0].key;
-           globalThis.currentApiKey = firstKey;
-           
-           if (isInitialLoad) {
-             const setVal = (id, val) => {
-               if (val) document.getElementById(id).value = val;
-             };
-             setVal('serverUrl', data.config.joplinServerUrl);
-             setVal('username', data.config.joplinUsername);
-             setVal('memoryServerAddress', data.config.memoryServerAddress);
-             
-             if (data.hasCredentials) {
-                 document.getElementById('auth-msg').innerText = '✅ Sync Unlocked via Browser Auth or Active Session.';
-                 document.getElementById('auth-msg').className = 'messages success';
-                 document.querySelector('details').removeAttribute('open');
-                 document.getElementById('auth-form').style.display = 'none';
-             } else {
-                 document.getElementById('auth-msg').innerText = '';
-                 document.getElementById('auth-form').style.display = 'block';
-             }
-           }
-           
-           renderApiKeys(data.config.api_keys);
-           
-           const memAddr = globalThis.location.origin;
-           document.getElementById('mcp-examples').style.display = 'block';
-           document.getElementById('example-http').innerText = memAddr + '/http-api/';
-           document.getElementById('example-mcp-stateless').innerText = memAddr + '/http-api/mcp';
-           document.getElementById('example-mcp-streamable').innerText = memAddr + '/http-api/mcp/stream';
-           document.getElementById('example-mcp-sse').innerText = memAddr + '/http-api/mcp/sse';
-           document.getElementById('example-cli').innerText = JSON.stringify({
-             "mcpServers": {
-               "joplin_memory": {
-                 "url": memAddr + "/http-api/mcp",
-                 "headers": {
-                   "Authorization": "Bearer " + firstKey
-                 }
-               }
-             }
-           }, null, 2);
-           document.getElementById('example-streamable-config').innerText = JSON.stringify({
-             "mcpServers": {
-               "joplin_memory": {
-                 "url": memAddr + "/http-api/mcp/stream",
-                 "headers": {
-                   "Authorization": "Bearer " + firstKey
-                 }
-               }
-             }
-           }, null, 2);
-           document.getElementById('example-sse-config').innerText = JSON.stringify({
-             "mcpServers": {
-               "joplin_memory": {
-                 "url": memAddr + "/http-api/mcp/sse",
-                 "headers": {
-                   "Authorization": "Bearer " + firstKey
-                 }
-               }
-             }
-           }, null, 2);
-        }
+        _updateSyncStatus(data.syncState || { status: 'offline' }, data);
+        _updateEmbedStatus(data.embeddingState || { status: 'offline' });
+        _renderMcpExamples(data, isInitialLoad);
       } catch(e) {
+        console.error('Failed to fetch status:', e);
         const syncEl = document.getElementById('sync-status-text');
         if (syncEl) {
           syncEl.innerText = 'offline';
@@ -407,6 +411,7 @@
           alert('Sync trigger failed: ' + (data.error || 'Unknown error'));
         }
       } catch(err) {
+        console.error('Network error while triggering sync:', err);
         alert('Network error while triggering sync.');
       }
       e.target.disabled = false;
