@@ -4,10 +4,8 @@ import pytest
 import requests
 import json
 import time
-import os
 
 from urllib.parse import urljoin
-from tests.joplin_fixtures import ephemeral_joplin  # noqa: F401
 
 
 # We must be careful not to trigger a reset of auth loop unless needed.
