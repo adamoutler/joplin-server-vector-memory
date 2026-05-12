@@ -86,6 +86,11 @@ class UpdateMode(str, Enum):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+ERR_NOTE_NOT_FOUND = "Note not found"
+DEFAULT_FOLDER = "Agent Memory"
+DESC_NOTE_ID = "Note ID"
+DESC_STATUS_OP = "Status of the operation"
+
 # Initialize FastMCP server
 mcp = FastMCP("JoplinSemanticSearch")
 
@@ -194,13 +199,12 @@ def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[f
                         "context length" in error_msg
                         or "size limit" in error_msg
                         or "too long" in error_msg
-                    ):
-                        if attempt < max_retries - 1:
-                            logger.warning(
-                                f"Ollama context length exceeded. Truncating text and retrying (attempt {attempt + 1})..."
-                            )
-                            current_text = current_text[: len(current_text) // 2]
-                            continue
+                    ) and attempt < max_retries - 1:
+                        logger.warning(
+                            f"Ollama context length exceeded. Truncating text and retrying (attempt {attempt + 1})..."
+                        )
+                        current_text = current_text[: len(current_text) // 2]
+                        continue
                     logger.error("Ollama embedding failed critically on single item")
                     raise RuntimeError(str(e))
 
@@ -813,7 +817,7 @@ def get_note(note_id: str) -> list[Union[dict, TextContent]]:
     return [
         TextContent(
             type="text",
-            text=json.dumps({"error": "Note not found"}),
+            text=json.dumps({"error": ERR_NOTE_NOT_FOUND}),
             annotations=Annotations(audience=["assistant"]),
         ),
         TextContent(
@@ -826,13 +830,13 @@ def get_note(note_id: str) -> list[Union[dict, TextContent]]:
 
 @mcp.tool(name="notes_remember")
 def remember(
-    title: str, content: str, folder: str = "Agent Memory"
+    title: str, content: str, folder: str = DEFAULT_FOLDER
 ) -> list[Union[dict, TextContent]]:
     """
     Remember a new note by storing its title and content.
     Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
 
-    folder: Optional, discouraged, folder to save the note in. Defaults to "Agent Memory".
+    folder: Optional, discouraged, folder to save the note in. Defaults to DEFAULT_FOLDER.
 
     ATTACHING FILES: If you need to attach a file, script, or image to this note,
     you must FIRST call the `upload_resource` tool. That tool will return an ID.
@@ -976,7 +980,7 @@ def update_note(
 
     if not row:
         db.close()
-        return _err("Note not found")
+        return _err(ERR_NOTE_NOT_FOUND)
 
     title, current_content, current_time, rowid = row
 
@@ -1075,7 +1079,7 @@ def request_note_deletion(note_id: str, reason: str) -> list[Union[dict, TextCon
         ]
 
     if not row:
-        return _err("Note not found")
+        return _err(ERR_NOTE_NOT_FOUND)
 
     title = row[0]
     token = secrets.token_hex(8)
@@ -1298,8 +1302,8 @@ class SearchRequest(BaseModel):
 
 
 class SearchResponseItem(BaseModel):
-    id: str = Field(
-        ..., description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"]
+    note_id: str = Field(
+        ..., description=DESC_NOTE_ID, examples=["123e4567-e89b-12d3-a456-426614174000"]
     )
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
     blurb: str = Field(
@@ -1334,8 +1338,8 @@ class GetRequest(BaseModel):
 
 
 class GetResponse(BaseModel):
-    id: Optional[str] = Field(
-        None, description="Note ID", examples=["123e4567-e89b-12d3-a456-426614174000"]
+    note_id: Optional[str] = Field(
+        None, description=DESC_NOTE_ID, examples=["123e4567-e89b-12d3-a456-426614174000"]
     )
     title: Optional[str] = Field(
         None, description="Note Title", examples=["Pasta Recipe"]
@@ -1360,15 +1364,15 @@ class RememberRequest(BaseModel):
         examples=["# New Recipe\n\nIngredients..."],
     )
     folder: str = Field(
-        "Agent Memory",
+        DEFAULT_FOLDER,
         description="Optional folder name to save the note in",
-        examples=["Agent Memory"],
+        examples=[DEFAULT_FOLDER],
     )
 
 
 class RememberResponse(BaseModel):
     status: Optional[str] = Field(
-        None, description="Status of the operation", examples=["success"]
+        None, description=DESC_STATUS_OP, examples=["success"]
     )
     id: Optional[str] = Field(
         None,
@@ -1396,14 +1400,14 @@ class RequestDeletionRequest(BaseModel):
 
 
 class RequestDeletionResponse(BaseModel):
-    status: Optional[str] = Field(None, description="Status of the operation")
+    status: Optional[str] = Field(None, description=DESC_STATUS_OP)
     message: Optional[str] = Field(
         None, description="Instructions to complete deletion"
     )
     deletion_token: Optional[str] = Field(
         None, description="Token required to execute deletion"
     )
-    note_id: Optional[str] = Field(None, description="Note ID")
+    note_id: Optional[str] = Field(None, description=DESC_NOTE_ID)
     confirm_title: Optional[str] = Field(
         None, description="Exact note title required for execution"
     )
@@ -1430,7 +1434,7 @@ class ExecuteDeletionRequest(BaseModel):
 
 class ExecuteDeletionResponse(BaseModel):
     status: Optional[str] = Field(
-        None, description="Status of the operation", examples=["success"]
+        None, description=DESC_STATUS_OP, examples=["success"]
     )
     id: Optional[str] = Field(
         None,
@@ -1458,7 +1462,7 @@ class UpdateRequest(BaseModel):
 
 
 class UpdateResponse(BaseModel):
-    status: Optional[str] = Field(None, description="Status of the operation")
+    status: Optional[str] = Field(None, description=DESC_STATUS_OP)
     id: Optional[str] = Field(None, description="Updated Note ID")
     error: Optional[str] = Field(None, description="Error message if any")
 
@@ -1586,7 +1590,7 @@ async def mcp_endpoint(request: dict):
     pass
 
 
-@app.post("/http-api/internal/embed")
+@app.post("/http-api/internal/embed", responses={500: {"description": "Internal server error"}})
 def internal_embed(request: InternalEmbedRequest):
     """
     Internal endpoint for the Node.js sync daemon to request embeddings
@@ -1602,13 +1606,13 @@ def internal_embed(request: InternalEmbedRequest):
 
 def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
     for r in res:
-        if isinstance(r, TextContent):
-            if (
-                r.annotations
-                and r.annotations.audience
-                and "assistant" in r.annotations.audience
-            ):
-                return json.loads(r.text)
+        if (
+            isinstance(r, TextContent)
+            and r.annotations
+            and r.annotations.audience
+            and "assistant" in r.annotations.audience
+        ):
+            return json.loads(r.text)
     return res
 
 
@@ -1795,7 +1799,7 @@ class TestModelRequest(BaseModel):
     model: str
 
 
-@app.post("/api/settings/test-model")
+@app.post("/api/settings/test-model", responses={400: {"description": "Bad request"}})
 def test_model_connection(
     request: TestModelRequest, token: Annotated[str, Depends(verify_token)]
 ):
@@ -1822,7 +1826,7 @@ def test_model_connection(
         )
 
 
-@app.post("/api/settings", response_model=Settings)
+@app.post("/api/settings", response_model=Settings, responses={500: {"description": "Internal server error"}})
 def update_settings(
     settings_update: SettingsUpdate, token: Annotated[str, Depends(verify_token)]
 ):
@@ -1854,7 +1858,7 @@ def update_settings(
     return Settings(**merged_config)
 
 
-@app.post("/api/reindex", response_model=Settings)
+@app.post("/api/reindex", response_model=Settings, responses={500: {"description": "Internal server error"}, 400: {"description": "Bad Request"}})
 def trigger_reindex(
     reindex_request: ReindexRequest, token: Annotated[str, Depends(verify_token)]
 ):
@@ -1952,7 +1956,7 @@ def trigger_reindex(
     return Settings(**merged_config)
 
 
-@app.post("/api/settings/reset", response_model=Settings)
+@app.post("/api/settings/reset", response_model=Settings, responses={500: {"description": "Internal server error"}})
 def reset_settings(token: Annotated[str, Depends(verify_token)]):
     default_settings = Settings()
     current_config = _load_config_file()

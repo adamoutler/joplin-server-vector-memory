@@ -243,7 +243,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       const memoryInput = document.getElementById('memoryServerAddress');
       if (!memoryInput.value) {
-        memoryInput.value = window.location.origin;
+        memoryInput.value = globalThis.location.origin;
       }
     });
     async function fetchStatus(isInitialLoad = false) {
@@ -272,10 +272,10 @@
           // Hide the form, tell the user to reload to trigger Basic Auth
           document.getElementById('auth-form').style.display = 'none';
           document.getElementById('trigger-sync-btn').style.display = 'none';
-          if (!window.hasAlertedSession) {
-              window.hasAlertedSession = true;
+          if (!globalThis.hasAlertedSession) {
+              globalThis.hasAlertedSession = true;
               alert("Session state reset (e.g. after a restart). The page will now reload to securely authenticate your credentials.");
-              window.location.reload();
+              globalThis.location.reload();
           }
         }
         
@@ -321,7 +321,7 @@
 
         if (data.config && data.config.api_keys && data.config.api_keys.length > 0) {
            const firstKey = data.config.api_keys[0].key;
-           window.currentApiKey = firstKey;
+           globalThis.currentApiKey = firstKey;
            
            if (isInitialLoad) {
              const setVal = (id, val) => {
@@ -344,7 +344,7 @@
            
            renderApiKeys(data.config.api_keys);
            
-           const memAddr = window.location.origin;
+           const memAddr = globalThis.location.origin;
            document.getElementById('mcp-examples').style.display = 'block';
            document.getElementById('example-http').innerText = memAddr + '/http-api/';
            document.getElementById('example-mcp-stateless').innerText = memAddr + '/http-api/mcp';
@@ -435,7 +435,7 @@
         if (res.ok) {
           if (data.requireRelogin) {
             alert(data.message);
-            window.location.reload();
+            globalThis.location.reload();
             return;
           }
           msgEl.innerText = '✅ Sync Unlocked via Browser Auth or Active Session.';
@@ -595,7 +595,7 @@
     const restoreDefaultsBtn = document.getElementById('restore-defaults-btn');
 
     function getToken() {
-      return window.currentApiKey;
+      return globalThis.currentApiKey;
     }
 
     async function loadAdvancedSettings() {
@@ -867,7 +867,7 @@
             saveBtn.style.color = 'white';
             setTimeout(() => {
                 alert('The system is restarting to apply changes. Please wait a moment and reload the page.');
-                window.location.reload();
+                globalThis.location.reload();
             }, 5000);
         } else {
             alert('Network error while saving settings: ' + e.message);
@@ -948,7 +948,7 @@
 
         if (res.ok) {
           alert('System successfully reset. The page will now reload.');
-          window.location.reload();
+          globalThis.location.reload();
         } else {
           const data = await res.json();
           alert('Failed to reset system: ' + (data.error || 'Unknown error'));
