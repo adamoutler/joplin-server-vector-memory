@@ -9,7 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const crypto = require('crypto');
-const fs = require('fs');
+const fs = require('./fsw');
 const path = require('path');
 const { JoplinSyncClient } = require('./sync');
 const { fetchWithTimeout, validateJoplinSession, fetchJoplinEvents, checkJoplinSyncInfo } = require('./network');
@@ -1039,7 +1039,7 @@ async function executeSyncAndEmbeddings(joplinUrl, sessionId, config, cursor, po
   if (pollResult.newCursor && pollResult.newCursor !== cursor) {
     config.lastEventCursor = pollResult.newCursor;
     try {
-      const fs = require('fs');
+      const fs = require('./fsw');
       const cfgRaw = fs.readFileSync(CONFIG_PATH, 'utf8');
       const cfgObj = JSON.parse(cfgRaw);
       cfgObj.lastEventCursor = pollResult.newCursor;

@@ -12,7 +12,7 @@ const SyncTargetRegistry = require('@joplin/lib/SyncTargetRegistry').default;
 const sqlite3 = require('sqlite3');
 const sqliteVec = require('sqlite-vec');
 const path = require('path');
-const fs = require('fs');
+const fs = require('./fsw');
 const EventEmitter = require('events');
 const { triggerInternalEmbedding } = require('./network');
 
@@ -317,7 +317,7 @@ class JoplinSyncClient extends EventEmitter {
       const errMsg = err.message || String(err);
       if (errMsg.includes('SQLITE_CORRUPT') || errMsg.includes('SQLITE_FULL') || errMsg.includes('SQLITE_IOERR') || errMsg.includes('SQLITE_READONLY') || errMsg.includes('database disk image is malformed')) {
         console.error('Fatal database error during sync. Wiping databases and restarting...', err);
-        const fs = require('fs');
+        const fs = require('./fsw');
         const path = require('path');
         try {
             if (fs.existsSync(this.profileDir)) fs.rmSync(this.profileDir, { recursive: true, force: true });
@@ -529,7 +529,7 @@ class JoplinSyncClient extends EventEmitter {
 
   _handleVectorDbFatalError(error) {
       console.warn('Fatal database state detected. Treating vector database as ephemeral: Wiping DB and forcing restart.', error);
-      const fs = require('fs');
+      const fs = require('./fsw');
       const path = require('path');
       const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
       try {
