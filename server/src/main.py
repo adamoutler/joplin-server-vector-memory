@@ -1302,7 +1302,7 @@ class SearchRequest(BaseModel):
 
 
 class SearchResponseItem(BaseModel):
-    note_id: str = Field(
+    id: str = Field(
         ..., description=DESC_NOTE_ID, examples=["123e4567-e89b-12d3-a456-426614174000"]
     )
     title: str = Field(..., description="Note Title", examples=["Pasta Recipe"])
@@ -1338,7 +1338,7 @@ class GetRequest(BaseModel):
 
 
 class GetResponse(BaseModel):
-    note_id: Optional[str] = Field(
+    id: Optional[str] = Field(
         None, description=DESC_NOTE_ID, examples=["123e4567-e89b-12d3-a456-426614174000"]
     )
     title: Optional[str] = Field(
