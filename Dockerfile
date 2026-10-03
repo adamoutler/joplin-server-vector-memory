@@ -2,15 +2,14 @@
 # Stage 1: Base Python (Heavy Dependencies)
 # These change rarely and are huge.
 # ==========================================
-FROM node:20-bookworm-slim AS python-base
+FROM node:22-bookworm-slim AS python-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
     build-essential \
-    && rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@latest
+    && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
@@ -28,7 +27,7 @@ RUN python3 -c "from sentence_transformers import SentenceTransformer; \
 # ==========================================
 # Stage 2: Builder (Node & Remaining Python)
 # ==========================================
-FROM node:20-bookworm AS builder
+FROM node:22-bookworm AS builder
 
 # Install build dependencies for native modules (sqlite3)
 RUN apt-get update && apt-get install -y \
@@ -59,7 +58,7 @@ RUN cd client && \
 # ==========================================
 # Stage 3: Final Runtime (Lightweight)
 # ==========================================
-FROM node:20-bookworm-slim AS runtime
+FROM node:22-bookworm-slim AS runtime
 
 # Install runtime essentials and upgrade OS packages for security
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
@@ -68,8 +67,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     curl \
     ca-certificates \
     gosu \
-    && rm -rf /var/lib/apt/lists/* && \
-    npm install -g npm@latest
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

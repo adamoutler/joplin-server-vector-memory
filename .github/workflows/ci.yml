@@ -36,7 +36,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'npm'
         cache-dependency-path: './client/package-lock.json'
 
@@ -174,7 +174,7 @@ jobs:
         cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref=ghcr.io/{0}/joplin-server-vector-memory:latest,mode=max', github.repository_owner) || '' }}
 
   test-node:
-    name: Node.js Tests (20)
+    name: Node.js Tests (22)
     needs: lint
     permissions:
       contents: read
@@ -186,7 +186,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'npm'
         cache-dependency-path: './client/package-lock.json'
 
@@ -205,7 +205,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: node-test-results-20
+        name: node-test-results-22
         path: |
           client/test-results/jest-junit.xml
           client/coverage/lcov.info
@@ -223,7 +223,7 @@ jobs:
     - name: Setup Node.js (for proxy interaction)
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
         cache: 'npm'
         cache-dependency-path: './client/package-lock.json'
 
@@ -286,7 +286,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
 
     - name: Run Promptfoo Eval
       run: npx --yes promptfoo@latest eval -c tests/promptfooconfig.yaml
@@ -337,7 +337,7 @@ jobs:
       - name: Download Node Test Results
         uses: actions/download-artifact@v4
         with:
-          name: node-test-results-20
+          name: node-test-results-22
           path: client
 
       - name: Download Python Test Results

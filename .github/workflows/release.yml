@@ -35,7 +35,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: './client/package-lock.json'
 
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: ['20', '22']
+        node-version: ['22']
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
       - name: Setup Node.js (for e2e_workflow node script)
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: './client/package-lock.json'
 
