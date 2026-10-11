@@ -11,9 +11,9 @@ const JoplinDatabase = require('@joplin/lib/JoplinDatabase').default;
 const SyncTargetRegistry = require('@joplin/lib/SyncTargetRegistry').default;
 const sqlite3 = require('sqlite3');
 const sqliteVec = require('sqlite-vec');
-const path = require('path');
+const path = require('node:path');
 const fs = require('./fsw');
-const EventEmitter = require('events');
+const EventEmitter = require('node:events');
 const { triggerInternalEmbedding } = require('./network');
 
 class JoplinSyncClient extends EventEmitter {
@@ -169,9 +169,9 @@ class JoplinSyncClient extends EventEmitter {
         return null;
       }
 
-      async deletePassword(_service, __account) {
+      async deletePassword(service, account) {
         // dummy implementation
-        return true;
+        return this.setPassword(service, account, '');
       }
       
       async detectIfMacOsKeychainBug() { return false; }
@@ -268,9 +268,9 @@ class JoplinSyncClient extends EventEmitter {
             this.vectorDb.run(sql, err => err ? reject(err) : resolve());
           });
 
-          await runVectorSql(`DROP TABLE IF EXISTS vec_notes`).catch(() => {});
-          await runVectorSql(`DROP TABLE IF EXISTS notes_fts`).catch(() => {});
-          await runVectorSql(`DROP TABLE IF EXISTS note_metadata`).catch(() => {});
+          await runVectorSql(`DROP TABLE IF EXISTS vec_notes`).catch(err => console.debug('Ignored vector DB drop error:', err.message));
+          await runVectorSql(`DROP TABLE IF EXISTS notes_fts`).catch(err => console.debug('Ignored FTS drop error:', err.message));
+          await runVectorSql(`DROP TABLE IF EXISTS note_metadata`).catch(err => console.debug('Ignored metadata drop error:', err.message));
           
           await runVectorSql(`CREATE TABLE IF NOT EXISTS note_metadata (rowid INTEGER PRIMARY KEY, note_id TEXT UNIQUE, title TEXT, content TEXT, parent_id TEXT, folder_path TEXT, updated_time INTEGER DEFAULT 0)`);
           await runVectorSql(`CREATE TABLE IF NOT EXISTS folders (id TEXT PRIMARY KEY, title TEXT, parent_id TEXT)`);
@@ -310,7 +310,7 @@ class JoplinSyncClient extends EventEmitter {
     try {
       await this.synchronizer.start();
       
-      if (this._lastSyncErrors && this._lastSyncErrors.length > 0) {
+      if (this._lastSyncErrors?.length > 0) {
         throw new Error(`Sync failed:\n${this._lastSyncErrors.join('\n')}`);
       }
     } catch (err) {
@@ -318,7 +318,6 @@ class JoplinSyncClient extends EventEmitter {
       if (errMsg.includes('SQLITE_CORRUPT') || errMsg.includes('SQLITE_FULL') || errMsg.includes('SQLITE_IOERR') || errMsg.includes('SQLITE_READONLY') || errMsg.includes('database disk image is malformed')) {
         console.error('Fatal database error during sync. Wiping databases and restarting...', err);
         const fs = require('./fsw');
-        const path = require('path');
         try {
             if (fs.existsSync(this.profileDir)) fs.rmSync(this.profileDir, { recursive: true, force: true });
             const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
@@ -352,7 +351,7 @@ class JoplinSyncClient extends EventEmitter {
         const service = EncryptionService.instance();
 
         const masterKeys = await MasterKey.all();
-        if (!masterKeys || masterKeys.length === 0) {
+        if (!masterKeys?.length) {
             // Note: Not everyone uses encryption, so it is perfectly normal for some users to not have any master keys here.
             console.warn('No E2EE master keys found in database. Skipping decryption.');
             this.emit('decryptComplete');
@@ -463,49 +462,14 @@ class JoplinSyncClient extends EventEmitter {
   }
 
   async upsertVector(noteId, title, content, embedding, updatedTime, parentId, folderPath) {
-    const runAsync = (query, params) => new Promise((resolve, reject) => {
-      this.vectorDb.run(query, params, function(err) {
-        if (err) reject(err);
-        else resolve(this);
-      });
-    });
-    const getAsync = (query, params) => new Promise((resolve, reject) => {
-      this.vectorDb.get(query, params, (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
-
-    if (!this._vecNotesCreated) {
-        await runAsync(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_notes USING vec0(embedding float[${embedding.length}])`, []);
-        this._vecNotesCreated = true;
-    }
-
-    try {
-      await runAsync('BEGIN IMMEDIATE TRANSACTION', []);
-      const row = await getAsync(`SELECT rowid FROM note_metadata WHERE note_id = ?`, [noteId]);
-      const eStr = Buffer.from(new Float32Array(embedding).buffer);
-
-      if (row) {
-        const rowid = row.rowid;
-        await runAsync(`UPDATE note_metadata SET title = ?, content = ?, updated_time = ?, parent_id = ?, folder_path = ? WHERE rowid = ?`, [title, content, updatedTime, parentId, folderPath, rowid]);
-        await runAsync(`DELETE FROM vec_notes WHERE rowid = ?`, [rowid]);
-        await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
-      } else {
-        const result = await runAsync(`INSERT INTO note_metadata (note_id, title, content, updated_time, parent_id, folder_path) VALUES (?, ?, ?, ?, ?, ?)`, [noteId, title, content, updatedTime, parentId, folderPath]);
-        const rowid = result.lastID;
-        await runAsync(`INSERT INTO vec_notes(rowid, embedding) VALUES (?, ?)`, [rowid, eStr]);
-      }
-      await runAsync('COMMIT', []);
-    } catch (err) {
-      try {
-        await runAsync('ROLLBACK', []);
-      } catch (rollbackErr) {
-        console.error('Failed to rollback transaction:', rollbackErr);
-      }
-      this._handleVectorDbFatalError(err);
-      throw err;
-    }
+    return this.bulkUpsertVectors([{
+      id: noteId,
+      title,
+      body: content,
+      updated_time: updatedTime,
+      parent_id: parentId,
+      folder_path: folderPath
+    }], [embedding]);
   }
 
   async getConfig() {
@@ -530,7 +494,6 @@ class JoplinSyncClient extends EventEmitter {
   _handleVectorDbFatalError(error) {
       console.warn('Fatal database state detected. Treating vector database as ephemeral: Wiping DB and forcing restart.', error);
       const fs = require('./fsw');
-      const path = require('path');
       const vectorDbPath = process.env.SQLITE_DB_PATH || path.join(this.profileDir, '../vector_memory.sqlite');
       try {
           if (this.vectorDb) this.vectorDb.close();
@@ -566,7 +529,7 @@ class JoplinSyncClient extends EventEmitter {
       const folderPathCache = this.buildFolderPathLookup(joplinFolders);
 
       // Proactively delete notes if provided
-      if (deletedNoteIds && deletedNoteIds.length > 0) {
+      if (deletedNoteIds?.length > 0) {
         console.log(`Proactively deleting ${deletedNoteIds.length} notes from vector DB...`);
         for (const vId of deletedNoteIds) {
           await new Promise((resolve, reject) => {
@@ -588,11 +551,11 @@ class JoplinSyncClient extends EventEmitter {
       // 2. Fetch current decrypted notes from Joplin DB
       let notesQuery = 'SELECT id, title, body, updated_time, parent_id FROM notes WHERE encryption_applied = 0';
       let notes = [];
-      if (changedNoteIds && changedNoteIds.length > 0) {
+      if (changedNoteIds?.length > 0) {
           const placeholders = changedNoteIds.map(() => '?').join(',');
           notesQuery += ` AND id IN (${placeholders})`;
           notes = await this.db.selectAll(notesQuery, changedNoteIds);
-      } else if (changedNoteIds && changedNoteIds.length === 0) {
+      } else if (changedNoteIds?.length === 0) {
           // Empty array passed, skip fetching
           notes = [];
       } else {
@@ -665,7 +628,7 @@ class JoplinSyncClient extends EventEmitter {
           const folderPath = folderPathCache.get(note.parent_id) || '';
           note.folder_path = folderPath;
           let rawText = `Folder: ${folderPath}\nTitle: ${note.title}\n\n${note.body}`;
-          const CHUNK_LIMIT = config.chunkSize ? config.chunkSize * 4 : 4000;
+          const CHUNK_LIMIT = config?.chunkSize ? config.chunkSize * 4 : 4000;
           if (rawText.length > CHUNK_LIMIT) {
               let chunk = rawText.substring(0, CHUNK_LIMIT);
               let lastSpace = Math.max(chunk.lastIndexOf(' '), chunk.lastIndexOf('\n'), chunk.lastIndexOf('\t'));

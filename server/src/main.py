@@ -28,9 +28,9 @@ from mcp.types import (
     TextContent,
     Annotations,
 )
-from typing import Union, Annotated
+from typing import Annotated
 
-for key in list(os.environ.keys()):
+for key in os.environ:
     value = os.environ[key]
     if isinstance(value, str) and value.strip() == "":
         del os.environ[key]
@@ -174,7 +174,7 @@ def get_config() -> dict:
     }
 
 
-def get_embedding(text: Union[str, List[str]]) -> Union[list[float], list[list[float]]]:
+def get_embedding(text: str | list[str]) -> list[float] | list[list[float]]:
     config = get_config()
     embed_config = config.get("embedding", {})
 
@@ -386,7 +386,7 @@ def _merge_rrf_scores(
             note_id,
             title,
             content,
-            distance,
+            _,
             updated_time,
             parent_id,
             folder_path,
@@ -398,7 +398,7 @@ def _merge_rrf_scores(
             rrf_scores[rowid] += alpha * (1.0 / (rank + 60))
 
     for rank, row in enumerate(fts_results):
-        rowid, note_id, title, content, score, updated_time, parent_id, folder_path = (
+        rowid, note_id, title, content, _, updated_time, parent_id, folder_path = (
             row
         )
         _ensure_row(
@@ -420,7 +420,7 @@ def search_notes(
     date_weight: float = 0.0,
     folder: Optional[str] = None,
     recursive: bool = False,
-) -> list[Union[dict, TextContent]]:
+) -> list[dict | TextContent]:
     """
     Search notes semantically using the provided query.
     Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
@@ -669,7 +669,7 @@ def search_notes(
 
 
 @mcp.tool(name="resources_get")
-def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]:
+def get_resource(resource_id: str) -> str | ImageContent | EmbeddedResource:
     """
     Get the contents of a specific resource (image, script, PDF, etc) attached to a note.
     """
@@ -707,7 +707,7 @@ def get_resource(resource_id: str) -> Union[str, ImageContent, EmbeddedResource]
 @mcp.tool(name="resources_upload")
 def upload_resource(
     filename: str, base64_data: str, mime_type: str = None
-) -> list[Union[dict, TextContent]]:
+) -> list[dict | TextContent]:
     """
     Uploads a binary file or resource to the server.
     Returns {"resource_id": "string", "markdown_link": "string"}.
@@ -767,7 +767,7 @@ def upload_resource(
 
 
 @mcp.tool(name="notes_get")
-def get_note(note_id: str) -> list[Union[dict, TextContent]]:
+def get_note(note_id: str) -> list[dict | TextContent]:
     """
     Get the full content of a specific note by ID.
     """
@@ -830,7 +830,7 @@ def get_note(note_id: str) -> list[Union[dict, TextContent]]:
 @mcp.tool(name="notes_remember")
 def remember(
     title: str, content: str, folder: str = DEFAULT_FOLDER
-) -> list[Union[dict, TextContent]]:
+) -> list[dict | TextContent]:
     """
     Remember a new note by storing its title and content.
     Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
@@ -950,7 +950,7 @@ def update_note(
     last_modified_timestamp: int = 0,
     summary_of_changes: str = "",
     search_text: Optional[str] = None,
-) -> list[Union[dict, TextContent]]:
+) -> list[dict | TextContent]:
     """
     Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
     update_mode can be 'full note replacement', 'partial note replacement', 'append', or 'prepend'.
@@ -998,7 +998,12 @@ def update_note(
         db.close()
         return _err("replace text too long")
 
-    mode_str = update_mode.value if isinstance(update_mode, Enum) else str(update_mode) if update_mode else ""
+    if not update_mode:
+        mode_str = ""
+    elif isinstance(update_mode, Enum):
+        mode_str = update_mode.value
+    else:
+        mode_str = str(update_mode)
     is_partial = False
 
     if search_text is not None:
@@ -1094,7 +1099,7 @@ _deletion_tokens = {}
 
 
 @mcp.tool(name="notes_request_deletion")
-def request_note_deletion(note_id: str, reason: str) -> list[Union[dict, TextContent]]:
+def request_note_deletion(note_id: str, reason: str) -> list[dict | TextContent]:
     """
     Request the deletion of a note. This is step 1 of 2.
     Returns {"deletion_token": "string", "note_title": "string"}.
@@ -1150,7 +1155,7 @@ def request_note_deletion(note_id: str, reason: str) -> list[Union[dict, TextCon
 @mcp.tool(name="notes_execute_deletion")
 def execute_deletion(
     deletion_token: str, confirm_title: str, safety_attestation: dict
-) -> list[Union[dict, TextContent]]:
+) -> list[dict | TextContent]:
     """
     Execute the deletion of a note. This is step 2 of 2.
     Requires the token from step 1, the exact note title, and a safety attestation.
@@ -1277,7 +1282,7 @@ class OllamaEmbeddingSettings(BaseModel):
 
 
 class Settings(BaseModel):
-    embedding: Union[OllamaEmbeddingSettings, InternalEmbeddingSettings] = Field(
+    embedding: OllamaEmbeddingSettings | InternalEmbeddingSettings = Field(
         default_factory=InternalEmbeddingSettings
     )
     chunkSize: int = 1000
@@ -1306,7 +1311,7 @@ class SettingsUpdate(BaseModel):
 
 
 class ReindexRequest(BaseModel):
-    embedding: Optional[Union[OllamaEmbeddingSettings, InternalEmbeddingSettings]] = (
+    embedding: Optional[OllamaEmbeddingSettings | InternalEmbeddingSettings] = (
         None
     )
     chunkSize: Optional[int] = None
@@ -1576,10 +1581,12 @@ streamable_app = mcp.http_app(transport="streamable-http")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with fastmcp_app.router.lifespan_context(app):
-        async with stateless_app.router.lifespan_context(app):
-            async with streamable_app.router.lifespan_context(app):
-                yield
+    async with (
+        fastmcp_app.router.lifespan_context(app),
+        stateless_app.router.lifespan_context(app),
+        streamable_app.router.lifespan_context(app),
+    ):
+        yield
 
 
 app = FastAPI(
@@ -1654,7 +1661,7 @@ def internal_embed(request: InternalEmbedRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-def extract_result(res: list[Union[dict, TextContent]]) -> Union[dict, list]:
+def extract_result(res: list[dict | TextContent]) -> dict | list:
     for r in res:
         if (
             isinstance(r, TextContent)
@@ -2071,12 +2078,9 @@ def reset_settings(token: Annotated[str, Depends(verify_token)]):
 
 
 # Actually, let's just append the routes directly
-for route in fastmcp_app.routes:
-    app.routes.append(route)
-for route in streamable_app.routes:
-    app.routes.append(route)
-for route in stateless_app.routes:
-    app.routes.append(route)
+app.routes.extend(fastmcp_app.routes)
+app.routes.extend(streamable_app.routes)
+app.routes.extend(stateless_app.routes)
 
 
 class ForceAcceptJSONMiddleware:

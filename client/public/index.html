@@ -15,12 +15,12 @@
     .status h2 { margin: 0; font-size: 1.25rem; color: #333; margin-bottom: 0.5rem; }
     .status-block { margin-bottom: 1rem; }
     #status-text { font-weight: bold; text-transform: uppercase; }
-    .status-ready { color: green; }
-    .status-syncing { color: #17a2b8; }
-    .status-embedding { color: #17a2b8; }
-    .status-error { color: red; }
-    .status-offline { color: #d39e00; font-style: italic; }
-    .status-waiting { color: #d39e00; font-style: italic; }
+    .status-ready { color: #155724; }
+    .status-syncing { color: #0c5460; }
+    .status-embedding { color: #0c5460; }
+    .status-error { color: #721c24; }
+    .status-offline { color: #856404; font-style: italic; }
+    .status-waiting { color: #856404; font-style: italic; }
     .progress-detail { display: block; font-weight: normal; font-size: 0.95rem; color: #555; margin-top: 0.25rem; }
     .token-group { display: flex; gap: 1rem; align-items: center; }
     .input-wrapper { position: relative; flex-grow: 1; }
@@ -28,8 +28,8 @@
     .copy-btn { position: absolute; right: 5px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; padding: 5px; font-size: 1.2rem; opacity: 0.7; transition: opacity 0.2s; }
     .copy-btn:hover { opacity: 1; }
     .messages { margin-top: 1rem; font-weight: bold; }
-    .error { color: red; }
-    .success { color: green; }
+    .error { color: #721c24; }
+    .success { color: #155724; }
     
     /* Advanced RAG Styles */
     details.advanced-rag { margin-top: 2rem; border: 1px solid #ccc; border-radius: 4px; padding: 0.5rem; background: #fff; }
@@ -37,9 +37,9 @@
     details.advanced-rag fieldset { margin-top: 1rem; border: 1px solid #ddd; border-radius: 4px; padding: 1rem; }
     details.advanced-rag legend { font-weight: bold; padding: 0 0.5rem; color: #555; }
     fieldset[data-critical="true"] { border-color: #ffc107; background-color: #fffdf5; }
-    fieldset[data-critical="true"] legend { color: #d39e00; }
-    fieldset[data-critical="true"]::before { content: "⚠️ Critical Setting - Changes may require re-syncing data"; display: block; font-size: 0.85rem; color: #d39e00; margin-bottom: 1rem; font-weight: bold; }
-    .help-text { font-size: 0.85rem; color: #666; margin-top: 0.25rem; display: block; }
+    fieldset[data-critical="true"] legend { color: #856404; }
+    fieldset[data-critical="true"]::before { content: "⚠️ Critical Setting - Changes may require re-syncing data"; display: block; font-size: 0.85rem; color: #856404; margin-bottom: 1rem; font-weight: bold; }
+    .help-text { font-size: 0.85rem; color: #555; margin-top: 0.25rem; display: block; }
     select { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
     
     /* Modal Styles */
@@ -60,7 +60,7 @@
       <div class="status-block">
         <h2 style="margin: 0;">Sync Status: <span id="sync-status-text" class="status-offline">Offline</span></h2>
         <div id="sync-progress-text" class="progress-detail"></div>
-        <button type="button" id="trigger-sync-btn" style="margin-top: 1rem; background: #28a745; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; display: none;">Force Sync Now</button>
+        <button type="button" id="trigger-sync-btn" style="margin-top: 1rem; background: #146c43; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; display: none;">Force Sync Now</button>
       </div>
       <div class="status-block">
         <h2 style="margin: 0; font-size: 1.1rem; color: #555;">Embedding Status: <span id="embed-status-text" class="status-offline">Offline</span></h2>
@@ -71,23 +71,23 @@
     <h2>Configuration</h2>
     <form id="auth-form">
       <div class="form-group">
-        <label>Joplin Server URL</label>
+        <label for="serverUrl">Joplin Server URL</label>
         <input type="text" id="serverUrl" placeholder="https://joplin.yourdomain.com" required>
       </div>
       <div class="form-group">
-        <label>Username (Email)</label>
+        <label for="username">Username (Email)</label>
         <input type="text" id="username" placeholder="user@example.com" autocomplete="username" required>
       </div>
       <div class="form-group">
-        <label>Password</label>
+        <label for="password">Password</label>
         <input type="password" id="password" autocomplete="current-password" required>
       </div>
       <div class="form-group">
-        <label>Master Password (Optional, for E2EE)</label>
+        <label for="masterPassword">Master Password (Optional, for E2EE)</label>
         <input type="password" id="masterPassword">
       </div>
       <div class="form-group">
-        <label>Memory Server Address</label>
+        <label for="memoryServerAddress">Memory Server Address</label>
         <input type="text" id="memoryServerAddress" placeholder="http://localhost:3000" required>
       </div>
       <button type="submit">Save & Validate</button>
@@ -100,11 +100,11 @@
     <div id="keys-msg" class="messages"></div>
     <form id="create-key-form" style="display: flex; gap: 1rem; align-items: flex-end;">
       <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
-        <label>Annotation</label>
+        <label for="new-key-annotation">Annotation</label>
         <input type="text" id="new-key-annotation" placeholder="e.g. Gemini CLI" required>
       </div>
       <div class="form-group" style="margin-bottom: 0;">
-        <label>Expiration (Days, optional)</label>
+        <label for="new-key-expiration">Expiration (Days, optional)</label>
         <input type="number" id="new-key-expiration" placeholder="Never" min="1">
       </div>
       <button type="submit">Create Key</button>
@@ -148,7 +148,7 @@
         <fieldset data-critical="true">
           <legend>Embedding Mode</legend>
           <div class="form-group">
-            <label>Provider</label>
+            <label for="embeddingMode">Provider</label>
             <select id="embeddingMode" onchange="toggleOllamaFields()">
               <option value="local">Local CPU Model (all-MiniLM-L6-v2) - Default</option>
               <option value="ollama">External Ollama Server</option>
@@ -158,12 +158,12 @@
           
           <div id="ollama-fields" style="display: none;">
             <div class="form-group">
-              <label>Ollama Base URL</label>
+              <label for="ollamaBaseUrl">Ollama Base URL</label>
               <input type="text" id="ollamaBaseUrl" placeholder="http://127.0.0.1:11434">
               <span class="help-text">URL for local or remote Ollama instance.</span>
             </div>
             <div class="form-group">
-              <label>Embeddings Model</label>
+              <label for="ollamaModel">Embeddings Model</label>
               <input type="text" id="ollamaModel" placeholder="all-MiniLM-L6-v2">
               <span class="help-text">Model used for generating vector embeddings on the Ollama server.</span>
             </div>
@@ -173,12 +173,12 @@
         <fieldset data-critical="true">
           <legend>Chunking Strategy</legend>
           <div class="form-group">
-            <label>Chunk Size</label>
+            <label for="chunkSize">Chunk Size</label>
             <input type="number" id="chunkSize" placeholder="1000">
             <span class="help-text">Target token length per chunk.</span>
           </div>
           <div class="form-group">
-            <label>Chunk Overlap</label>
+            <label for="chunkOverlap">Chunk Overlap</label>
             <input type="number" id="chunkOverlap" placeholder="200">
             <span class="help-text">Overlap between chunks to preserve context.</span>
           </div>
@@ -187,7 +187,7 @@
         <fieldset>
           <legend>Search Tuning</legend>
           <div class="form-group">
-            <label>Default Search Top-K</label>
+            <label for="searchTopK">Default Search Top-K</label>
             <input type="number" id="searchTopK" placeholder="5">
           </div>
           <div class="form-group">
@@ -200,7 +200,7 @@
         <fieldset>
           <legend>Sync Behavior</legend>
           <div class="form-group">
-            <label>Sync Interval (seconds)</label>
+            <label for="syncInterval">Sync Interval (seconds)</label>
             <input type="number" id="syncInterval" placeholder="300">
           </div>
           <div class="form-group">
@@ -217,11 +217,11 @@
     </details>
 
     <details style="margin-top: 2rem;">
-      <summary style="color: #dc3545; font-weight: bold;">Danger Zone</summary>
-      <div style="padding: 1rem; border: 1px solid #dc3545; border-radius: 4px; margin-top: 1rem; background-color: #fff5f5;">
-        <h3 style="color: #dc3545; margin-top: 0;">Factory Reset & Relinquish Lock</h3>
+      <summary style="color: #b02a37; font-weight: bold;">Danger Zone</summary>
+      <div style="padding: 1rem; border: 1px solid #b02a37; border-radius: 4px; margin-top: 1rem; background-color: #fff5f5;">
+        <h3 style="color: #b02a37; margin-top: 0;">Factory Reset & Relinquish Lock</h3>
         <p>This will completely wipe all local vector databases, downloaded notes, and configuration files, restoring the system to a clean slate. This is used to relinquish the account lock so a different user can log in.</p>
-        <button type="button" id="factory-reset-btn" style="background-color: #dc3545;">Wipe Data & Reset</button>
+        <button type="button" id="factory-reset-btn" style="background-color: #b02a37;">Wipe Data & Reset</button>
       </div>
     </details>
   </div>
@@ -231,7 +231,8 @@
     <p>You have changed critical RAG settings (e.g. Models or Chunking Strategy). Applying these changes will require a full database wipe and re-sync of all documents.</p>
     <p>Are you sure you want to proceed?</p>
     <div class="form-group" style="margin-top: 1rem;">
-      <input type="text" id="reindex-confirm-input" placeholder="Type REINDEX to confirm">
+      <label for="reindex-confirm-input">Type REINDEX to confirm:</label>
+      <input type="text" id="reindex-confirm-input" placeholder="Type REINDEX to confirm" aria-label="Type REINDEX to confirm">
     </div>
     <div class="dialog-actions">
       <button class="btn-secondary" id="cancel-warning-btn" type="button">Cancel</button>
@@ -289,7 +290,7 @@
         syncProgEl.style.color = '#555';
       } else if (syncState.error) {
         syncProgEl.innerText = syncState.error;
-        syncProgEl.style.color = 'red';
+        syncProgEl.style.color = '#721c24';
       } else {
         syncProgEl.innerText = '';
       }
@@ -305,7 +306,7 @@
         embedProgEl.innerText = `${embedState.progress.percent}% (${embedState.progress.current} out of ${embedState.progress.total} notes)`;
       } else if (embedState.error) {
         embedProgEl.innerText = embedState.error;
-        embedProgEl.style.color = 'red';
+        embedProgEl.style.color = '#721c24';
       } else {
         embedProgEl.innerText = '';
       }
@@ -488,6 +489,7 @@
         input.type = 'text';
         input.value = k.key;
         input.readOnly = true;
+        input.setAttribute('aria-label', `API key: ${k.annotation || 'Key'}`);
         input.style.flexGrow = '1';
         input.style.fontFamily = 'monospace';
         input.style.padding = '8px';
@@ -550,9 +552,9 @@
     document.getElementById('create-key-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const annotation = document.getElementById('new-key-annotation').value;
-      const days = parseInt(document.getElementById('new-key-expiration').value);
+      const days = Number.parseInt(document.getElementById('new-key-expiration').value, 10);
       let expires_at = null;
-      if (days && !isNaN(days)) {
+      if (days && !Number.isNaN(days)) {
          const d = new Date();
          d.setDate(d.getDate() + days);
          expires_at = d.toISOString();
@@ -675,12 +677,12 @@
 
       return {
         embedding: embedding,
-        chunkSize: parseInt(document.getElementById('chunkSize').value) || 1000,
-        chunkOverlap: parseInt(document.getElementById('chunkOverlap').value) || 200,
-        searchTopK: parseInt(document.getElementById('searchTopK').value) || 5,
-        hybridAlpha: parseFloat(document.getElementById('hybridAlpha').value) || 0.5,
-        syncInterval: parseInt(document.getElementById('syncInterval').value) || 300,
-        syncMaxRetries: parseInt(document.getElementById('syncMaxRetries').value) || 3
+        chunkSize: Number.parseInt(document.getElementById('chunkSize').value, 10) || 1000,
+        chunkOverlap: Number.parseInt(document.getElementById('chunkOverlap').value, 10) || 200,
+        searchTopK: Number.parseInt(document.getElementById('searchTopK').value, 10) || 5,
+        hybridAlpha: Number.parseFloat(document.getElementById('hybridAlpha').value) || 0.5,
+        syncInterval: Number.parseInt(document.getElementById('syncInterval').value, 10) || 300,
+        syncMaxRetries: Number.parseInt(document.getElementById('syncMaxRetries').value, 10) || 3
       };
     }
 
@@ -847,11 +849,11 @@
         }
         
         if (res.ok) {
-          const data = await res.json();
+          await res.json();
           Object.assign(initialState, payload);
           
           saveBtn.innerText = 'Saved Successfully!';
-          saveBtn.style.backgroundColor = 'green';
+          saveBtn.style.backgroundColor = '#146c43';
           saveBtn.style.color = 'white';
           setTimeout(() => {
             saveBtn.innerText = originalText;
@@ -868,7 +870,7 @@
       } catch (e) {
         if (reindexApproved || e.message === 'Failed to fetch' || e.message.includes('NetworkError')) {
             saveBtn.innerText = 'Reindexing / Restarting...';
-            saveBtn.style.backgroundColor = 'orange';
+            saveBtn.style.backgroundColor = '#b45309';
             saveBtn.style.color = 'white';
             setTimeout(() => {
                 alert('The system is restarting to apply changes. Please wait a moment and reload the page.');
@@ -915,7 +917,7 @@
           });
           
           restoreDefaultsBtn.innerText = 'Restored!';
-          restoreDefaultsBtn.style.backgroundColor = 'green';
+          restoreDefaultsBtn.style.backgroundColor = '#146c43';
           restoreDefaultsBtn.style.color = 'white';
           setTimeout(() => {
             restoreDefaultsBtn.innerText = originalText;

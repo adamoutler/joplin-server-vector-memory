@@ -8,9 +8,9 @@ for (const key in env) {
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const fs = require('./fsw');
-const path = require('path');
+const path = require('node:path');
 const { JoplinSyncClient } = require('./sync');
 const { fetchWithTimeout, validateJoplinSession, fetchJoplinEvents, checkJoplinSyncInfo } = require('./network');
 const Redis = require('ioredis');
@@ -219,11 +219,11 @@ async function _loadProxyConfig() {
     try {
       const data = await fs.promises.readFile(CONFIG_PATH, 'utf8');
       proxyConfig = JSON.parse(data);
-      if (!joplinUrl && proxyConfig.joplinServerUrl) {
+      if (!joplinUrl && proxyConfig?.joplinServerUrl) {
         joplinUrl = proxyConfig.joplinServerUrl.replace(/\/$/, '');
       }
-    } catch(_e) {
-      // ignore parse errors
+    } catch (_e) {
+      console.debug('Failed to parse config.json in _loadProxyConfig:', _e.message);
     }
   }
   return { proxyConfig, joplinUrl };
@@ -314,7 +314,7 @@ app.use(async (req, res, next) => {
       }
       
       // Auto-unlock: If we have a proxy config but sync isn't running or errored, try to start it
-      if (proxyConfig && proxyConfig.joplinServerUrl && proxyConfig.joplinUsername) {
+      if (proxyConfig?.joplinServerUrl && proxyConfig?.joplinUsername) {
         if (!isProcessing && (!syncState || syncState.status === 'offline' || syncState.status === 'error' || syncState.error?.includes('credentials'))) {
              // Only auto-start if it seems like we need to (e.g. boot up state)
              // We use a small timeout to avoid blocking the auth request itself
@@ -323,7 +323,7 @@ app.use(async (req, res, next) => {
                      console.log("Auto-unlocking sync using intercepted Basic Auth credentials...");
                      nextAllowedSyncTime = 0;
                      consecutiveSyncErrors = 0;
-                     startSync(proxyConfig);
+                     startSync(proxyConfig).catch(err => console.error('Failed to auto-unlock sync:', err));
                  }
              }, 1000);
         }
@@ -338,7 +338,7 @@ app.use(async (req, res, next) => {
       return onAuthSuccess();
     } else {
       authCache.delete(base64Credentials);
-      if (redisClient) redisClient.del(`joplin_creds_${reqUser}`).catch(() => {});
+      if (redisClient) redisClient.del(`joplin_creds_${reqUser}`).catch(err => console.debug('Failed to delete Redis credentials key on mismatch:', err.message));
       return send401("Password mismatch with local memory/env/config");
     }
   }
@@ -355,7 +355,7 @@ app.use(async (req, res, next) => {
       const responseBody = await response.text();
       console.error(`[Auth Middleware] Joplin Server rejected credentials. HTTP ${response.status}. Body: ${responseBody}`);
       authCache.delete(base64Credentials);
-      if (redisClient) redisClient.del(`joplin_creds_${reqUser}`).catch(() => {});
+      if (redisClient) redisClient.del(`joplin_creds_${reqUser}`).catch(err => console.debug('Failed to delete Redis credentials key on rejection:', err.message));
       return send401(`Joplin Server rejected credentials with HTTP ${response.status}`);
     }
   } catch (err) {
@@ -372,7 +372,7 @@ let nextAllowedSyncTime = 0;
 let consecutiveSyncErrors = 0;
 
 app.get('/node-api/resources/:id', async (req, res) => {
-  if (!syncClient || !syncClient.db) {
+  if (!syncClient?.db) {
     return res.status(503).json({ error: 'Sync client not initialized' });
   }
   const Resource = require('@joplin/lib/models/Resource').default;
@@ -395,7 +395,7 @@ app.get('/node-api/resources/:id', async (req, res) => {
 });
 
 app.get('/node-api/notes/:id/resources', async (req, res) => {
-  if (!syncClient || !syncClient.db) {
+  if (!syncClient?.db) {
     return res.status(503).json({ error: 'Sync client not initialized' });
   }
   try {
@@ -415,7 +415,7 @@ app.get('/node-api/notes/:id/resources', async (req, res) => {
 
 /* istanbul ignore next */
 app.post('/node-api/resources', async (req, res) => {
-  if (!syncClient || !syncClient.db) {
+  if (!syncClient?.db) {
     return res.status(503).json({ error: 'Sync client not initialized' });
   }
   const { filename, base64_data, mime_type } = req.body;
@@ -460,7 +460,7 @@ app.post('/node-api/resources', async (req, res) => {
 /* istanbul ignore next */
 /* istanbul ignore next */
 app.post('/node-api/notes', async (req, res) => {
-  if (!syncClient || !syncClient.db) {
+  if (!syncClient?.db) {
     return res.status(503).json({ error: 'Sync client not initialized' });
   }
   const { title, body, folder: folderName = 'Agent Memory' } = req.body;
@@ -498,7 +498,7 @@ app.post('/node-api/notes', async (req, res) => {
 
 /* istanbul ignore next */
 app.put('/node-api/notes/:id', async (req, res) => {
-  if (!syncClient || !syncClient.db) {
+  if (!syncClient?.db) {
     return res.status(503).json({ error: 'Sync client not initialized' });
   }
   const { title, body } = req.body;
@@ -530,7 +530,7 @@ app.put('/node-api/notes/:id', async (req, res) => {
 
 /* istanbul ignore next */
 app.delete('/node-api/notes/:id', async (req, res) => {
-  if (!syncClient || !syncClient.db) {
+  if (!syncClient?.db) {
     return res.status(503).json({ error: 'Sync client not initialized' });
   }
   const Note = require('@joplin/lib/models/Note').default;
@@ -587,7 +587,7 @@ app.get('/status', async (req, res) => {
       console.log("Auto-starting sync from /status endpoint since credentials are available...");
       nextAllowedSyncTime = 0;
       consecutiveSyncErrors = 0;
-      startSync(config);
+      startSync(config).catch(err => console.error('Failed to auto-start sync from status:', err));
     }
   }
 
@@ -637,7 +637,7 @@ async function _validateJoplinServerAndCredentials(cleanServerUrl, username, pas
     });
 
     if (!sessionRes || !sessionRes.ok) {
-        if (sessionRes && sessionRes.status === 403) {
+        if (sessionRes?.status === 403) {
             throw new Error('Invalid username or password.');
         }
         throw new Error(`Authentication failed. Server returned HTTP ${sessionRes ? sessionRes.status : 'Unknown'}.`);
@@ -650,7 +650,7 @@ async function _validateJoplinServerAndCredentials(cleanServerUrl, username, pas
 /* istanbul ignore next */
 function _wipeLocalDatabases(DATA_DIR, isServerUrlChange, isUsernameChange, isMarriage) {
   console.log('Save & Validate triggered. Wiping vector index...');
-  const sqliteDbPath = process.env.SQLITE_DB_PATH || require('path').join(DATA_DIR, 'vector_memory.sqlite');
+  const sqliteDbPath = process.env.SQLITE_DB_PATH || path.join(DATA_DIR, 'vector_memory.sqlite');
   try {
       const fs = require('./fsw');
       if (fs.existsSync(sqliteDbPath)) {
@@ -667,7 +667,7 @@ function _wipeLocalDatabases(DATA_DIR, isServerUrlChange, isUsernameChange, isMa
 
   if (isServerUrlChange || isUsernameChange || isMarriage) {
       console.log('Server URL or Username changed (or initial setup). Wiping local Joplin database...');
-      const profileDir = process.env.JOPLIN_PROFILE_DIR || require('path').join(DATA_DIR, 'joplin-profile');
+      const profileDir = process.env.JOPLIN_PROFILE_DIR || path.join(DATA_DIR, 'joplin-profile');
       try {
           const fs = require('./fsw');
           if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
@@ -702,7 +702,8 @@ app.post('/auth', async (req, res) => {
       throw new Error('Invalid protocol');
     }
     cleanServerUrl = parsed.toString().replace(/\/$/, '');
-  } catch (_err) {
+  } catch (err) {
+    console.debug('Invalid Joplin Server URL format in /auth:', err.message);
     return res.status(400).json({ error: 'Invalid Joplin Server URL format or protocol.' });
   }
 
@@ -749,7 +750,7 @@ app.post('/auth', async (req, res) => {
   _wipeLocalDatabases(DATA_DIR, isServerUrlChange, isUsernameChange, isMarriage);
 
   // Clear the in-memory sync client so it re-initializes with the new databases
-  if (syncClient && syncClient.db) {
+  if (syncClient?.db) {
       try { syncClient.db.close(); } /* istanbul ignore next */ catch (_e) { console.debug('Ignored error', _e.message); }
   }
   syncClient = null;
@@ -784,7 +785,7 @@ app.post('/auth', async (req, res) => {
   }
 
   // Re-init sync client in background immediately
-  setImmediate(() => startSync(config));
+  setImmediate(() => { startSync(config).catch(err => console.error('Failed to start sync:', err)); });
   
   res.json({ success: true, token: config.token });
 });
@@ -822,7 +823,8 @@ app.post('/auth/keys/create', (req, res) => {
     fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
     fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
     res.json({ success: true, key: keyObj });
-  } catch (_err) {
+  } catch (err) {
+    console.error('Failed to save new key:', err);
     res.status(500).json({ error: 'Failed to save new key' });
   }
 });
@@ -840,9 +842,10 @@ app.post('/auth/keys/delete', (req, res) => {
     config.api_keys = config.api_keys.filter(k => k.key !== key);
     try {
       fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(config, null, 2));
-    fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+      fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
       res.json({ success: true });
-    } catch (_err) {
+    } catch (err) {
+      console.error('Failed to delete key:', err);
       res.status(500).json({ error: 'Failed to delete key' });
     }
   } else {
@@ -971,7 +974,7 @@ async function validateAndRunSync(config, joplinUrl) {
     throw new Error(`Authentication failed during explicit check. Server returned HTTP ${sessionRes.status}. Please verify your username and password.`);
   }
 
-  if (sessionRes && sessionRes.ok) {
+  if (sessionRes?.ok) {
     const sessionData = await sessionRes.json();
     const sessionId = sessionData.id;
     
@@ -1011,7 +1014,7 @@ async function pollEvents(joplinUrl, sessionId, cursor) {
   while (hasMore) {
     const eventsRes = await fetchJoplinEvents(joplinUrl, sessionId, newCursor).catch(() => null);
 
-    if (eventsRes && eventsRes.ok) {
+    if (eventsRes?.ok) {
       const eventsData = await eventsRes.json();
       for (const item of (eventsData.items || [])) {
         if (_processEventItem(item, deletedNoteIds, changedNoteIds)) {
@@ -1052,9 +1055,9 @@ function _saveCursorToConfig(newCursor, config) {
 async function _handleInitialSyncAndEmbeddings(joplinUrl, sessionId, pollResult) {
   await syncClient.generateEmbeddings();
   const initialEventsRes = await fetchJoplinEvents(joplinUrl, sessionId).catch(() => null);
-  if (initialEventsRes && initialEventsRes.ok) {
+  if (initialEventsRes?.ok) {
     const initialEventsData = await initialEventsRes.json();
-    if (initialEventsData.cursor) {
+    if (initialEventsData?.cursor) {
       pollResult.newCursor = initialEventsData.cursor;
     }
   }
@@ -1098,26 +1101,18 @@ async function processSyncEvents(joplinUrl, sessionId, config) {
 /* istanbul ignore next */
 function handleSyncCycleError(err) {
   console.error('Cycle top-level error:', err);
-  if (err.message && err.message.includes('Embedding')) {
+  if (err.message?.includes('Embedding') || embeddingState.status === 'embedding') {
     embeddingState.status = 'error';
     embeddingState.error = err.message;
-  } else if (err.message && err.message.includes('Joplin Server')) {
+  } else if (err.message?.includes('Joplin Server') || syncState.status === 'syncing') {
     syncState.status = 'error';
     syncState.error = err.message;
-  } else if (syncState.status === 'syncing') {
+  } else if (syncState.status !== 'ready') {
     syncState.status = 'error';
-    syncState.error = err.message;
-  } else if (embeddingState.status === 'embedding') {
-    embeddingState.status = 'error';
-    embeddingState.error = err.message;
+    syncState.error = 'Initialization failed: ' + err.message;
   } else {
-    if (syncState.status !== 'ready') {
-      syncState.status = 'error';
-      syncState.error = 'Initialization failed: ' + err.message;
-    } else {
-      embeddingState.status = 'error';
-      embeddingState.error = 'Cycle failed: ' + err.message;
-    }
+    embeddingState.status = 'error';
+    embeddingState.error = 'Cycle failed: ' + err.message;
   }
   
   const errMsg = err.message || '';
@@ -1191,7 +1186,9 @@ async function startSync(config) {
   
   // Poll every 60 seconds
   const pollInterval = parseInt(process.env.SYNC_INTERVAL_MS) || 60000;
-  syncIntervalId = setInterval(() => runSyncCycle(config), pollInterval);
+  syncIntervalId = setInterval(() => {
+    runSyncCycle(config).catch(err => console.error('Interval sync error:', err));
+  }, pollInterval);
 }
 // On boot, the container enters "Waiting for credentials" state if married.
 // Passwords are never stored on disk, so sync cannot auto-start on restart.
@@ -1230,7 +1227,7 @@ if (fs.existsSync(CONFIG_PATH)) {
         }
 
         if (restoredFromRedis) {
-           startSync(config);
+           await startSync(config);
         } else {
            console.log(`Startup: Container is married to ${config.joplinUsername}. Waiting for user to authenticate to start sync.`);
         }
@@ -1259,7 +1256,7 @@ if (fs.existsSync(CONFIG_PATH)) {
    } catch (err) {
      console.error('Failed to write config.json:', err);
    }
-   setImmediate(() => startSync(initialConfig));
+   setImmediate(() => { startSync(initialConfig).catch(err => console.error('Failed to start initial sync:', err)); });
 }
 
 

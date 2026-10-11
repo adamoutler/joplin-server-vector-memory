@@ -65,7 +65,7 @@ def _get_vector_dimension(explicit_dim=None):
                     dim = int(config.get("embeddingDimension"))
                 elif embed_config.get("provider") == "ollama":
                     dim = 384
-    except Exception as e:
+    except Exception:
         import logging
 
         logging.exception("Error reading vector dimension from config:")
