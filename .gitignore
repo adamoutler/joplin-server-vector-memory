@@ -30,3 +30,7 @@ plans/
 
 .venv-precommit/
 node_modules/
+.coverage
+coverage/
+client/coverage/
+.pytest_cache/

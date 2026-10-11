@@ -2,6 +2,8 @@ import pytest
 import os
 import sys
 import uuid
+import tempfile
+import json
 from unittest.mock import patch, MagicMock
 
 # Ensure src is in the path
@@ -47,3 +49,71 @@ def mock_node_proxy():
 
         mock.side_effect = side_effect
         yield mock
+
+
+@pytest.fixture
+def temp_db():
+    fd, path = tempfile.mkstemp()
+    os.environ["SQLITE_DB_PATH"] = path
+
+    yield path
+
+    try:
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
+
+
+@pytest.fixture
+def temp_config_and_db():
+    fd_db, db_path = tempfile.mkstemp()
+    os.environ["SQLITE_DB_PATH"] = db_path
+
+    fd_conf, conf_path = tempfile.mkstemp()
+    config_data = {
+        "api_keys": [
+            {"key": "test-secret-token", "annotation": "test", "expires_at": None}
+        ]
+    }
+    with open(conf_path, "w") as f:
+        json.dump(config_data, f)
+    os.environ["CONFIG_PATH"] = conf_path
+
+    yield conf_path, db_path, "test-secret-token"
+
+    try:
+        os.close(fd_db)
+        if os.path.exists(db_path):
+            os.remove(db_path)
+    except OSError:
+        pass
+
+    try:
+        os.close(fd_conf)
+        if os.path.exists(conf_path):
+            os.remove(conf_path)
+    except OSError:
+        pass
+
+
+@pytest.fixture
+def mock_ollama():
+    with patch("src.main.get_embedding") as mock_embed:
+
+        def side_effect(text):
+            vec = [0.0] * 384
+            if isinstance(text, str):
+                if "test query" in text.lower():
+                    vec[0] = 1.0
+                elif "apple" in text.lower():
+                    vec[1] = 1.0
+                else:
+                    vec[2] = 1.0
+            elif isinstance(text, list):
+                return [[0.0] * 384 for _ in text]
+            return vec
+
+        mock_embed.side_effect = side_effect
+        yield mock_embed

@@ -90,14 +90,18 @@ Implement **Optimistic Concurrency Control (OCC)** and require explicit modifica
 
 **MCP Tool Design (`update_note`):**
 *   **Input:**
-    *   `id` (string, required)
-    *   `content` (string, required)
-    *   `update_mode` (enum: `append` | `full_replace`, required) - Forces the AI to declare intent.
-    *   `last_modified_timestamp` (integer/string, required) - The AI must provide the exact timestamp of the note it is trying to edit.
+    *   `note_id` (string, required)
+    *   `content` (string, required) - Replacement text or new content.
+    *   `search_text` (string, optional) - Target snippet to uniquely locate and replace for partial note replacement. Fails if 0 or >=2 instances exist.
+    *   `update_mode` (enum: `full note replacement` | `partial note replacement` | `append` | `prepend`, optional) - Forces the AI to declare intent. If `search_text` is supplied, defaults to partial note replacement.
+    *   `last_modified_timestamp` (integer, required) - The AI must provide the exact timestamp of the note it is trying to edit.
     *   `summary_of_changes` (string, required) - Forces the AI to rationalize its edit (Chain of Thought prompt engineering built into the API).
 *   **Output Behavior:**
     *   If `last_modified_timestamp` does not match the server's current timestamp, reject with: `"Error: Note has been modified since you last read it. Retrieve the note again before updating."`
-    *   If valid, apply the update and return the new timestamp.
+    *   If `search_text` is provided and does not exist in the note, reject with: `"search text not found"`.
+    *   If `search_text` appears more than once, reject with: `"multiple instances of \`<search_text>\` found"`.
+    *   If `search_text` or `content` exceeds size limits (>= 1,000,000 chars), reject with: `"replace text too long"`.
+    *   If valid, apply the update atomically, re-index vector embeddings, sync to Joplin, and return success.
 
 ---
 

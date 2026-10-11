@@ -78,8 +78,12 @@ def get_local_model():
 
 class UpdateMode(str, Enum):
     full_note_replacement = "full note replacement"
+    partial_note_replacement = "partial note replacement"
     append = "append"
     prepend = "prepend"
+    full_replace = "full_replace"
+    partial_replace = "partial_replace"
+    replace = "replace"
 
 
 # Configure logging
@@ -289,7 +293,7 @@ def _call_node_proxy(
             return requests.get(url, auth=auth)
         elif method.upper() == "POST":
             return requests.post(url, json=json_data, auth=auth)
-        return requests.request(method, url, auth=auth)
+        return requests.request(method, url, json=json_data, auth=auth)
     finally:
         if is_mutating:
             _node_proxy_write_lock.release()
@@ -942,13 +946,16 @@ def remember(
 def update_note(
     note_id: str,
     content: str,
-    update_mode: UpdateMode,
-    last_modified_timestamp: int,
-    summary_of_changes: str,
+    update_mode: Optional[UpdateMode] = None,
+    last_modified_timestamp: int = 0,
+    summary_of_changes: str = "",
+    search_text: Optional[str] = None,
 ) -> list[Union[dict, TextContent]]:
     """
     Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
-    update_mode can be 'full note replacement' or 'append'.
+    update_mode can be 'full note replacement', 'partial note replacement', 'append', or 'prepend'.
+    If search_text is provided, performs partial note replacement by locating the unique instance
+    of search_text and replacing it with content.
     summary_of_changes is a description of the changes made for record keeping (not currently stored).
     """
     db = get_db_connection()
@@ -985,16 +992,55 @@ def update_note(
             "Error: Note has been modified since you last read it. Retrieve the note again before updating."
         )
 
-    if update_mode == UpdateMode.append:
+    # Validate payload size limits (1MB / 1,000,000 characters)
+    MAX_PAYLOAD_SIZE = 1_000_000
+    if (search_text is not None and len(search_text) >= MAX_PAYLOAD_SIZE) or len(content) >= MAX_PAYLOAD_SIZE:
+        db.close()
+        return _err("replace text too long")
+
+    mode_str = update_mode.value if isinstance(update_mode, Enum) else str(update_mode) if update_mode else ""
+    is_partial = False
+
+    if search_text is not None:
+        if mode_str in ("append", "prepend"):
+            db.close()
+            return _err("search_text cannot be used with append or prepend update_mode")
+        is_partial = True
+    elif mode_str in ("partial note replacement", "partial_replace", "partial"):
+        db.close()
+        return _err("search text cannot be empty")
+
+    if is_partial:
+        if not search_text:
+            db.close()
+            return _err("search text cannot be empty")
+
+        first_idx = current_content.find(search_text)
+        if first_idx == -1:
+            db.close()
+            return _err("search text not found")
+
+        second_idx = current_content.find(search_text, first_idx + 1)
+        if second_idx != -1:
+            db.close()
+            display_text = search_text if len(search_text) <= 200 else search_text[:197] + "..."
+            return _err(f"multiple instances of `{display_text}` found")
+
+        new_content = (
+            current_content[:first_idx]
+            + content
+            + current_content[first_idx + len(search_text):]
+        )
+    elif mode_str in ("append",):
         new_content = current_content + "\n\n" + content
-    elif update_mode == UpdateMode.prepend:
+    elif mode_str in ("prepend",):
         new_content = content + "\n\n" + current_content
-    elif update_mode == UpdateMode.full_note_replacement:
+    elif mode_str in ("full note replacement", "full_replace", "replace"):
         new_content = content
     else:
         db.close()
         return _err(
-            "Invalid update_mode. Must be 'append', 'prepend', or 'full note replacement'."
+            "Invalid update_mode. Must be 'append', 'prepend', 'full note replacement', or 'partial note replacement'."
         )
 
     new_time = int(time.time() * 1000)
@@ -1448,9 +1494,13 @@ class ExecuteDeletionResponse(BaseModel):
 
 class UpdateRequest(BaseModel):
     note_id: str = Field(..., description="ID of the note to update")
-    content: str = Field(..., description="New content to append or replace")
-    update_mode: UpdateMode = Field(
-        ..., description="Mode of update: 'replace' or 'append'"
+    content: str = Field(..., description="New content to append, prepend, replace, or substitute")
+    search_text: Optional[str] = Field(
+        None, description="Original text to search and replace (for partial note replacement)"
+    )
+    update_mode: Optional[UpdateMode] = Field(
+        None,
+        description="Mode of update: 'full note replacement', 'partial note replacement', 'append', or 'prepend'",
     )
     last_modified_timestamp: int = Field(
         ..., description="Timestamp for Optimistic Concurrency Control"
@@ -1754,8 +1804,13 @@ async def api_execute_deletion(
     "/http-api/update",
     response_model=UpdateResponse,
     summary="Update Note",
-    description="Update an existing note by appending or replacing its content.\n\nRequires the note_id, new content, update_mode ('full_replace' or 'append'), last_modified_timestamp for concurrency control, and a summary_of_changes.",
-    responses={500: {"description": "Internal server error"}},
+    description="Update an existing note by appending, prepending, fully replacing, or partially replacing its content.\n\nRequires note_id, content, last_modified_timestamp for concurrency control, and summary_of_changes. Optional search_text specifies the substring to uniquely match and replace for partial note replacement.",
+    responses={
+        400: {"description": "Bad Request"},
+        404: {"description": "Note Not Found"},
+        409: {"description": "Conflict (OCC timestamp mismatch)"},
+        500: {"description": "Internal server error"},
+    },
 )
 async def api_update(
     request: UpdateRequest, token: Annotated[str, Depends(verify_token)]
@@ -1767,10 +1822,17 @@ async def api_update(
             update_mode=request.update_mode,
             last_modified_timestamp=request.last_modified_timestamp,
             summary_of_changes=request.summary_of_changes,
+            search_text=request.search_text,
         )
         extracted = extract_result(result)
         if isinstance(extracted, dict) and "error" in extracted:
-            raise HTTPException(status_code=500, detail=extracted["error"])
+            err_msg = extracted["error"]
+            status_code = 400
+            if "modified since you last read it" in err_msg:
+                status_code = 409
+            elif err_msg == ERR_NOTE_NOT_FOUND:
+                status_code = 404
+            raise HTTPException(status_code=status_code, detail=err_msg)
         return extracted
     except HTTPException:
         raise

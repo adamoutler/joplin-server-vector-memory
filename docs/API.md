@@ -85,6 +85,28 @@ In addition to MCP, a RESTful JSON API is exposed under `/http-api`.
   ```
 - **Response**: Success status with new note ID.
 
+### Update Note
+
+- **Endpoint**: `POST /http-api/update`
+- **Body Request (Partial Replacement)**:
+  ```json
+  {
+    "note_id": "123e4567-e89b-12d3-a456-426614174000",
+    "content": "boy who",
+    "search_text": "computer who",
+    "update_mode": "full note replacement",
+    "last_modified_timestamp": 1728000000000,
+    "summary_of_changes": "Replace computer who with boy who"
+  }
+  ```
+- **Response**:
+  ```json
+  {
+    "status": "success",
+    "id": "123e4567-e89b-12d3-a456-426614174000"
+  }
+  ```
+
 ### Request Deletion
 
 - **Endpoint**: `POST /http-api/request-deletion`
