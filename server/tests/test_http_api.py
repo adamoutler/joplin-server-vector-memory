@@ -610,3 +610,438 @@ def test_merge_rrf_scores():
     assert rrf[2] > 0
     assert rrf[3] > 0
     assert data[1]["id"] == "id1"
+
+
+def test_root_endpoint(client):
+    """GET / must return 200 with server status message (lines 1600-1608)."""
+    response = client.get("/")
+    assert response.status_code == 200
+    data = response.json()
+    assert "message" in data
+    assert "Joplin Server Vector Memory API is running" in data["message"]
+
+
+def test_force_accept_json_middleware_unauthorized(client, temp_config_and_db):
+    """ForceAcceptJSONMiddleware must immediately return 401 on /mcp or /http-api/mcp when unauthorized (lines 2095-2122)."""
+    # 1. No Authorization header to /mcp
+    res1 = client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+    assert res1.status_code == 401
+    assert res1.headers.get("content-type") == "application/json"
+    assert res1.headers.get("www-authenticate") == "Bearer"
+    assert res1.json() == {"detail": "Unauthorized"}
+
+    # 2. Invalid Bearer token to /mcp
+    res2 = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        headers={"Authorization": "Bearer bad-token-xyz"},
+    )
+    assert res2.status_code == 401
+    assert res2.json() == {"detail": "Unauthorized"}
+
+    # 3. No Authorization header to /http-api/mcp
+    res3 = client.get("/http-api/mcp")
+    assert res3.status_code == 401
+    assert res3.json() == {"detail": "Unauthorized"}
+
+    # 4. Non-Bearer authorization header (e.g. Basic)
+    res4 = client.post(
+        "/mcp",
+        headers={"Authorization": "Basic dXNlcjpwYXNz"},
+    )
+    assert res4.status_code == 401
+
+
+def test_custom_openapi_injections_and_cache():
+    """Verify custom_openapi injects 400, 401, 403, 405 responses and caches result (lines 2165-2195)."""
+    from src.main import app, custom_openapi
+
+    # Invalidate cache
+    app.openapi_schema = None
+
+    schema1 = custom_openapi()
+    assert schema1 is not None
+    assert "paths" in schema1
+
+    # Verify injected response codes across paths
+    for path, methods in schema1["paths"].items():
+        for method, details in methods.items():
+            responses = details.get("responses", {})
+            assert "400" in responses
+            assert "401" in responses
+            assert "403" in responses
+            assert "405" in responses
+
+    # Verify JsonRpcRequest components
+    assert "JsonRpcRequest" in schema1["components"]["schemas"]
+
+    # Verify line 2166 cache hit branch
+    schema2 = custom_openapi()
+    assert schema2 is schema1
+
+
+def test_test_model_endpoint_local_fallback(client, temp_config_and_db):
+    """Empty baseUrl in /api/settings/test-model returns 384 local dimension (lines 1873-1874)."""
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/api/settings/test-model",
+        json={"baseUrl": "", "model": "any-local-model"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    assert response.json() == {"success": True, "dimension": 384}
+
+
+def test_test_model_endpoint_ollama_success_and_pull(client, temp_config_and_db):
+    """Test Ollama client show success vs pull fallback (lines 1875-1886)."""
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Case 1: Model exists locally (show succeeds)
+    with patch("ollama.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.show.return_value = {"status": "ok"}
+        mock_client.embeddings.return_value = {"embedding": [0.0] * 768}
+        mock_client_cls.return_value = mock_client
+
+        response = client.post(
+            "/api/settings/test-model",
+            json={"baseUrl": "http://mock-ollama:11434", "model": "test-embed"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "dimension": 768}
+        mock_client.pull.assert_not_called()
+
+    # Case 2: Model not found locally (show raises, pull succeeds)
+    with patch("ollama.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.show.side_effect = Exception("Model not found")
+        mock_client.pull.return_value = {"status": "downloaded"}
+        mock_client.embeddings.return_value = {"embedding": [0.0] * 1024}
+        mock_client_cls.return_value = mock_client
+
+        response = client.post(
+            "/api/settings/test-model",
+            json={"baseUrl": "http://mock-ollama:11434", "model": "pull-model"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json() == {"success": True, "dimension": 1024}
+        mock_client.pull.assert_called_once_with("pull-model")
+
+
+def test_test_model_endpoint_failures(client, temp_config_and_db):
+    """Test failure branches: missing embedding field, connection error, and 401 (lines 1886-1893)."""
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Unauthenticated request
+    unauth_resp = client.post(
+        "/api/settings/test-model",
+        json={"baseUrl": "http://mock:11434", "model": "test"},
+    )
+    assert unauth_resp.status_code == 401
+
+    # 2. Response without "embedding" key
+    with patch("ollama.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.embeddings.return_value = {"other": "no-embedding"}
+        mock_client_cls.return_value = mock_client
+
+        res = client.post(
+            "/api/settings/test-model",
+            json={"baseUrl": "http://mock:11434", "model": "test"},
+            headers=headers,
+        )
+        assert res.status_code == 400
+        assert "Failed to connect to or pull the specified model" in res.json()["detail"]
+
+    # 3. Connection/network error
+    with patch("ollama.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client.embeddings.side_effect = ConnectionError("Connection refused")
+        mock_client_cls.return_value = mock_client
+
+        res2 = client.post(
+            "/api/settings/test-model",
+            json={"baseUrl": "http://mock:11434", "model": "test"},
+            headers=headers,
+        )
+        assert res2.status_code == 400
+
+
+def test_update_note_validation_and_errors(client, temp_config_and_db, mock_ollama):
+    """Comprehensive test of note update validation edge cases (lines 985-1092)."""
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. Create a baseline note to test updates against
+    rem_resp = client.post(
+        "/http-api/remember",
+        json={"title": "Test Update Note", "content": "Initial sentence. Target phrase here. End sentence."},
+        headers=headers,
+    )
+    assert rem_resp.status_code == 200
+    note_id = rem_resp.json()["id"]
+
+    # Fetch note to get current updated_time
+    get_resp = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
+    assert get_resp.status_code == 200
+    current_time = get_resp.json()["updated_time"]
+
+    # 2. Note not found -> 404 (line 986)
+    res_not_found = client.post(
+        "/http-api/update",
+        json={
+            "note_id": "non-existent-id-999",
+            "content": "abc",
+            "update_mode": "append",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_not_found.status_code == 404
+    assert res_not_found.json()["detail"] == "Note not found"
+
+    # 3. Concurrency timestamp mismatch -> 409 (line 993)
+    res_occ = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "abc",
+            "update_mode": "append",
+            "last_modified_timestamp": current_time - 500,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_occ.status_code == 409
+    assert "modified since you last read it" in res_occ.json()["detail"]
+
+    # 4. Payload size limit >= 1_000_000 characters -> 400 (lines 998-1000)
+    res_large_content = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "X" * 1_000_001,
+            "update_mode": "append",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_large_content.status_code == 400
+    assert res_large_content.json()["detail"] == "replace text too long"
+
+    res_large_search = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "new",
+            "search_text": "Y" * 1_000_001,
+            "update_mode": "partial note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_large_search.status_code == 400
+    assert res_large_search.json()["detail"] == "replace text too long"
+
+    # 5. search_text used with append or prepend -> 400 (line 1008)
+    res_append_search = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "abc",
+            "search_text": "Target phrase",
+            "update_mode": "append",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_append_search.status_code == 400
+    assert "search_text cannot be used with append or prepend" in res_append_search.json()["detail"]
+
+    # 6. Partial mode without search_text or empty search_text -> 400 (lines 1012, 1017)
+    res_empty_search = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "abc",
+            "update_mode": "partial note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_empty_search.status_code == 400
+    assert "search text cannot be empty" in res_empty_search.json()["detail"]
+
+    # 7. search_text not found -> 400 (line 1022)
+    res_search_not_found = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "Replacement text",
+            "search_text": "Non-existent phrase",
+            "update_mode": "partial note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_search_not_found.status_code == 400
+    assert res_search_not_found.json()["detail"] == "search text not found"
+
+    # 8. Duplicate search_text matches: short <= 200 chars vs long > 200 chars truncation (line 1028)
+    # First update note to contain duplicate short words
+    client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "word word word",
+            "update_mode": "full note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "reset",
+        },
+        headers=headers,
+    )
+    current_time = client.post("/http-api/get", json={"note_id": note_id}, headers=headers).json()["updated_time"]
+
+    res_dup_short = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "replacement",
+            "search_text": "word",
+            "update_mode": "partial note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_dup_short.status_code == 400
+    assert "multiple instances of `word` found" in res_dup_short.json()["detail"]
+
+    # Duplicate long search_text (> 200 chars) to test truncation display (line 1027)
+    long_dup_str = "Z" * 210
+    client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": f"{long_dup_str} middle {long_dup_str}",
+            "update_mode": "full note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "reset long",
+        },
+        headers=headers,
+    )
+    current_time = client.post("/http-api/get", json={"note_id": note_id}, headers=headers).json()["updated_time"]
+
+    res_dup_long = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "replacement",
+            "search_text": long_dup_str,
+            "update_mode": "partial note replacement",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "test",
+        },
+        headers=headers,
+    )
+    assert res_dup_long.status_code == 400
+    expected_truncated = "Z" * 197 + "..."
+    assert f"multiple instances of `{expected_truncated}` found" in res_dup_long.json()["detail"]
+
+    # 9. Invalid update_mode (tested directly via update_note function) (line 1044)
+    from src.main import update_note, extract_result
+    raw_invalid_mode_res = extract_result(
+        update_note(
+            note_id=note_id,
+            content="abc",
+            update_mode="unsupported_custom_mode",
+            last_modified_timestamp=current_time,
+        )
+    )
+    assert "Invalid update_mode" in raw_invalid_mode_res["error"]
+
+    # 10. Joplin node proxy relay failure -> returns error (line 1056)
+    with patch("src.main._call_node_proxy") as mock_proxy:
+        fail_resp = MagicMock()
+        fail_resp.status_code = 502
+        fail_resp.text = "Bad Gateway to Joplin"
+        mock_proxy.return_value = fail_resp
+
+        res_joplin_fail = client.post(
+            "/http-api/update",
+            json={
+                "note_id": note_id,
+                "content": "abc",
+                "update_mode": "full note replacement",
+                "last_modified_timestamp": current_time,
+                "summary_of_changes": "test",
+            },
+            headers=headers,
+        )
+        assert res_joplin_fail.status_code == 400
+        assert "Failed to update note in Joplin: Bad Gateway to Joplin" in res_joplin_fail.json()["detail"]
+
+    # 11. Joplin relay exception triggers db.rollback() (lines 1087-1091)
+    with patch("src.main._call_node_proxy") as mock_proxy:
+        mock_proxy.side_effect = RuntimeError("Proxy write socket closed abruptly")
+        res_proxy_exc = client.post(
+            "/http-api/update",
+            json={
+                "note_id": note_id,
+                "content": "abc",
+                "update_mode": "full note replacement",
+                "last_modified_timestamp": current_time,
+                "summary_of_changes": "test",
+            },
+            headers=headers,
+        )
+        assert res_proxy_exc.status_code == 400
+        assert "Proxy write socket closed abruptly" in res_proxy_exc.json()["detail"]
+
+    # 12. Successful Prepend and Partial Replacement updates
+    # Prepend
+    res_prepend = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "Header Note Line",
+            "update_mode": "prepend",
+            "last_modified_timestamp": current_time,
+            "summary_of_changes": "prepend test",
+        },
+        headers=headers,
+    )
+    assert res_prepend.status_code == 200
+    get_prep = client.post("/http-api/get", json={"note_id": note_id}, headers=headers).json()
+    assert get_prep["content"].startswith("Header Note Line\n\n")
+
+    # Partial replace
+    new_time = get_prep["updated_time"]
+    res_partial = client.post(
+        "/http-api/update",
+        json={
+            "note_id": note_id,
+            "content": "Replaced Line",
+            "search_text": "Header Note Line",
+            "update_mode": "partial note replacement",
+            "last_modified_timestamp": new_time,
+            "summary_of_changes": "partial test",
+        },
+        headers=headers,
+    )
+    assert res_partial.status_code == 200
+    get_part = client.post("/http-api/get", json={"note_id": note_id}, headers=headers).json()
+    assert "Replaced Line" in get_part["content"]
+    assert "Header Note Line" not in get_part["content"]
