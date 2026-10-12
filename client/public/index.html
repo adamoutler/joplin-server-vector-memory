@@ -94,21 +94,86 @@
       <div id="auth-msg" class="messages"></div>
     </form>
 
-    <h2 style="margin-top: 2rem;">API Keys</h2>
-    <p>Use these keys for your MCP client configuration. They are Bearer tokens.</p>
-    <div id="api-keys-list" style="margin-bottom: 1rem;"></div>
-    <div id="keys-msg" class="messages"></div>
-    <form id="create-key-form" style="display: flex; gap: 1rem; align-items: flex-end;">
-      <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
-        <label for="new-key-annotation">Annotation</label>
-        <input type="text" id="new-key-annotation" placeholder="e.g. Gemini CLI" required>
+    <!-- PENDING OAUTH APPROVALS CARD -->
+    <div id="pending-approvals-card" style="display: none; background: #fff8e1; border: 1px solid #ffe082; padding: 1rem; border-radius: 6px; margin-top: 1.5rem;" aria-live="polite">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+        <h3 style="margin: 0; color: #856404; display: flex; align-items: center; gap: 0.5rem;">
+          <span>⚡</span> Pending OAuth Approvals
+          <span id="pending-badge" style="background: #e65100; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 12px; font-weight: bold;"></span>
+        </h3>
       </div>
-      <div class="form-group" style="margin-bottom: 0;">
-        <label for="new-key-expiration">Expiration (Days, optional)</label>
-        <input type="number" id="new-key-expiration" placeholder="Never" min="1">
+      <p style="font-size: 0.85rem; color: #555; margin-bottom: 0.75rem;">
+        External AI agents (such as Google Gemini Spark) are requesting access to your Joplin memory.
+      </p>
+      <div id="pending-approvals-list"></div>
+    </div>
+
+    <!-- AUTHENTICATION & ACCESS CREDENTIALS (TABS) -->
+    <h2 style="margin-top: 2rem;">Authentication &amp; Access Credentials</h2>
+    <div style="display: flex; gap: 0.5rem; border-bottom: 2px solid #ccc; margin-bottom: 1rem;" role="tablist" aria-label="Credentials Type">
+      <button type="button" role="tab" id="tab-btn-keys" aria-selected="true" style="padding: 0.5rem 1rem; font-weight: bold; background: transparent; border: none; border-bottom: 3px solid #0056b3; cursor: pointer; color: #0056b3;" onclick="switchCredsTab('keys')">Personal API Keys</button>
+      <button type="button" role="tab" id="tab-btn-oauth" aria-selected="false" style="padding: 0.5rem 1rem; font-weight: bold; background: transparent; border: none; border-bottom: 3px solid transparent; cursor: pointer; color: #555;" onclick="switchCredsTab('oauth')">OAuth Client Credentials</button>
+    </div>
+
+    <div id="tab-content-keys">
+      <p>Use these keys for your MCP client configuration (e.g. Gemini CLI, Claude Desktop). They are Bearer tokens.</p>
+      <div id="api-keys-list" style="margin-bottom: 1rem;"></div>
+      <div id="keys-msg" class="messages"></div>
+      <form id="create-key-form" style="display: flex; gap: 1rem; align-items: flex-end;">
+        <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
+          <label for="new-key-annotation">Annotation</label>
+          <input type="text" id="new-key-annotation" placeholder="e.g. Gemini CLI" required>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="new-key-expiration">Expiration (Days, optional)</label>
+          <input type="number" id="new-key-expiration" placeholder="Never" min="1">
+        </div>
+        <button type="submit">Create Key</button>
+      </form>
+    </div>
+
+    <div id="tab-content-oauth" style="display: none;">
+      <p>Use these credentials for Google Gemini Spark or OAuth 2.0 connected applications.</p>
+      <div id="oauth-created-alert" style="display: none; background: #e8f5e9; border: 1px solid #a5d6a7; padding: 1rem; border-radius: 4px; margin-bottom: 1rem;">
+        <strong style="color: #2e7d32;">New OAuth Client Created! Copy these credentials now. The Client Secret is only shown once:</strong>
+        <div style="margin-top: 0.5rem;">
+          <label for="created-client-id">Client ID (Username):</label>
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+            <input type="text" id="created-client-id" readonly style="font-family: monospace; flex-grow: 1; padding: 6px;">
+            <button type="button" onclick="copyValue('created-client-id', this)">Copy ID</button>
+          </div>
+          <label for="created-client-secret">Client Secret (Password):</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="created-client-secret" readonly style="font-family: monospace; flex-grow: 1; padding: 6px;">
+            <button type="button" onclick="copyValue('created-client-secret', this)">Copy Secret</button>
+          </div>
+        </div>
       </div>
-      <button type="submit">Create Key</button>
-    </form>
+
+      <div id="oauth-clients-list" style="margin-bottom: 1rem;"></div>
+      <div id="oauth-msg" class="messages"></div>
+
+      <form id="create-oauth-client-form" style="display: flex; flex-direction: column; gap: 0.75rem; background: #f9f9f9; padding: 1rem; border: 1px solid #ccc; border-radius: 4px;">
+        <h4 style="margin: 0;">Register New OAuth Client</h4>
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+          <div class="form-group" style="margin-bottom: 0; flex-grow: 1; min-width: 180px;">
+            <label for="new-oauth-name">Application Name</label>
+            <input type="text" id="new-oauth-name" placeholder="e.g. Google Gemini Spark" required>
+          </div>
+          <div class="form-group" style="margin-bottom: 0; flex-grow: 1; min-width: 180px;">
+            <label for="new-oauth-client-id">Client ID (Username / Arbitrary Identifier)</label>
+            <input type="text" id="new-oauth-client-id" placeholder="e.g. gemini-spark">
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label for="new-oauth-redirect-uri">Allowed Redirect URI (Optional)</label>
+          <input type="url" id="new-oauth-redirect-uri" placeholder="https://oauth.googleusercontent.com/callback">
+        </div>
+        <div>
+          <button type="submit">Get OAuth Credentials</button>
+        </div>
+      </form>
+    </div>
 
     <h2 style="margin-top: 2rem;">API Documentation</h2>
     <div style="background: #f4f4f4; padding: 1rem; border-radius: 4px;">
@@ -385,6 +450,7 @@
         _updateSyncStatus(data.syncState || { status: 'offline' }, data);
         _updateEmbedStatus(data.embeddingState || { status: 'offline' });
         _renderMcpExamples(data, isInitialLoad);
+        fetchPendingApprovals();
       } catch(e) {
         console.error('Failed to fetch status:', e);
         const syncEl = document.getElementById('sync-status-text');
@@ -583,6 +649,225 @@
           msgEl.className = 'messages error';
         }
       } catch(err) {
+        msgEl.innerText = 'Network error: ' + err.message;
+        msgEl.className = 'messages error';
+      }
+    });
+
+    // --- OAuth Credentials & Pending Approvals Logic ---
+    function switchCredsTab(tab) {
+      const isOAuth = tab === 'oauth';
+      document.getElementById('tab-btn-keys').style.borderBottomColor = isOAuth ? 'transparent' : '#0056b3';
+      document.getElementById('tab-btn-keys').style.color = isOAuth ? '#555' : '#0056b3';
+      document.getElementById('tab-btn-keys').setAttribute('aria-selected', !isOAuth);
+      document.getElementById('tab-content-keys').style.display = isOAuth ? 'none' : 'block';
+
+      document.getElementById('tab-btn-oauth').style.borderBottomColor = isOAuth ? '#0056b3' : 'transparent';
+      document.getElementById('tab-btn-oauth').style.color = isOAuth ? '#0056b3' : '#555';
+      document.getElementById('tab-btn-oauth').setAttribute('aria-selected', isOAuth);
+      document.getElementById('tab-content-oauth').style.display = isOAuth ? 'block' : 'none';
+
+      if (isOAuth) {
+        fetchOAuthClients();
+      }
+    }
+
+    async function copyValue(elementId, btn) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText && globalThis.isSecureContext) {
+          await navigator.clipboard.writeText(el.value);
+        } else {
+          el.select();
+          document.execCommand('copy');
+        }
+        const origText = btn.innerText;
+        btn.innerText = 'Copied!';
+        setTimeout(() => { btn.innerText = origText; }, 2000);
+      } catch (err) {
+        console.error('Copy failed', err);
+        btn.innerText = 'Error';
+      }
+    }
+
+    async function fetchPendingApprovals() {
+      try {
+        const res = await fetch('/auth/oauth/pending');
+        if (!res.ok) return;
+        const data = await res.json();
+        const pending = data.pending || [];
+        const cardEl = document.getElementById('pending-approvals-card');
+        const listEl = document.getElementById('pending-approvals-list');
+        const badgeEl = document.getElementById('pending-badge');
+
+        if (pending.length === 0) {
+          cardEl.style.display = 'none';
+          listEl.innerHTML = '';
+          return;
+        }
+
+        badgeEl.innerText = `${pending.length} New`;
+        cardEl.style.display = 'block';
+        listEl.innerHTML = '';
+
+        pending.forEach((req) => {
+          const item = document.createElement('div');
+          item.style.background = '#fff';
+          item.style.border = '1px solid #ffd54f';
+          item.style.borderRadius = '4px';
+          item.style.padding = '0.75rem';
+          item.style.marginBottom = '0.5rem';
+          item.style.display = 'flex';
+          item.style.justifyContent = 'space-between';
+          item.style.alignItems = 'center';
+          item.style.gap = '1rem';
+          item.style.flexWrap = 'wrap';
+
+          const info = document.createElement('div');
+          info.innerHTML = `<strong>${req.client_name || req.client_id}</strong> (Code: <code>${req.user_code}</code>)<br><small style="color: #666;">Client ID: <code>${req.client_id}</code> &bull; Redirect: <code>${req.redirect_uri}</code></small>`;
+
+          const actions = document.createElement('div');
+          actions.style.display = 'flex';
+          actions.style.gap = '0.5rem';
+
+          const denyBtn = document.createElement('button');
+          denyBtn.type = 'button';
+          denyBtn.innerText = 'Deny';
+          denyBtn.style.background = '#d32f2f';
+          denyBtn.style.color = '#fff';
+          denyBtn.onclick = async () => {
+            denyBtn.disabled = true;
+            try {
+              await fetch(`/auth/oauth/pending/${req.id}/deny`, { method: 'POST' });
+              fetchPendingApprovals();
+            } catch (e) {
+              alert('Failed to deny: ' + e.message);
+              denyBtn.disabled = false;
+            }
+          };
+
+          const approveBtn = document.createElement('button');
+          approveBtn.type = 'button';
+          approveBtn.innerText = 'Approve Access';
+          approveBtn.style.background = '#198754';
+          approveBtn.style.color = '#fff';
+          approveBtn.onclick = async () => {
+            approveBtn.disabled = true;
+            try {
+              await fetch(`/auth/oauth/pending/${req.id}/approve`, { method: 'POST' });
+              fetchPendingApprovals();
+            } catch (e) {
+              alert('Failed to approve: ' + e.message);
+              approveBtn.disabled = false;
+            }
+          };
+
+          actions.appendChild(denyBtn);
+          actions.appendChild(approveBtn);
+          item.appendChild(info);
+          item.appendChild(actions);
+          listEl.appendChild(item);
+        });
+      } catch (err) {
+        console.debug('Failed to fetch pending approvals', err);
+      }
+    }
+
+    async function fetchOAuthClients() {
+      try {
+        const res = await fetch('/auth/oauth/clients');
+        if (!res.ok) return;
+        const data = await res.json();
+        const clients = data.clients || [];
+        const listEl = document.getElementById('oauth-clients-list');
+        listEl.innerHTML = '';
+
+        if (clients.length === 0) {
+          listEl.innerHTML = '<em>No OAuth clients registered yet.</em>';
+          return;
+        }
+
+        clients.forEach((c) => {
+          const item = document.createElement('div');
+          item.style.background = '#f9f9f9';
+          item.style.border = '1px solid #ccc';
+          item.style.borderRadius = '4px';
+          item.style.padding = '0.75rem';
+          item.style.marginBottom = '0.75rem';
+          item.style.display = 'flex';
+          item.style.justifyContent = 'space-between';
+          item.style.alignItems = 'center';
+          item.style.gap = '1rem';
+          item.style.flexWrap = 'wrap';
+
+          const details = document.createElement('div');
+          const redirectInfo = (c.redirect_uris && c.redirect_uris.length > 0) ? c.redirect_uris.join(', ') : 'Any / Loopback';
+          details.innerHTML = `<strong>${c.name || c.client_id}</strong><br><small style="color: #666;">Client ID: <code>${c.client_id}</code> &bull; Redirect URI: <code>${redirectInfo}</code></small>`;
+
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.innerText = 'Delete';
+          delBtn.style.background = '#d32f2f';
+          delBtn.style.color = '#fff';
+          delBtn.onclick = async () => {
+            if (confirm(`Delete OAuth client "${c.name || c.client_id}"?`)) {
+              try {
+                await fetch('/auth/oauth/clients/delete', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ client_id: c.client_id })
+                });
+                fetchOAuthClients();
+              } catch (e) {
+                alert('Failed to delete client: ' + e.message);
+              }
+            }
+          };
+
+          item.appendChild(details);
+          item.appendChild(delBtn);
+          listEl.appendChild(item);
+        });
+      } catch (err) {
+        console.debug('Failed to fetch OAuth clients', err);
+      }
+    }
+
+    document.getElementById('create-oauth-client-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('new-oauth-name').value;
+      const clientId = document.getElementById('new-oauth-client-id').value;
+      const redirectUri = document.getElementById('new-oauth-redirect-uri').value;
+      const msgEl = document.getElementById('oauth-msg');
+
+      msgEl.innerText = 'Registering OAuth client...';
+      msgEl.className = 'messages';
+
+      try {
+        const res = await fetch('/auth/oauth/clients/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, client_id: clientId, redirect_uri: redirectUri })
+        });
+        const data = await res.json();
+        if (res.ok && data.client) {
+          msgEl.innerText = 'Client registered successfully!';
+          msgEl.className = 'messages success';
+          document.getElementById('created-client-id').value = data.client.client_id;
+          document.getElementById('created-client-secret').value = data.client.client_secret;
+          document.getElementById('oauth-created-alert').style.display = 'block';
+
+          document.getElementById('new-oauth-name').value = '';
+          document.getElementById('new-oauth-client-id').value = '';
+          document.getElementById('new-oauth-redirect-uri').value = '';
+          setTimeout(() => { msgEl.innerText = ''; }, 3000);
+          fetchOAuthClients();
+        } else {
+          msgEl.innerText = 'Error: ' + (data.error || 'Failed to register client');
+          msgEl.className = 'messages error';
+        }
+      } catch (err) {
         msgEl.innerText = 'Network error: ' + err.message;
         msgEl.className = 'messages error';
       }

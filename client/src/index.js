@@ -13,6 +13,7 @@ const fs = require('./fsw');
 const path = require('node:path');
 const { JoplinSyncClient } = require('./sync');
 const { fetchWithTimeout, validateJoplinSession, fetchJoplinEvents, checkJoplinSyncInfo } = require('./network');
+const { createOAuthRouter } = require('./oauth');
 const Redis = require('ioredis');
 
 // Note on Redis Usage:
@@ -238,6 +239,16 @@ app.use(async (req, res, next) => {
   // Exempt the POST /auth endpoint so users can log in via the HTML form
   // even if their browser has cached invalid Basic Auth credentials.
   if (req.path === '/auth' && req.method === 'POST') {
+    return next();
+  }
+
+  // Exempt public OAuth endpoints (discovery, consent page, token exchange, and polling)
+  if (
+    req.path.startsWith('/.well-known/') ||
+    req.path === '/oauth/authorize' ||
+    req.path === '/oauth/token' ||
+    req.path.startsWith('/oauth/requests/')
+  ) {
     return next();
   }
 
@@ -852,6 +863,12 @@ app.post('/auth/keys/delete', (req, res) => {
     res.json({ success: true });
   }
 });
+
+const oauthRouter = createOAuthRouter({
+  configPath: CONFIG_PATH,
+  getGlobalCredentials: () => globalCredentials
+});
+app.use(oauthRouter);
 
 // Maintenance Shutdown Procedure: 
 // When /node-api/restart is called, Node gracefully exits. 
