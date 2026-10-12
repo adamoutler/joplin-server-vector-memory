@@ -100,21 +100,76 @@ Update your `settings.json` (e.g., `.gemini/settings.json`) with the following:
 
 You can view the interactive Swagger API documentation by navigating to `http://localhost:3000/docs`. From there, you can authorize using your Bearer token and test out endpoints such as `POST /http-api/search` manually to verify embeddings are working correctly.
 
-## 5. Advanced Nginx Proxy Configuration
+## 5. Reverse Proxy Configuration (Nginx & Nginx Proxy Manager)
 
-If you are securely exposing the MCP backend to external agents via a subpath on a domain (e.g., `https://example.com/mcp/`) using Nginx Proxy Manager or standard Nginx, you can use the following custom location block under the "Advanced" settings. 
+When exposing Joplin Server Vector Memory to external AI clients (like Google Gemini Spark, Cursor, or Claude) behind a reverse proxy such as Nginx or Nginx Proxy Manager (NPM), the system operates across two internal services:
+- **Port 3000 (Node.js)**: Web Dashboard UI, OAuth 2.0 Authorization Server, RFC 8414 Discovery (`/.well-known/*`), and Consent Page (`/authorize.html`).
+- **Port 8000 (Python FastMCP)**: Semantic search, MCP protocol endpoints (`/mcp`, `/http-api/*`), and tools.
+
+### Nginx Proxy Manager (NPM) Configuration Guide
+
+#### 1. "Details" Tab
+* **Domain Names**: `joplin.yourdomain.com` (or dedicated subdomain like `memory.yourdomain.com`)
+* **Scheme**: `http`
+* **Forward Hostname / IP**: `127.0.0.1` (or your Docker container hostname/IP)
+* **Forward Port**: `3000` *(Default forwards dashboard and OAuth to Node.js)*
+* **Websockets Support**: **ON**
+* **Block Common Exploits**: **ON**
+
+#### 2. "Custom Locations" Tab
+Add the following 3 custom locations to route MCP traffic and protect internal APIs:
+
+1. **Location: `/mcp`**
+   * **Scheme**: `http`
+   * **Forward Hostname / IP**: `127.0.0.1`
+   * **Forward Port**: `8000`
+   * Click the **Gear icon** (custom config) and paste:
+     ```nginx
+     proxy_http_version 1.1;
+     proxy_set_header Connection '';
+     proxy_buffering off;
+     proxy_cache off;
+     chunked_transfer_encoding off;
+     proxy_read_timeout 86400s;
+     proxy_send_timeout 86400s;
+     ```
+
+2. **Location: `/http-api/`**
+   * **Scheme**: `http`
+   * **Forward Hostname / IP**: `127.0.0.1`
+   * **Forward Port**: `8000`
+   * Click the **Gear icon** and paste:
+     ```nginx
+     proxy_http_version 1.1;
+     proxy_set_header Connection '';
+     proxy_buffering off;
+     proxy_cache off;
+     chunked_transfer_encoding off;
+     proxy_read_timeout 86400s;
+     proxy_send_timeout 86400s;
+     ```
+
+3. **Location: `/node-api/`** *(Security Block)*
+   * **Scheme**: `http`
+   * **Forward Hostname / IP**: `127.0.0.1`
+   * **Forward Port**: `3000`
+   * Click the **Gear icon** and paste:
+     ```nginx
+     deny all;
+     return 403;
+     ```
+
+#### 3. "Advanced" Tab
+In the **Advanced** tab of the Proxy Host, paste the standard proxy headers so OAuth 2.0 discovery dynamically resolves the public HTTPS domain as its issuer:
 
 ```nginx
-location ^~ /mcp/ {
-    rewrite ^/mcp/(.*)$ /$1 break;
-    proxy_pass http://192.168.1.101:8000;
-    proxy_set_header Connection '';
-    proxy_http_version 1.1;
-    chunked_transfer_encoding off;
-    proxy_buffering off;
-    proxy_cache off;
-}
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 ```
 
-> [!NOTE]
-> This specific configuration prevents Nginx from aggressively buffering the streams and stripping SSE events, which is critical for making sure the AI agents receive instant responses.
+> [!IMPORTANT]
+> - **Perimeter Authentication Warning**: If you configure HTTP Basic Auth or an Access List in Nginx Proxy Manager across the entire domain, external AI clients connecting with `Authorization: Bearer <token>` will be rejected by Nginx with HTTP 401 before reaching the server. The `/mcp`, `/http-api/`, and `/.well-known/` routes must be exempt from perimeter Basic Auth.
+> - **Dedicated Subdomain Recommendation**: If `joplin.yourdomain.com` is already hosting your official Joplin Server (note sync server on port 22300), Joplin Server occupies the root `/` and `/api/`. Point a dedicated subdomain (such as `memory.yourdomain.com` or `mcp.yourdomain.com`) to this container to prevent route collisions.
+
