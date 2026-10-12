@@ -9,7 +9,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request
 from starlette.responses import Response
 from fastmcp import FastMCP
 import httpx
-import posixpath
+import re
 import ollama
 import json
 import logging
@@ -2112,51 +2112,20 @@ RESPONSE_HOP_BY_HOP = {
     "content-length",
 }
 
-ALLOWED_EXACT_OAUTH_PATHS = {
-    "/.well-known/oauth-authorization-server",
-    "/.well-known/openid-configuration",
-    "/oauth/authorize",
-    "/oauth/token",
-    "/authorize.html",
-}
+_SAFE_REQUEST_ID_REGEX = re.compile(r"^req_[a-zA-Z0-9]+$")
 
 
-def _is_oauth_path_permitted(raw_path: str) -> bool:
-    normalized = posixpath.normpath(raw_path)
-    if normalized in ALLOWED_EXACT_OAUTH_PATHS:
-        return True
-    if normalized.startswith("/oauth/requests/"):
-        parts = normalized.split("/")
-        # Matches /oauth/requests/{id}/details and /oauth/requests/{id}/status
-        if (
-            len(parts) == 5
-            and parts[4] in ("details", "status")
-            and parts[3].startswith("req_")
-        ):
-            return True
-    return False
-
-
-async def _proxy_oauth_to_node(request: Request) -> Response:
+async def _forward_oauth_endpoint(
+    request: Request, fixed_target_path: str
+) -> Response:
     """
-    Transparently proxies OAuth and consent requests to the Node.js backend.
-    Enforces a strict path allowlist to guarantee internal endpoints remain quarantined.
+    Transparently forwards an authorized OAuth request to a fixed Node.js path.
+    Prevents API traversal by never using untrusted URL path strings as target URLs.
     """
-    path = request.url.path
-    if not _is_oauth_path_permitted(path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Not Found",
-        )
-
-    node_base_url = os.environ.get("NODE_PROXY_URL", "http://127.0.0.1:3000").rstrip("/")
-
-    target_path = (
-        "/.well-known/oauth-authorization-server"
-        if posixpath.normpath(path) == "/.well-known/openid-configuration"
-        else path
-    )
-    target_url = f"{node_base_url}{target_path}"
+    node_base_url = os.environ.get(
+        "NODE_PROXY_URL", "http://127.0.0.1:3000"
+    ).rstrip("/")
+    target_url = f"{node_base_url}{fixed_target_path}"
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
 
@@ -2255,39 +2224,58 @@ async def _proxy_oauth_to_node(request: Request) -> Response:
     )
 
 
-OAUTH_METHODS = ["GET", "POST", "HEAD", "OPTIONS"]
-
-
-@app.api_route(
-    "/.well-known/{full_path:path}",
-    methods=["GET", "HEAD", "OPTIONS"],
+@app.get(
+    "/.well-known/oauth-authorization-server",
     include_in_schema=False,
 )
-async def proxy_well_known(request: Request, full_path: str = ""):
-    return await _proxy_oauth_to_node(request)
-
-
-@app.api_route(
-    "/oauth/{full_path:path}",
-    methods=OAUTH_METHODS,
+@app.get(
+    "/.well-known/openid-configuration",
     include_in_schema=False,
 )
-@app.api_route(
-    "/oauth",
-    methods=OAUTH_METHODS,
-    include_in_schema=False,
-)
-async def proxy_oauth(request: Request, full_path: str = ""):
-    return await _proxy_oauth_to_node(request)
+async def proxy_well_known_oauth(request: Request):
+    return await _forward_oauth_endpoint(
+        request, "/.well-known/oauth-authorization-server"
+    )
 
 
-@app.api_route(
-    "/authorize.html",
-    methods=["GET", "HEAD"],
-    include_in_schema=False,
-)
+@app.get("/oauth/authorize", include_in_schema=False)
+@app.post("/oauth/authorize", include_in_schema=False)
+async def proxy_oauth_authorize(request: Request):
+    return await _forward_oauth_endpoint(request, "/oauth/authorize")
+
+
+@app.post("/oauth/token", include_in_schema=False)
+async def proxy_oauth_token(request: Request):
+    return await _forward_oauth_endpoint(request, "/oauth/token")
+
+
+@app.get("/authorize.html", include_in_schema=False)
 async def proxy_authorize_html(request: Request):
-    return await _proxy_oauth_to_node(request)
+    return await _forward_oauth_endpoint(request, "/authorize.html")
+
+
+@app.get("/oauth/requests/{request_id}/details", include_in_schema=False)
+async def proxy_oauth_request_details(request_id: str, request: Request):
+    if not _SAFE_REQUEST_ID_REGEX.match(request_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not Found"
+        )
+    safe_id = "".join(c for c in request_id if c.isalnum() or c == "_")
+    return await _forward_oauth_endpoint(
+        request, f"/oauth/requests/{safe_id}/details"
+    )
+
+
+@app.get("/oauth/requests/{request_id}/status", include_in_schema=False)
+async def proxy_oauth_request_status(request_id: str, request: Request):
+    if not _SAFE_REQUEST_ID_REGEX.match(request_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not Found"
+        )
+    safe_id = "".join(c for c in request_id if c.isalnum() or c == "_")
+    return await _forward_oauth_endpoint(
+        request, f"/oauth/requests/{safe_id}/status"
+    )
 
 
 # Actually, let's just append the routes directly
