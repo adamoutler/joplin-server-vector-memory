@@ -34,6 +34,7 @@ if (process.env.REDIS_URL) {
 }
 
 const app = express();
+app.set('trust proxy', 'loopback');
 app.use(cors());
 
 if (process.env.TEST_MODE_ALLOW_ALL_IPS !== 'true') {

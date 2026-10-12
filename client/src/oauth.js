@@ -95,7 +95,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
   // -------------------------------------------------------------
   // 1. RFC 8414 Authorization Server Metadata
   // -------------------------------------------------------------
-  router.get('/.well-known/oauth-authorization-server', (req, res) => {
+  router.get(['/.well-known/oauth-authorization-server', '/.well-known/openid-configuration'], (req, res) => {
     const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers['x-forwarded-host'] || req.get('host') || '127.0.0.1:3000';
     const issuer = `${proto}://${host}`;

@@ -102,74 +102,52 @@ You can view the interactive Swagger API documentation by navigating to `http://
 
 ## 5. Reverse Proxy Configuration (Nginx & Nginx Proxy Manager)
 
-When exposing Joplin Server Vector Memory to external AI clients (like Google Gemini Spark, Cursor, or Claude) behind a reverse proxy such as Nginx or Nginx Proxy Manager (NPM), the system operates across two internal services:
-- **Port 3000 (Node.js)**: Web Dashboard UI, OAuth 2.0 Authorization Server, RFC 8414 Discovery (`/.well-known/*`), and Consent Page (`/authorize.html`).
-- **Port 8000 (Python FastMCP)**: Semantic search, MCP protocol endpoints (`/mcp`, `/http-api/*`), and tools.
+Joplin Server Vector Memory features a **Unified Secure API Gateway** on port `8000` (mapped to host port `30800` in docker-compose).
 
-### Nginx Proxy Manager (NPM) Configuration Guide
+### Architecture & Security Perimeter
+
+- **Port 8000 (Host Port 30800 - Public Gateway)**:
+  - The **only** port exposed to Nginx Proxy Manager / the public internet.
+  - Serves semantic search, FastMCP JSON-RPC, and HTTP APIs (`/mcp`, `/http-api/*`).
+  - Automatically and transparently proxies RFC 8414 OAuth discovery (`/.well-known/oauth-authorization-server`, `/.well-known/openid-configuration`), OAuth flows (`/oauth/authorize`, `/oauth/token`), and the static consent page (`/authorize.html`) to the internal Node daemon.
+  - **Quarantine Guarantee**: Administrative endpoints (`/auth/wipe`, `/auth/keys`, `/status`, `/node-api/*`) are strictly excluded from the gateway and cannot be reached externally.
+- **Port 3000 (Host Port 30180 - Internal Admin Dashboard)**:
+  - Strictly internal and unexposed to the internet.
+  - Used only on your private LAN (`http://192.168.1.101:30180` or `http://localhost:3000`) for initial setup and credential management.
+
+### Nginx Proxy Manager (NPM) Single-Port Setup
+
+Because port `30800` unifies MCP, OAuth 2.0 discovery, and authorization into a single secure gateway, Nginx Proxy Manager configuration requires **no custom location splitting**:
 
 #### 1. "Details" Tab
 * **Domain Names**: `joplin.yourdomain.com` (or dedicated subdomain like `memory.yourdomain.com`)
 * **Scheme**: `http`
-* **Forward Hostname / IP**: `127.0.0.1` (or your Docker container hostname/IP)
-* **Forward Port**: `3000` *(Default forwards dashboard and OAuth to Node.js)*
+* **Forward Hostname / IP**: `192.168.1.101` (or your Docker host IP)
+* **Forward Port**: `30800` *(Container port 8000)*
 * **Websockets Support**: **ON**
 * **Block Common Exploits**: **ON**
 
-#### 2. "Custom Locations" Tab
-Add the following 3 custom locations to route MCP traffic and protect internal APIs:
-
-1. **Location: `/mcp`**
-   * **Scheme**: `http`
-   * **Forward Hostname / IP**: `127.0.0.1`
-   * **Forward Port**: `8000`
-   * Click the **Gear icon** (custom config) and paste:
-     ```nginx
-     proxy_http_version 1.1;
-     proxy_set_header Connection '';
-     proxy_buffering off;
-     proxy_cache off;
-     chunked_transfer_encoding off;
-     proxy_read_timeout 86400s;
-     proxy_send_timeout 86400s;
-     ```
-
-2. **Location: `/http-api/`**
-   * **Scheme**: `http`
-   * **Forward Hostname / IP**: `127.0.0.1`
-   * **Forward Port**: `8000`
-   * Click the **Gear icon** and paste:
-     ```nginx
-     proxy_http_version 1.1;
-     proxy_set_header Connection '';
-     proxy_buffering off;
-     proxy_cache off;
-     chunked_transfer_encoding off;
-     proxy_read_timeout 86400s;
-     proxy_send_timeout 86400s;
-     ```
-
-3. **Location: `/node-api/`** *(Security Block)*
-   * **Scheme**: `http`
-   * **Forward Hostname / IP**: `127.0.0.1`
-   * **Forward Port**: `3000`
-   * Click the **Gear icon** and paste:
-     ```nginx
-     deny all;
-     return 403;
-     ```
-
-#### 3. "Advanced" Tab
-In the **Advanced** tab of the Proxy Host, paste the standard proxy headers so OAuth 2.0 discovery dynamically resolves the public HTTPS domain as its issuer:
+#### 2. "Advanced" Tab
+In the **Advanced** tab of the Proxy Host, paste the standard reverse proxy headers and SSE/streaming settings:
 
 ```nginx
+# Standard proxy headers for RFC 8414 dynamic issuer discovery
 proxy_set_header Host $host;
 proxy_set_header X-Forwarded-Host $host;
 proxy_set_header X-Forwarded-Proto $scheme;
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+# Streaming and SSE optimizations for FastMCP
+proxy_http_version 1.1;
+proxy_set_header Connection '';
+proxy_buffering off;
+proxy_cache off;
+chunked_transfer_encoding off;
+proxy_read_timeout 86400s;
+proxy_send_timeout 86400s;
 ```
 
 > [!IMPORTANT]
-> - **Perimeter Authentication Warning**: If you configure HTTP Basic Auth or an Access List in Nginx Proxy Manager across the entire domain, external AI clients connecting with `Authorization: Bearer <token>` will be rejected by Nginx with HTTP 401 before reaching the server. The `/mcp`, `/http-api/`, and `/.well-known/` routes must be exempt from perimeter Basic Auth.
-> - **Dedicated Subdomain Recommendation**: If `joplin.yourdomain.com` is already hosting your official Joplin Server (note sync server on port 22300), Joplin Server occupies the root `/` and `/api/`. Point a dedicated subdomain (such as `memory.yourdomain.com` or `mcp.yourdomain.com`) to this container to prevent route collisions.
+> - **Perimeter Authentication Warning**: Do not apply HTTP Basic Auth or Access Lists across the domain in Nginx Proxy Manager. AI clients (like Google Gemini Spark) authenticate using `Authorization: Bearer <token>` and OAuth 2.0 handshakes; perimeter Basic Auth will block them with HTTP 401 before reaching the server.
+> - **Dedicated Subdomain Recommendation**: If `joplin.yourdomain.com` is already hosting your official Joplin Server (note sync server on port 22300), Joplin Server occupies root `/` and `/api/`. Point a dedicated subdomain (such as `memory.yourdomain.com` or `mcp.yourdomain.com`) to port `30800` to prevent route collisions.
 

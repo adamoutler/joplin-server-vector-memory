@@ -5,8 +5,11 @@ from contextlib import asynccontextmanager
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
+from starlette.responses import Response
 from fastmcp import FastMCP
+import httpx
+import posixpath
 import ollama
 import json
 import logging
@@ -1586,7 +1589,13 @@ async def lifespan(app: FastAPI):
         stateless_app.router.lifespan_context(app),
         streamable_app.router.lifespan_context(app),
     ):
-        yield
+        limits = httpx.Limits(max_keepalive_connections=20, max_connections=50)
+        timeout = httpx.Timeout(30.0, connect=5.0)
+        async with httpx.AsyncClient(
+            limits=limits, timeout=timeout, follow_redirects=False
+        ) as http_client:
+            app.state.http_client = http_client
+            yield
 
 
 app = FastAPI(
@@ -2075,6 +2084,210 @@ def reset_settings(token: Annotated[str, Depends(verify_token)]):
     _config_mtime = 0  # Invalidate cache
 
     return default_settings
+
+
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+    "host",
+}
+
+RESPONSE_HOP_BY_HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "content-encoding",
+    "content-length",
+}
+
+ALLOWED_EXACT_OAUTH_PATHS = {
+    "/.well-known/oauth-authorization-server",
+    "/.well-known/openid-configuration",
+    "/oauth/authorize",
+    "/oauth/token",
+    "/authorize.html",
+}
+
+
+def _is_oauth_path_permitted(raw_path: str) -> bool:
+    normalized = posixpath.normpath(raw_path)
+    if normalized in ALLOWED_EXACT_OAUTH_PATHS:
+        return True
+    if normalized.startswith("/oauth/requests/"):
+        parts = normalized.split("/")
+        # Matches /oauth/requests/{id}/details and /oauth/requests/{id}/status
+        if (
+            len(parts) == 5
+            and parts[4] in ("details", "status")
+            and parts[3].startswith("req_")
+        ):
+            return True
+    return False
+
+
+async def _proxy_oauth_to_node(request: Request) -> Response:
+    """
+    Transparently proxies OAuth and consent requests to the Node.js backend.
+    Enforces a strict path allowlist to guarantee internal endpoints remain quarantined.
+    """
+    path = request.url.path
+    if not _is_oauth_path_permitted(path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not Found",
+        )
+
+    node_base_url = os.environ.get("NODE_PROXY_URL", "http://127.0.0.1:3000").rstrip("/")
+
+    target_path = (
+        "/.well-known/oauth-authorization-server"
+        if posixpath.normpath(path) == "/.well-known/openid-configuration"
+        else path
+    )
+    target_url = f"{node_base_url}{target_path}"
+    if request.url.query:
+        target_url = f"{target_url}?{request.url.query}"
+
+    forwarded_host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or (
+            f"{request.url.hostname}:{request.url.port}"
+            if request.url.port
+            else request.url.hostname
+        )
+        or "127.0.0.1:8000"
+    )
+    forwarded_proto = (
+        request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+    )
+
+    headers = {
+        k: v
+        for k, v in request.headers.items()
+        if k.lower() not in HOP_BY_HOP_HEADERS
+    }
+    headers["x-forwarded-host"] = forwarded_host
+    headers["x-forwarded-proto"] = forwarded_proto
+
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if "x-forwarded-for" in request.headers:
+        headers["x-forwarded-for"] = f"{request.headers['x-forwarded-for']}, {client_ip}"
+    else:
+        headers["x-forwarded-for"] = client_ip
+
+    body = await request.body()
+    content = body if body else None
+
+    client: Optional[httpx.AsyncClient] = getattr(
+        request.app.state, "http_client", None
+    )
+    should_close_client = False
+    if client is None:
+        client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=5.0), follow_redirects=False
+        )
+        should_close_client = True
+
+    try:
+        node_response = await client.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=content,
+        )
+    except httpx.RequestError as exc:
+        logger.error(
+            f"Failed to proxy OAuth request to Node.js backend ({target_url}): {exc}"
+        )
+        return Response(
+            content=json.dumps({
+                "error": "temporarily_unavailable",
+                "error_description": (
+                    "OAuth authorization service is temporarily unavailable."
+                ),
+            }),
+            status_code=503,
+            media_type="application/json",
+        )
+    finally:
+        if should_close_client:
+            await client.aclose()
+
+    response_headers = {
+        k: v
+        for k, v in node_response.headers.items()
+        if k.lower() not in RESPONSE_HOP_BY_HOP
+    }
+
+    if "location" in response_headers:
+        loc = response_headers["location"]
+        for internal_prefix in (
+            node_base_url,
+            "http://127.0.0.1:3000",
+            "http://localhost:3000",
+        ):
+            if loc.startswith(internal_prefix):
+                loc = (
+                    f"{forwarded_proto}://{forwarded_host}"
+                    + loc[len(internal_prefix):]
+                )
+                response_headers["location"] = loc
+                break
+
+    return Response(
+        content=node_response.content,
+        status_code=node_response.status_code,
+        headers=response_headers,
+        media_type=node_response.headers.get("content-type"),
+    )
+
+
+OAUTH_METHODS = ["GET", "POST", "HEAD", "OPTIONS"]
+
+
+@app.api_route(
+    "/.well-known/{full_path:path}",
+    methods=["GET", "HEAD", "OPTIONS"],
+    include_in_schema=False,
+)
+async def proxy_well_known(request: Request, full_path: str = ""):
+    return await _proxy_oauth_to_node(request)
+
+
+@app.api_route(
+    "/oauth/{full_path:path}",
+    methods=OAUTH_METHODS,
+    include_in_schema=False,
+)
+@app.api_route(
+    "/oauth",
+    methods=OAUTH_METHODS,
+    include_in_schema=False,
+)
+async def proxy_oauth(request: Request, full_path: str = ""):
+    return await _proxy_oauth_to_node(request)
+
+
+@app.api_route(
+    "/authorize.html",
+    methods=["GET", "HEAD"],
+    include_in_schema=False,
+)
+async def proxy_authorize_html(request: Request):
+    return await _proxy_oauth_to_node(request)
 
 
 # Actually, let's just append the routes directly
