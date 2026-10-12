@@ -126,17 +126,17 @@ describe('OAuth 2.0 / 2.1 Server', () => {
       // Invalid response_type
       res = await request(app).get('/oauth/authorize?client_id=app&redirect_uri=http://cb&response_type=token');
       expect(res.status).toBe(400);
-      expect(res.text).toContain('Unsupported response_type');
+      expect(res.body.error).toBe('unsupported_response_type');
 
       // Missing PKCE
       res = await request(app).get('/oauth/authorize?client_id=app&redirect_uri=http://cb&response_type=code');
       expect(res.status).toBe(400);
-      expect(res.text).toContain('PKCE');
+      expect(res.body.error_description).toContain('PKCE');
 
       // Missing S256 method
       res = await request(app).get(`/oauth/authorize?client_id=app&redirect_uri=http://cb&response_type=code&code_challenge=${challenge}&code_challenge_method=plain`);
       expect(res.status).toBe(400);
-      expect(res.text).toContain('S256 is required');
+      expect(res.body.error_description).toContain('S256');
     });
 
     test('enforces redirect_uri whitelist for pre-registered client', async () => {
@@ -152,24 +152,32 @@ describe('OAuth 2.0 / 2.1 Server', () => {
         `/oauth/authorize?client_id=strict-client&redirect_uri=https://malicious.com/cb&response_type=code&code_challenge=${challenge}&code_challenge_method=S256`
       );
       expect(res.status).toBe(400);
-      expect(res.text).toContain('Unauthorized redirect_uri');
+      expect(res.body.error_description).toContain('Unauthorized redirect_uri');
     });
 
-    test('renders consent HTML for valid request and adds to pending queue', async () => {
+    test('redirects to authorize.html for valid request and adds to pending queue', async () => {
       const { challenge } = generatePKCE();
       const res = await request(app).get(
         `/oauth/authorize?client_id=gemini-spark&redirect_uri=http://127.0.0.1:8080/callback&response_type=code&state=xyz123&code_challenge=${challenge}&code_challenge_method=S256`
       );
 
-      expect(res.status).toBe(200);
-      expect(res.text).toContain('Authorization Request');
-      expect(res.text).toContain('gemini-spark');
+      expect(res.status).toBe(302);
+      expect(res.header.location).toContain('/authorize.html?request_id=req_');
 
       // Check that request appeared in pending queue
       const pendingRes = await request(app).get('/auth/oauth/pending');
       expect(pendingRes.status).toBe(200);
       expect(pendingRes.body.pending.length).toBe(1);
       expect(pendingRes.body.pending[0].client_id).toBe('gemini-spark');
+
+      // Test details endpoint for frontend
+      const detailsRes = await request(app).get(`/oauth/requests/${pendingRes.body.pending[0].id}/details`);
+      expect(detailsRes.status).toBe(200);
+      expect(detailsRes.body.client_id).toBe('gemini-spark');
+      expect(detailsRes.body.user_code).toBeDefined();
+
+      const notFoundRes = await request(app).get('/oauth/requests/fake-id/details');
+      expect(notFoundRes.status).toBe(404);
     });
   });
 
@@ -204,7 +212,7 @@ describe('OAuth 2.0 / 2.1 Server', () => {
         .send({ request_id: pending.id, action: 'approve', shared_secret: 'wrong-password' });
 
       expect(res.status).toBe(401);
-      expect(res.text).toContain('Invalid password');
+      expect(res.body.error_description || res.text).toContain('Invalid password');
     });
 
     test('approves request with valid Joplin password and redirects with code', async () => {
@@ -233,7 +241,7 @@ describe('OAuth 2.0 / 2.1 Server', () => {
         .send({ request_id: 'non-existent', action: 'approve', shared_secret: 'any' });
 
       expect(res.status).toBe(400);
-      expect(res.text).toContain('expired or invalid');
+      expect(res.body.error_description || res.text).toContain('expired or invalid');
     });
   });
 

@@ -127,16 +127,16 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
     } = req.query;
 
     if (!clientId || !redirectUri) {
-      return res.status(400).send('Missing client_id or redirect_uri.');
+      return res.status(400).json({ error: 'invalid_request', error_description: 'Missing client_id or redirect_uri.' });
     }
 
     if (responseType !== 'code') {
-      return res.status(400).send('Unsupported response_type. Must be "code".');
+      return res.status(400).json({ error: 'unsupported_response_type', error_description: 'Must be "code".' });
     }
 
     // Enforce PKCE S256 per RFC 7636
     if (!codeChallenge || codeChallengeMethod !== 'S256') {
-      return res.status(400).send('PKCE code_challenge with code_challenge_method=S256 is required.');
+      return res.status(400).json({ error: 'invalid_request', error_description: 'PKCE code_challenge with code_challenge_method=S256 is required.' });
     }
 
     const config = loadConfig();
@@ -145,7 +145,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
     // If client is pre-registered, strictly enforce redirect_uri whitelist
     if (registeredClient && Array.isArray(registeredClient.redirect_uris) && registeredClient.redirect_uris.length > 0) {
       if (!registeredClient.redirect_uris.includes(redirectUri)) {
-        return res.status(400).send('Unauthorized redirect_uri for this client.');
+        return res.status(400).json({ error: 'invalid_request', error_description: 'Unauthorized redirect_uri for this client.' });
       }
     }
 
@@ -170,112 +170,30 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
 
     pendingRequests.set(requestId, pendingItem);
 
-    // Render accessible consent page
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Authorize Application &bull; Joplin Vector Memory</title>
-  <style>
-    :root {
-      --bg: #f8f9fa; --card-bg: #ffffff; --border: #d0d7de; --text: #1f2328; --muted: #57606a;
-      --primary: #0056b3; --success: #198754; --danger: #dc3545; --code-bg: #eaeef2;
-    }
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #0d1117; --card-bg: #161b22; --border: #30363d; --text: #f0f6fc; --muted: #8b949e;
-        --primary: #388bfd; --success: #238636; --danger: #f85149; --code-bg: #21262d;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
-    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; width: 100%; max-width: 480px; padding: 2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    .header { text-align: center; margin-bottom: 1.5rem; }
-    .brand { font-size: 2.5rem; margin-bottom: 0.5rem; display: block; }
-    h1 { font-size: 1.4rem; color: var(--primary); }
-    .app-box { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1.25rem 0; }
-    .user-code { font-size: 1.2rem; font-weight: bold; letter-spacing: 0.1em; color: var(--primary); }
-    .scopes { list-style: none; margin: 1rem 0; font-size: 0.9rem; }
-    .scopes li { margin: 0.4rem 0; display: flex; align-items: center; gap: 0.5rem; }
-    .form-group { margin: 1.25rem 0; }
-    label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
-    input[type="password"] { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); color: var(--text); font-size: 1rem; }
-    .actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 0.75rem; margin-top: 1.5rem; }
-    button { padding: 0.75rem 1rem; border-radius: 6px; font-weight: 600; font-size: 1rem; cursor: pointer; border: none; }
-    .btn-deny { background: transparent; border: 1px solid var(--border); color: var(--muted); }
-    .btn-deny:hover { border-color: var(--danger); color: var(--danger); }
-    .btn-approve { background: var(--success); color: #fff; }
-    .btn-approve:hover { opacity: 0.9; }
-    .notice { font-size: 0.8rem; color: var(--muted); text-align: center; margin-top: 1.25rem; }
-  </style>
-</head>
-<body>
-  <main class="card" role="main">
-    <div class="header">
-      <span class="brand" aria-hidden="true">🧠</span>
-      <h1>Authorization Request</h1>
-      <p style="color: var(--muted); font-size: 0.9rem;">Joplin Server Vector Memory</p>
-    </div>
-
-    <div class="app-box">
-      <div><strong>Application:</strong> ${escapeHtml(pendingItem.client_name)}</div>
-      <div style="font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem;">Client ID: <code>${escapeHtml(clientId)}</code></div>
-      <div style="margin-top: 0.5rem;">Verification Code: <span class="user-code">${userCode}</span></div>
-    </div>
-
-    <ul class="scopes">
-      <li><span>🔍</span> Search &amp; retrieve notes</li>
-      <li><span>🧠</span> Record memories and context</li>
-    </ul>
-
-    <form method="POST" action="/oauth/authorize">
-      <input type="hidden" name="request_id" value="${requestId}">
-      
-      <div class="form-group">
-        <label for="shared-secret">Owner Confirmation Password / Secret:</label>
-        <input type="password" id="shared-secret" name="shared_secret" placeholder="Joplin Password or Client Secret" required autocomplete="current-password">
-        <p style="font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem;">
-          Or approve this request from your Admin Dashboard under "Pending Approvals".
-        </p>
-      </div>
-
-      <div class="actions">
-        <button type="submit" name="action" value="deny" class="btn-deny">Deny</button>
-        <button type="submit" name="action" value="approve" class="btn-approve">Approve Access</button>
-      </div>
-    </form>
-
-    <p class="notice">This page automatically redirects once approved.</p>
-  </main>
-
-  <script>
-    // Poll for out-of-band admin dashboard approval
-    const pollInterval = setInterval(async () => {
-      try {
-        const res = await fetch('/oauth/requests/${requestId}/status');
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'approved' && data.redirect_url) {
-            clearInterval(pollInterval);
-            window.location.href = data.redirect_url;
-          } else if (data.status === 'rejected' && data.redirect_url) {
-            clearInterval(pollInterval);
-            window.location.href = data.redirect_url;
-          }
-        }
-      } catch (_e) {}
-    }, 2000);
-  </script>
-</body>
-</html>`;
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(html);
+    // Redirect to static, safe consent page (eliminates reflected XSS)
+    res.redirect(`/authorize.html?request_id=${encodeURIComponent(requestId)}`);
   });
 
   // -------------------------------------------------------------
-  // 3. POST /oauth/authorize - On-page form submit
+  // 3. GET /oauth/requests/:id/details - JSON API for consent page
+  // -------------------------------------------------------------
+  router.get('/oauth/requests/:id/details', (req, res) => {
+    cleanup();
+    const item = pendingRequests.get(req.params.id);
+    if (!item) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    res.json({
+      id: item.id,
+      client_id: item.client_id,
+      client_name: item.client_name,
+      user_code: item.user_code,
+      scope: item.scope
+    });
+  });
+
+  // -------------------------------------------------------------
+  // 4. POST /oauth/authorize - On-page form submit
   // -------------------------------------------------------------
   router.post('/oauth/authorize', express.urlencoded({ extended: false }), (req, res) => {
     cleanup();
@@ -283,7 +201,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
     const pendingItem = pendingRequests.get(requestId);
 
     if (!pendingItem) {
-      return res.status(400).send('Authorization request expired or invalid.');
+      return res.status(400).json({ error: 'invalid_request', error_description: 'Authorization request expired or invalid.' });
     }
 
     if (action === 'deny') {
@@ -297,7 +215,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
     const config = loadConfig();
     const isValid = verifySecret(sharedSecret, pendingItem.client_id, config);
     if (!isValid) {
-      return res.status(401).send('Invalid password or shared secret. Please try again.');
+      return res.status(401).json({ error: 'access_denied', error_description: 'Invalid password or shared secret.' });
     }
 
     // Issue authorization code
@@ -324,7 +242,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
   });
 
   // -------------------------------------------------------------
-  // 4. GET /oauth/requests/:id/status - Status polling for waiting page
+  // 5. GET /oauth/requests/:id/status - Status polling for waiting page
   // -------------------------------------------------------------
   router.get('/oauth/requests/:id/status', (req, res) => {
     cleanup();
@@ -339,7 +257,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
   });
 
   // -------------------------------------------------------------
-  // 5. POST /oauth/token - Token exchange
+  // 6. POST /oauth/token - Token exchange
   // -------------------------------------------------------------
   router.post('/oauth/token', express.urlencoded({ extended: false }), express.json(), (req, res) => {
     cleanup();
@@ -437,7 +355,7 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
   });
 
   // -------------------------------------------------------------
-  // 6. Admin API Endpoints (Protected by Admin Auth in index.js)
+  // 7. Admin API Endpoints (Protected by Admin Auth in index.js)
   // -------------------------------------------------------------
 
   // List registered OAuth clients
@@ -567,16 +485,6 @@ function createOAuthRouter({ configPath, getGlobalCredentials }) {
   });
 
   return router;
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 module.exports = {

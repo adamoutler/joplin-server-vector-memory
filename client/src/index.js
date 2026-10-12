@@ -247,7 +247,8 @@ app.use(async (req, res, next) => {
     req.path.startsWith('/.well-known/') ||
     req.path === '/oauth/authorize' ||
     req.path === '/oauth/token' ||
-    req.path.startsWith('/oauth/requests/')
+    req.path.startsWith('/oauth/requests/') ||
+    req.path === '/authorize.html'
   ) {
     return next();
   }

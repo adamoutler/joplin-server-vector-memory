@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authorize Application &bull; Joplin Vector Memory</title>
+  <style>
+    :root {
+      --bg: #f8f9fa; --card-bg: #ffffff; --border: #d0d7de; --text: #1f2328; --muted: #57606a;
+      --primary: #0056b3; --success: #198754; --danger: #dc3545; --code-bg: #eaeef2;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1117; --card-bg: #161b22; --border: #30363d; --text: #f0f6fc; --muted: #8b949e;
+        --primary: #388bfd; --success: #238636; --danger: #f85149; --code-bg: #21262d;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; width: 100%; max-width: 480px; padding: 2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .header { text-align: center; margin-bottom: 1.5rem; }
+    .brand { font-size: 2.5rem; margin-bottom: 0.5rem; display: block; }
+    h1 { font-size: 1.4rem; color: var(--primary); }
+    .app-box { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 1.25rem 0; }
+    .user-code { font-size: 1.2rem; font-weight: bold; letter-spacing: 0.1em; color: var(--primary); }
+    .scopes { list-style: none; margin: 1rem 0; font-size: 0.9rem; }
+    .scopes li { margin: 0.4rem 0; display: flex; align-items: center; gap: 0.5rem; }
+    .form-group { margin: 1.25rem 0; }
+    label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.9rem; }
+    input[type="password"] { width: 100%; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); color: var(--text); font-size: 1rem; }
+    .actions { display: grid; grid-template-columns: 1fr 1.5fr; gap: 0.75rem; margin-top: 1.5rem; }
+    button { padding: 0.75rem 1rem; border-radius: 6px; font-weight: 600; font-size: 1rem; cursor: pointer; border: none; }
+    .btn-deny { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+    .btn-deny:hover { border-color: var(--danger); color: var(--danger); }
+    .btn-approve { background: var(--success); color: #fff; }
+    .btn-approve:hover { opacity: 0.9; }
+    .notice { font-size: 0.8rem; color: var(--muted); text-align: center; margin-top: 1.25rem; }
+  </style>
+</head>
+<body>
+  <main class="card" role="main">
+    <div class="header">
+      <span class="brand" aria-hidden="true">🧠</span>
+      <h1>Authorization Request</h1>
+      <p style="color: var(--muted); font-size: 0.9rem;">Joplin Server Vector Memory</p>
+    </div>
+
+    <div class="app-box">
+      <div><strong>Application:</strong> <span id="app-name">Loading...</span></div>
+      <div style="font-size: 0.85rem; color: var(--muted); margin-top: 0.25rem;">Client ID: <code id="client-id">-</code></div>
+      <div style="margin-top: 0.5rem;">Verification Code: <span class="user-code" id="user-code">-</span></div>
+    </div>
+
+    <ul class="scopes">
+      <li><span>🔍</span> Search &amp; retrieve notes</li>
+      <li><span>🧠</span> Record memories and context</li>
+    </ul>
+
+    <form method="POST" action="/oauth/authorize">
+      <input type="hidden" name="request_id" id="request-id-input">
+      
+      <div class="form-group">
+        <label for="shared-secret">Owner Confirmation Password / Secret:</label>
+        <input type="password" id="shared-secret" name="shared_secret" placeholder="Joplin Password or Client Secret" required autocomplete="current-password">
+        <p style="font-size: 0.8rem; color: var(--muted); margin-top: 0.3rem;">
+          Or approve this request from your Admin Dashboard under "Pending Approvals".
+        </p>
+      </div>
+
+      <div class="actions">
+        <button type="submit" name="action" value="deny" class="btn-deny">Deny</button>
+        <button type="submit" name="action" value="approve" class="btn-approve">Approve Access</button>
+      </div>
+    </form>
+
+    <p class="notice">This page automatically redirects once approved.</p>
+  </main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const requestId = params.get('request_id');
+
+    if (requestId) {
+      document.getElementById('request-id-input').value = requestId;
+
+      fetch('/oauth/requests/' + encodeURIComponent(requestId) + '/details')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && data.client_id) {
+            document.getElementById('app-name').textContent = data.client_name || data.client_id;
+            document.getElementById('client-id').textContent = data.client_id;
+            document.getElementById('user-code').textContent = data.user_code;
+          }
+        })
+        .catch(err => console.debug('Failed to load request details', err));
+
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/oauth/requests/' + encodeURIComponent(requestId) + '/status');
+          if (res.ok) {
+            const data = await res.json();
+            if (data.status === 'approved' && data.redirect_url) {
+              clearInterval(pollInterval);
+              window.location.href = data.redirect_url;
+            } else if (data.status === 'rejected' && data.redirect_url) {
+              clearInterval(pollInterval);
+              window.location.href = data.redirect_url;
+            }
+          }
+        } catch (_e) {}
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
