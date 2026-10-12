@@ -56,7 +56,7 @@ Update your `settings.json` (e.g., `.gemini/settings.json`) with the following:
 ```json
 {
   "mcpServers": {
-    "joplin_memory": {
+    "joplin_notes": {
       "url": "http://localhost:8000/http-api/mcp",
       "headers": {
         "Authorization": "Bearer <YOUR_LOCAL_ACCESS_TOKEN>"
@@ -71,7 +71,7 @@ Update your `settings.json` (e.g., `.gemini/settings.json`) with the following:
 ```json
 {
   "mcpServers": {
-    "joplin_memory": {
+    "joplin_notes": {
       "url": "http://localhost:8000/http-api/mcp/stream",
       "headers": {
         "Authorization": "Bearer <YOUR_LOCAL_ACCESS_TOKEN>"
@@ -86,7 +86,7 @@ Update your `settings.json` (e.g., `.gemini/settings.json`) with the following:
 ```json
 {
   "mcpServers": {
-    "joplin_memory": {
+    "joplin_notes": {
       "url": "http://localhost:8000/http-api/mcp/sse",
       "headers": {
         "Authorization": "Bearer <YOUR_LOCAL_ACCESS_TOKEN>"

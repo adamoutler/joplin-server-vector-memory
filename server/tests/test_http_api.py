@@ -406,7 +406,7 @@ def test_stateless_mcp_endpoint(temp_config_and_db):
         data = response.json()
         assert data.get("jsonrpc") == "2.0"
         assert "result" in data
-        assert data["result"]["serverInfo"]["name"] == "JoplinSemanticSearch"
+        assert data["result"]["serverInfo"]["name"] == "joplin_notes"
 
         # Test 2: with trailing slash (if it exists, though Starlette app.api_route might strictly match without slash if we didn't add the path:path parameter, but let's test it)
         # We only explicitly need to ensure that the core mcp endpoint works without throwing 404/307
@@ -1045,3 +1045,56 @@ def test_update_note_validation_and_errors(client, temp_config_and_db, mock_olla
     get_part = client.post("/http-api/get", json={"note_id": note_id}, headers=headers).json()
     assert "Replaced Line" in get_part["content"]
     assert "Header Note Line" not in get_part["content"]
+
+
+@pytest.mark.anyio
+async def test_joplin_notes_tools_registered():
+    """Verify all joplin_notes_* tools and backward-compatible aliases are registered."""
+    from src.main import mcp
+
+    tools = await mcp.list_tools()
+    tool_names = {t.name for t in tools}
+
+    expected_tools = {
+        "joplin_notes_search",
+        "notes_search",
+        "joplin_notes_get",
+        "notes_get",
+        "joplin_notes_create",
+        "joplin_notes_remember",
+        "notes_remember",
+        "joplin_notes_update",
+        "notes_update",
+        "joplin_notes_request_deletion",
+        "notes_request_deletion",
+        "joplin_notes_execute_deletion",
+        "notes_execute_deletion",
+        "joplin_notes_resource_get",
+        "resources_get",
+        "joplin_notes_resource_upload",
+        "resources_upload",
+    }
+    for expected in expected_tools:
+        assert expected in tool_names, f"Expected tool {expected} to be registered in mcp"
+
+
+def test_http_api_create(client, temp_config_and_db, mock_ollama):
+    """Verify POST /http-api/create functions as an alias to /http-api/remember."""
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/http-api/create",
+        json={"title": "Created Note", "content": "Created Content"},
+        headers=headers,
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("status") == "success"
+    note_id = data.get("id")
+    assert note_id is not None
+
+    # Verify retrieval
+    get_res = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
+    assert get_res.status_code == 200
+    assert get_res.json()["title"] == "Created Note"

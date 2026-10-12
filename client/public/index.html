@@ -411,7 +411,7 @@
          document.getElementById('example-mcp-sse').innerText = memAddr + '/http-api/mcp/sse';
          document.getElementById('example-cli').innerText = JSON.stringify({
            "mcpServers": {
-             "joplin_memory": {
+             "joplin_notes": {
                "url": memAddr + "/http-api/mcp",
                "headers": {
                  "Authorization": "Bearer " + firstKey
@@ -421,7 +421,7 @@
          }, null, 2);
          document.getElementById('example-streamable-config').innerText = JSON.stringify({
            "mcpServers": {
-             "joplin_memory": {
+             "joplin_notes": {
                "url": memAddr + "/http-api/mcp/stream",
                "headers": {
                  "Authorization": "Bearer " + firstKey
@@ -431,7 +431,7 @@
          }, null, 2);
          document.getElementById('example-sse-config').innerText = JSON.stringify({
            "mcpServers": {
-             "joplin_memory": {
+             "joplin_notes": {
                "url": memAddr + "/http-api/mcp/sse",
                "headers": {
                  "Authorization": "Bearer " + firstKey

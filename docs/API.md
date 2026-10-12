@@ -24,16 +24,24 @@ The primary way AI agents interact with the Joplin Memory Server is via MCP. The
 
 ### MCP Tools
 
-When an AI agent connects via MCP, it gains access to the following tools:
+When an AI agent connects via MCP, it gains access to the primary `joplin_notes_*` tools (and backward-compatible `notes_*` and `resources_*` aliases):
 
-- **`search_notes(query: str)`**
-  - **Description**: Search notes semantically using the provided query. Returns the top 5 notes with their ID, Title, and a Blurb. It utilizes Reciprocal Rank Fusion of vector and FTS matching.
-- **`get_note(note_id: str)`**
-  - **Description**: Get the full text content of a specific note by ID.
-- **`remember(title: str, content: str)`**
-  - **Description**: Save a new note into the memory bank. (Currently mocks relaying to Joplin Server by directly inserting into local SQLite).
-- **`delete_note(note_id: str)`**
-  - **Description**: Delete a note by its ID.
+- **`joplin_notes_search(query: str, limit: int = 5)`** (alias: `notes_search`)
+  - **Description**: Search Joplin notes semantically using natural language queries. Returns top notes with ID, Title, and relevant excerpt. Utilizes Reciprocal Rank Fusion combining sqlite-vec semantic search and FTS5 BM25 keyword matching.
+- **`joplin_notes_get(note_id: str)`** (alias: `notes_get`)
+  - **Description**: Get full text content, metadata, parent folder, and timestamps of a specific Joplin note by ID.
+- **`joplin_notes_create(title: str, content: str, folder: Optional[str] = None)`** (aliases: `joplin_notes_remember`, `notes_remember`)
+  - **Description**: Create, add, save, or remember a new note in Joplin. Relays to Joplin Server and immediately synchronizes to local vector storage.
+- **`joplin_notes_update(note_id: str, content: str, update_mode: str = 'full note replacement', ...)`** (alias: `notes_update`)
+  - **Description**: Update an existing Joplin note using optimistic concurrency control. Supports full replacement, partial replacement, append, and prepend modes.
+- **`joplin_notes_request_deletion(note_id: str, reason: str)`** (alias: `notes_request_deletion`)
+  - **Description**: Request deletion of a note (Step 1 of 2). Returns a short-lived `deletion_token` and confirmation title.
+- **`joplin_notes_execute_deletion(deletion_token: str, confirm_title: str, safety_attestation: dict)`** (alias: `notes_execute_deletion`)
+  - **Description**: Permanently delete a Joplin note (Step 2 of 2). Validates token, exact title, and safety attestation.
+- **`joplin_notes_resource_get(resource_id: str)`** (alias: `resources_get`)
+  - **Description**: Retrieve attachment/resource file metadata and content by ID.
+- **`joplin_notes_resource_upload(title: str, data: str, mime_type: str = "application/octet-stream")`** (alias: `resources_upload`)
+  - **Description**: Upload a new binary/text attachment to Joplin and receive a resource ID to embed in markdown notes (`[:/RESOURCE_ID]`).
 
 ---
 
@@ -73,9 +81,9 @@ In addition to MCP, a RESTful JSON API is exposed under `/http-api`.
   ```
 - **Response**: Full note content.
 
-### Remember Note
+### Create / Remember Note
 
-- **Endpoint**: `POST /http-api/remember`
+- **Endpoint**: `POST /http-api/create` (or `POST /http-api/remember`)
 - **Body Request**:
   ```json
   {

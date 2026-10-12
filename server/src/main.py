@@ -99,7 +99,7 @@ DESC_NOTE_ID = "Note ID"
 DESC_STATUS_OP = "Status of the operation"
 
 # Initialize FastMCP server
-mcp = FastMCP("JoplinSemanticSearch")
+mcp = FastMCP(os.environ.get("MCP_SERVER_NAME", "joplin_notes"))
 
 DEFAULT_CONFIG_PATH = "/app/data/config.json"
 
@@ -413,6 +413,7 @@ def _merge_rrf_scores(
     return rrf_scores, notes_data
 
 
+@mcp.tool(name="joplin_notes_search")
 @mcp.tool(name="notes_search")
 def search_notes(
     query: str,
@@ -425,8 +426,9 @@ def search_notes(
     recursive: bool = False,
 ) -> list[dict | TextContent]:
     """
-    Search notes semantically using the provided query.
-    Returns the notes for the specified page and limit with their ID, Title, and a Blurb.
+    Search Joplin notes semantically using hybrid vector search and keyword matching.
+    Returns matching Joplin notes for the specified page and limit with their ID, Title, and a Blurb.
+    Use this tool whenever the user asks to search notes, find notes, look up notes, or check memory in Joplin.
     """
     try:
         alpha = float(get_config().get("hybridAlpha", 0.5)) if alpha is None else alpha
@@ -671,10 +673,11 @@ def search_notes(
         ]
 
 
+@mcp.tool(name="joplin_notes_resource_get")
 @mcp.tool(name="resources_get")
 def get_resource(resource_id: str) -> str | ImageContent | EmbeddedResource:
     """
-    Get the contents of a specific resource (image, script, PDF, etc) attached to a note.
+    Get the contents of a specific Joplin resource (image, script, PDF, attachment) attached to a note.
     """
     try:
         res = _call_node_proxy("GET", f"/node-api/resources/{resource_id}")
@@ -707,14 +710,15 @@ def get_resource(resource_id: str) -> str | ImageContent | EmbeddedResource:
         return f"Error: {e}"
 
 
+@mcp.tool(name="joplin_notes_resource_upload")
 @mcp.tool(name="resources_upload")
 def upload_resource(
     filename: str, base64_data: str, mime_type: str = None
 ) -> list[dict | TextContent]:
     """
-    Uploads a binary file or resource to the server.
+    Uploads a binary file or resource attachment to Joplin Server.
     Returns {"resource_id": "string", "markdown_link": "string"}.
-    To attach the file to a note, embed the returned markdown_link into the note content.
+    To attach the file to a Joplin note, embed the returned markdown_link into the note content.
     """
     try:
         payload = {"filename": filename, "base64_data": base64_data}
@@ -769,10 +773,12 @@ def upload_resource(
         ]
 
 
+@mcp.tool(name="joplin_notes_get")
 @mcp.tool(name="notes_get")
 def get_note(note_id: str) -> list[dict | TextContent]:
     """
-    Get the full content of a specific note by ID.
+    Get the full content, body, and details of a specific Joplin note by ID.
+    Use this tool after search to read the full text of a note found via notes_search.
     """
     db = get_db_connection()
     cursor = db.cursor()
@@ -803,7 +809,7 @@ def get_note(note_id: str) -> list[dict | TextContent]:
             "content_hash": content_hash,
             "resources": resources,
         }
-        display_str = f"# {row[1]}\\n{content}"
+        display_str = f"# {row[1]}\n{content}"
         return [
             TextContent(
                 type="text",
@@ -830,18 +836,24 @@ def get_note(note_id: str) -> list[dict | TextContent]:
     ]
 
 
+@mcp.tool(name="joplin_notes_create")
+@mcp.tool(name="joplin_notes_remember")
 @mcp.tool(name="notes_remember")
 def remember(
     title: str, content: str, folder: str = DEFAULT_FOLDER
 ) -> list[dict | TextContent]:
     """
-    Remember a new note by storing its title and content.
+    Create, add, save, or remember a new note in Joplin by storing its title and markdown content.
+    ALWAYS use this tool whenever the user asks to:
+    - Add a note or create a note in Joplin
+    - Save or write a note about something in Joplin
+    - Remember or record note contents in Joplin
     Relays to Joplin Server via the Node.js proxy, then updates local SQLite for instant searchability.
 
     folder: Optional, discouraged, folder to save the note in. Defaults to DEFAULT_FOLDER.
 
     ATTACHING FILES: If you need to attach a file, script, or image to this note,
-    you must FIRST call the `upload_resource` tool. That tool will return an ID.
+    you must FIRST call the `joplin_notes_resource_upload` tool. That tool will return an ID.
     You must then embed that ID into the `content` of this note using standard
     Joplin markdown syntax: `[link text](:/THE_RETURNED_ID)` or `![image](:/THE_RETURNED_ID)`.
     """
@@ -945,6 +957,7 @@ def remember(
         ]
 
 
+@mcp.tool(name="joplin_notes_update")
 @mcp.tool(name="notes_update")
 def update_note(
     note_id: str,
@@ -955,7 +968,7 @@ def update_note(
     search_text: Optional[str] = None,
 ) -> list[dict | TextContent]:
     """
-    Update an existing note. Implement Optimistic Concurrency Control using last_modified_timestamp.
+    Update an existing Joplin note. Implement Optimistic Concurrency Control using last_modified_timestamp.
     update_mode can be 'full note replacement', 'partial note replacement', 'append', or 'prepend'.
     If search_text is provided, performs partial note replacement by locating the unique instance
     of search_text and replacing it with content.
@@ -1101,10 +1114,11 @@ def update_note(
 _deletion_tokens = {}
 
 
+@mcp.tool(name="joplin_notes_request_deletion")
 @mcp.tool(name="notes_request_deletion")
 def request_note_deletion(note_id: str, reason: str) -> list[dict | TextContent]:
     """
-    Request the deletion of a note. This is step 1 of 2.
+    Request the deletion of a Joplin note. This is step 1 of 2 in safe deletion.
     Returns {"deletion_token": "string", "note_title": "string"}.
     """
     db = get_db_connection()
@@ -1155,12 +1169,13 @@ def request_note_deletion(note_id: str, reason: str) -> list[dict | TextContent]
     ]
 
 
+@mcp.tool(name="joplin_notes_execute_deletion")
 @mcp.tool(name="notes_execute_deletion")
 def execute_deletion(
     deletion_token: str, confirm_title: str, safety_attestation: dict
 ) -> list[dict | TextContent]:
     """
-    Execute the deletion of a note. This is step 2 of 2.
+    Execute permanent deletion of a Joplin note. This is step 2 of 2 in safe deletion.
     Requires the token from step 1, the exact note title, and a safety attestation.
     """
 
@@ -1778,6 +1793,39 @@ async def api_remember(
         raise HTTPException(
             status_code=500, detail="An internal error occurred during remember."
         )
+
+
+@app.post(
+    "/http-api/create",
+    response_model=RememberResponse,
+    summary="Create Note (Alias for /http-api/remember)",
+    description="Create a new note in Joplin by storing its title and content.\n\n**Workflow Examples**:\n* **Create -> Get**: Use the `id` from the response to fetch the newly created note via `/api/get`.\n* **Create -> Delete**: Use the `id` from the response to delete the newly created note via `/api/delete`.",
+    responses={
+        500: {"description": "Internal server error"},
+        200: {
+            "description": "Successful Response",
+            "links": {
+                "GetNoteById": {
+                    "operationId": "api_get_http_api_get_post",
+                    "requestBody": {"note_id": "$response.body#/id"},
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/get`.",
+                },
+                "RequestDeletionById": {
+                    "operationId": "api_request_deletion_http_api_request_deletion_post",
+                    "requestBody": {
+                        "note_id": "$response.body#/id",
+                        "reason": "Note no longer needed",
+                    },
+                    "description": "The `id` value returned in the response can be used as the `note_id` parameter in `POST /http-api/request-deletion`.",
+                },
+            },
+        },
+    },
+)
+async def api_create(
+    request: RememberRequest, token: Annotated[str, Depends(verify_token)]
+):
+    return await api_remember(request, token)
 
 
 @app.post(
@@ -2452,7 +2500,12 @@ def custom_openapi():
                         "properties": {
                             "name": {
                                 "type": "string",
-                                "examples": ["notes_search", "notes_get"],
+                                "examples": [
+                                    "joplin_notes_search",
+                                    "joplin_notes_create",
+                                    "notes_search",
+                                    "notes_get",
+                                ],
                             },
                             "arguments": {
                                 "type": "object",

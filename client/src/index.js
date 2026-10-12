@@ -158,7 +158,7 @@ Use the gathered details to configure your connection.
 \`\`\`json
 {
   "mcpServers": {
-    "joplin_memory": {
+    "joplin_notes": {
       "url": "${'http'}://<HOST>:<BACKEND_PORT>/http-api/mcp",
       "headers": {
         "Authorization": "Bearer <API_TOKEN>"
@@ -172,7 +172,7 @@ Use the gathered details to configure your connection.
 \`\`\`json
 {
   "mcpServers": {
-    "joplin_memory": {
+    "joplin_notes": {
       "url": "${'http'}://<HOST>:<BACKEND_PORT>/http-api/mcp/sse",
       "headers": {
         "Authorization": "Bearer <API_TOKEN>"
@@ -183,11 +183,15 @@ Use the gathered details to configure your connection.
 \`\`\`
 
 ## 3. Capabilities
-Once connected, you can:
-- \`notes_search\`: Search notes semantically using a query.
-- \`notes_get\`: Fetch full note content by ID.
-- \`notes_remember\`: Save a new note into the memory bank.
-- \`notes_request_deletion\`: Delete a note by ID.
+Once connected, you have access to the primary \`joplin_notes_*\` tools (with backward-compatible \`notes_*\` aliases):
+- \`joplin_notes_search\` (alias: \`notes_search\`): Search Joplin notes semantically using a query.
+- \`joplin_notes_get\` (alias: \`notes_get\`): Fetch full note content by ID.
+- \`joplin_notes_create\` / \`joplin_notes_remember\` (alias: \`notes_remember\`): Create, save, or add a note in Joplin.
+- \`joplin_notes_update\` (alias: \`notes_update\`): Update or modify note content with optimistic locking.
+- \`joplin_notes_request_deletion\` (alias: \`notes_request_deletion\`): Request safe two-step note deletion.
+- \`joplin_notes_execute_deletion\` (alias: \`notes_execute_deletion\`): Permanently delete a note using a deletion token.
+- \`joplin_notes_resource_get\` (alias: \`resources_get\`): Fetch binary or text attachments/resources.
+- \`joplin_notes_resource_upload\` (alias: \`resources_upload\`): Upload attachments/resources to link in notes.
 `);
 });
 
