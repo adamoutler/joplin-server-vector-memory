@@ -238,7 +238,7 @@ class TestOperationalSystem:
                 search_query = f"secret number is {secret_uuid}"
                 print(f"[Step 4a] Searching via MCP for: {search_query}")
                 search_res = await session.call_tool(
-                    "notes_search",
+                    "joplin_notes_search",
                     arguments={"query": search_query}
                 )
 
@@ -254,7 +254,7 @@ class TestOperationalSystem:
                 # Note Retrieval
                 print(f"[Step 4b] Retrieving note via MCP ID: {found_note_id}")
                 get_res = await session.call_tool(
-                    "notes_get",
+                    "joplin_notes_get",
                     arguments={"note_id": found_note_id}
                 )
 
@@ -264,7 +264,7 @@ class TestOperationalSystem:
                 get_data = json.loads(get_res.content[0].text)
 
                 get_data_title = get_data.get("title", "")
-                assert display_text.startswith(f"# {get_data_title}\\n"), "Display format should start with '# [full title]'"
+                assert display_text.startswith(f"# {get_data_title}\n"), "Display format should start with '# [full title]'"
 
                 assert get_data.get("id") == found_note_id
                 assert secret_uuid in get_data.get("content", ""), "Secret UUID not found in the actual note content"
@@ -272,7 +272,7 @@ class TestOperationalSystem:
                 # Note Deletion Workflow
                 print("[Step 4c] Requesting secure note deletion via MCP...")
                 del_req_res = await session.call_tool(
-                    "notes_request_deletion",
+                    "joplin_notes_request_deletion",
                     arguments={"note_id": found_note_id, "reason": "E2E test cleanup"}
                 )
                 del_req_data = json.loads(del_req_res.content[0].text)
@@ -280,7 +280,7 @@ class TestOperationalSystem:
 
                 print("[Step 4d] Executing requested deletion with safety attestation...")
                 del_exec_res = await session.call_tool(
-                    "notes_execute_deletion",
+                    "joplin_notes_execute_deletion",
                     arguments={
                         "deletion_token": token,
                         "confirm_title": get_data.get("title"),
@@ -296,7 +296,7 @@ class TestOperationalSystem:
                 # Verify Deletion
                 print("[Step 4e] Verifying deletion via subsequent search...")
                 search_res_2 = await session.call_tool(
-                    "notes_search",
+                    "joplin_notes_search",
                     arguments={"query": search_query}
                 )
 

@@ -510,7 +510,7 @@ def test_maintenance_handshake(client, temp_config_and_db):
     assert not os.path.exists("/tmp/maintenance.confirm")
 
 
-def test_mcp_notes_search(client, temp_config_and_db, mock_ollama):
+def test_mcp_joplin_notes_search(client, temp_config_and_db, mock_ollama):
     _, _, token = temp_config_and_db
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
 
@@ -1049,7 +1049,7 @@ def test_update_note_validation_and_errors(client, temp_config_and_db, mock_olla
 
 @pytest.mark.anyio
 async def test_joplin_notes_tools_registered():
-    """Verify all joplin_notes_* tools and backward-compatible aliases are registered."""
+    """Verify strictly the 8 canonical joplin_notes_* tools are registered without legacy aliases."""
     from src.main import mcp
 
     tools = await mcp.list_tools()
@@ -1057,25 +1057,29 @@ async def test_joplin_notes_tools_registered():
 
     expected_tools = {
         "joplin_notes_search",
-        "notes_search",
         "joplin_notes_get",
-        "notes_get",
         "joplin_notes_create",
-        "joplin_notes_remember",
-        "notes_remember",
         "joplin_notes_update",
-        "notes_update",
         "joplin_notes_request_deletion",
-        "notes_request_deletion",
         "joplin_notes_execute_deletion",
-        "notes_execute_deletion",
         "joplin_notes_resource_get",
-        "resources_get",
         "joplin_notes_resource_upload",
+    }
+    assert tool_names == expected_tools
+
+    legacy_tools = {
+        "notes_search",
+        "notes_get",
+        "notes_remember",
+        "joplin_notes_remember",
+        "notes_update",
+        "notes_request_deletion",
+        "notes_execute_deletion",
+        "resources_get",
         "resources_upload",
     }
-    for expected in expected_tools:
-        assert expected in tool_names, f"Expected tool {expected} to be registered in mcp"
+    for legacy in legacy_tools:
+        assert legacy not in tool_names, f"Legacy tool {legacy} should not be registered in mcp"
 
 
 def test_http_api_create(client, temp_config_and_db, mock_ollama):
@@ -1098,3 +1102,62 @@ def test_http_api_create(client, temp_config_and_db, mock_ollama):
     get_res = client.post("/http-api/get", json={"note_id": note_id}, headers=headers)
     assert get_res.status_code == 200
     assert get_res.json()["title"] == "Created Note"
+
+
+@pytest.mark.anyio
+async def test_mcp_call_tool_primary_vs_legacy_rejection(temp_config_and_db, mock_ollama):
+    """Verify that calling primary tools succeeds while calling legacy aliases raises an error."""
+    from src.main import mcp
+
+    # Primary tool call succeeds
+    search_res = await mcp.call_tool("joplin_notes_search", {"query": "apple", "limit": 1})
+    assert search_res is not None
+    assert search_res.content is not None
+
+    # Legacy tools are rejected
+    legacy_tools = [
+        "notes_search",
+        "notes_get",
+        "notes_remember",
+        "joplin_notes_remember",
+        "notes_update",
+        "resources_get",
+        "resources_upload",
+    ]
+    for legacy_name in legacy_tools:
+        with pytest.raises(Exception) as exc_info:
+            await mcp.call_tool(legacy_name, {"query": "test"})
+        err_msg = str(exc_info.value).lower()
+        assert "not found" in err_msg or "unknown tool" in err_msg or "is not registered" in err_msg
+
+
+def test_stateless_mcp_tools_list_and_legacy_call(temp_config_and_db, mock_ollama):
+    """Verify MCP JSON-RPC protocol over POST /mcp exposes exactly 8 tools and returns JSON-RPC error for legacy names."""
+    _, _, token = temp_config_and_db
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    with TestClient(app) as test_client:
+        # 1. tools/list via JSON-RPC
+        list_payload = {"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1}
+        resp = test_client.post("/mcp", json=list_payload, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "result" in data
+        registered_tools = {t["name"] for t in data["result"]["tools"]}
+        assert len(registered_tools) == 8
+        assert all(t.startswith("joplin_notes_") for t in registered_tools)
+        assert not any(t.startswith("notes_") or t.startswith("resources_") for t in registered_tools)
+
+        # 2. tools/call with legacy tool returns error
+        call_payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": "notes_search", "arguments": {"query": "apple"}},
+            "id": 2,
+        }
+        call_resp = test_client.post("/mcp", json=call_payload, headers=headers)
+        assert call_resp.status_code == 200
+        call_data = call_resp.json()
+        assert "error" in call_data or (
+            "result" in call_data and call_data["result"].get("isError") is True
+        )

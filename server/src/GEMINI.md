@@ -2,7 +2,7 @@
 
 ## How it works
 This directory contains the operational logic of the Python MCP Server.
-- `main.py` initializes the FastMCP server (`joplin_notes`), configures the FastAPI application, sets up middleware (e.g., for authentication and JSON acceptance), and defines the primary MCP tools (`joplin_notes_search`, `joplin_notes_get`, `joplin_notes_create`/`joplin_notes_remember`, `joplin_notes_update`, `joplin_notes_request_deletion`, `joplin_notes_execute_deletion`, `joplin_notes_resource_get`, `joplin_notes_resource_upload`) along with backward-compatible `notes_*` and `resources_*` aliases.
+- `main.py` initializes the FastMCP server (`joplin_notes`), configures the FastAPI application, sets up middleware (e.g., for authentication and JSON acceptance), and defines the canonical MCP tools (`joplin_notes_search`, `joplin_notes_get`, `joplin_notes_create`, `joplin_notes_update`, `joplin_notes_request_deletion`, `joplin_notes_execute_deletion`, `joplin_notes_resource_get`, `joplin_notes_resource_upload`).
 - `db.py` provides connection pooling and utilities for interacting with the SQLite database populated by the Node.js client.
 
 ## Dependencies

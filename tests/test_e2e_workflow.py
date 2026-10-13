@@ -227,7 +227,7 @@ async def _query_mcp_server(secret_uuid, sqlite_db_path, created_note_id, mock_o
             print(f"Searching via MCP for: {search_query}")
 
             search_res = await session.call_tool(
-                "notes_search",
+                "joplin_notes_search",
                 arguments={"query": search_query}
             )
 
@@ -252,7 +252,7 @@ async def _query_mcp_server(secret_uuid, sqlite_db_path, created_note_id, mock_o
 
             # Read the note via get_note
             get_res = await session.call_tool(
-                "notes_get",
+                "joplin_notes_get",
                 arguments={"note_id": found_note_id}
             )
 

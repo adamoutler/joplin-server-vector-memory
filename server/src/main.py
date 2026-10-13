@@ -414,7 +414,6 @@ def _merge_rrf_scores(
 
 
 @mcp.tool(name="joplin_notes_search")
-@mcp.tool(name="notes_search")
 def search_notes(
     query: str,
     page: int = 1,
@@ -674,7 +673,6 @@ def search_notes(
 
 
 @mcp.tool(name="joplin_notes_resource_get")
-@mcp.tool(name="resources_get")
 def get_resource(resource_id: str) -> str | ImageContent | EmbeddedResource:
     """
     Get the contents of a specific Joplin resource (image, script, PDF, attachment) attached to a note.
@@ -711,7 +709,6 @@ def get_resource(resource_id: str) -> str | ImageContent | EmbeddedResource:
 
 
 @mcp.tool(name="joplin_notes_resource_upload")
-@mcp.tool(name="resources_upload")
 def upload_resource(
     filename: str, base64_data: str, mime_type: str = None
 ) -> list[dict | TextContent]:
@@ -774,11 +771,10 @@ def upload_resource(
 
 
 @mcp.tool(name="joplin_notes_get")
-@mcp.tool(name="notes_get")
 def get_note(note_id: str) -> list[dict | TextContent]:
     """
     Get the full content, body, and details of a specific Joplin note by ID.
-    Use this tool after search to read the full text of a note found via notes_search.
+    Use this tool after search to read the full text of a note found via joplin_notes_search.
     """
     db = get_db_connection()
     cursor = db.cursor()
@@ -837,8 +833,6 @@ def get_note(note_id: str) -> list[dict | TextContent]:
 
 
 @mcp.tool(name="joplin_notes_create")
-@mcp.tool(name="joplin_notes_remember")
-@mcp.tool(name="notes_remember")
 def remember(
     title: str, content: str, folder: str = DEFAULT_FOLDER
 ) -> list[dict | TextContent]:
@@ -958,7 +952,6 @@ def remember(
 
 
 @mcp.tool(name="joplin_notes_update")
-@mcp.tool(name="notes_update")
 def update_note(
     note_id: str,
     content: str,
@@ -1115,7 +1108,6 @@ _deletion_tokens = {}
 
 
 @mcp.tool(name="joplin_notes_request_deletion")
-@mcp.tool(name="notes_request_deletion")
 def request_note_deletion(note_id: str, reason: str) -> list[dict | TextContent]:
     """
     Request the deletion of a Joplin note. This is step 1 of 2 in safe deletion.
@@ -1170,7 +1162,6 @@ def request_note_deletion(note_id: str, reason: str) -> list[dict | TextContent]
 
 
 @mcp.tool(name="joplin_notes_execute_deletion")
-@mcp.tool(name="notes_execute_deletion")
 def execute_deletion(
     deletion_token: str, confirm_title: str, safety_attestation: dict
 ) -> list[dict | TextContent]:
@@ -2503,8 +2494,8 @@ def custom_openapi():
                                 "examples": [
                                     "joplin_notes_search",
                                     "joplin_notes_create",
-                                    "notes_search",
-                                    "notes_get",
+                                    "joplin_notes_get",
+                                    "joplin_notes_update",
                                 ],
                             },
                             "arguments": {
