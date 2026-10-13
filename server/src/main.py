@@ -6,7 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import FastAPI, Depends, HTTPException, status, Request
-from starlette.responses import Response
+from starlette.responses import Response, FileResponse
 from fastmcp import FastMCP
 import httpx
 import re
@@ -30,6 +30,7 @@ from mcp.types import (
     BlobResourceContents,
     TextContent,
     Annotations,
+    Icon,
 )
 from typing import Annotated
 
@@ -98,8 +99,53 @@ DEFAULT_FOLDER = "Agent Memory"
 DESC_NOTE_ID = "Note ID"
 DESC_STATUS_OP = "Status of the operation"
 
+
+def _get_mcp_icons() -> list[Icon]:
+    """
+    Load custom icon for MCP initialize metadata (SEP-973 / Gemini Custom Apps).
+    """
+    icons = []
+    asset_paths = [
+        os.path.join(os.path.dirname(__file__), "assets", "icon-128.png"),
+        os.path.join(os.path.dirname(__file__), "assets", "icon.png"),
+        os.path.join(os.path.dirname(__file__), "../../client/public", "icon-128.png"),
+        os.path.join(os.path.dirname(__file__), "../../client/public", "icon.png"),
+        "/app/client/public/icon-128.png",
+        "/app/client/public/icon.png",
+    ]
+    for p in asset_paths:
+        if os.path.isfile(p):
+            try:
+                with open(p, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                    icons.append(
+                        Icon(
+                            src=f"data:image/png;base64,{b64}",
+                            mimeType="image/png",
+                            sizes=["128x128"],
+                        )
+                    )
+                break
+            except Exception as e:
+                logger.warning(f"Failed to load icon from {p}: {e}")
+
+    # Fallback/standard relative path for web clients
+    icons.append(
+        Icon(
+            src="/icon.png",
+            mimeType="image/png",
+            sizes=["512x512"],
+        )
+    )
+    return icons
+
+
 # Initialize FastMCP server
-mcp = FastMCP(os.environ.get("MCP_SERVER_NAME", "joplin_notes"))
+mcp = FastMCP(
+    os.environ.get("MCP_SERVER_NAME", "joplin_notes"),
+    icons=_get_mcp_icons(),
+    website_url="https://github.com/adamoutler/joplin-server-vector-memory",
+)
 
 DEFAULT_CONFIG_PATH = "/app/data/config.json"
 
@@ -2315,6 +2361,44 @@ async def proxy_oauth_request_status(request_id: str, request: Request):
     return await _forward_oauth_endpoint(
         request, f"/oauth/requests/{safe_id}/status"
     )
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/icon.png", include_in_schema=False)
+@app.get("/icon.svg", include_in_schema=False)
+@app.get("/icon-128.png", include_in_schema=False)
+@app.get("/icon-192.png", include_in_schema=False)
+@app.get("/icon-512.png", include_in_schema=False)
+@app.get("/apple-touch-icon.png", include_in_schema=False)
+@app.get("/manifest.json", include_in_schema=False)
+async def serve_static_icon(request: Request):
+    filename = request.url.path.lstrip("/")
+    candidate_dirs = [
+        os.path.join(os.path.dirname(__file__), "assets"),
+        os.path.join(os.path.dirname(__file__), "../../client/public"),
+        "/app/client/public",
+    ]
+    for c_dir in candidate_dirs:
+        file_path = os.path.join(c_dir, filename)
+        if os.path.isfile(file_path):
+            media_type = (
+                "image/x-icon"
+                if filename.endswith(".ico")
+                else "image/svg+xml"
+                if filename.endswith(".svg")
+                else "application/json"
+                if filename.endswith(".json")
+                else "image/png"
+            )
+            return FileResponse(
+                file_path,
+                media_type=media_type,
+                headers={
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "public, max-age=86400",
+                },
+            )
+    return await _forward_oauth_endpoint(request, f"/{filename}")
 
 
 # Actually, let's just append the routes directly

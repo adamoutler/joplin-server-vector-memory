@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Joplin Memory Server Dashboard</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
   <style>
     body { font-family: sans-serif; margin: 2rem; max-width: 600px; background: #f9f9f9; color: #333; }
     .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -55,7 +62,10 @@
 </head>
 <body>
   <div class="container">
-    <h1>Joplin Memory Server Dashboard</h1>
+    <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+      <img src="/icon.png" alt="Joplin Server Vector Memory Logo" style="width: 44px; height: 44px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+      <h1 style="margin: 0;">Joplin Memory Server Dashboard</h1>
+    </div>
     <div class="status" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
       <div class="status-block">
         <h2 style="margin: 0;">Sync Status: <span id="sync-status-text" class="status-offline">Offline</span></h2>

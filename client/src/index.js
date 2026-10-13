@@ -247,13 +247,21 @@ app.use(async (req, res, next) => {
     return next();
   }
 
-  // Exempt public OAuth endpoints (discovery, consent page, token exchange, and polling)
+  // Exempt public OAuth endpoints, static icons, and manifests
   if (
     req.path.startsWith('/.well-known/') ||
     req.path === '/oauth/authorize' ||
     req.path === '/oauth/token' ||
     req.path.startsWith('/oauth/requests/') ||
-    req.path === '/authorize.html'
+    req.path === '/authorize.html' ||
+    req.path === '/favicon.ico' ||
+    req.path === '/icon.png' ||
+    req.path === '/icon.svg' ||
+    req.path === '/icon-128.png' ||
+    req.path === '/icon-192.png' ||
+    req.path === '/icon-512.png' ||
+    req.path === '/apple-touch-icon.png' ||
+    req.path === '/manifest.json'
   ) {
     return next();
   }

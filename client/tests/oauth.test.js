@@ -57,6 +57,7 @@ describe('OAuth 2.0 / 2.1 Server', () => {
       expect(res.body.issuer).toBeDefined();
       expect(res.body.authorization_endpoint).toContain('/oauth/authorize');
       expect(res.body.token_endpoint).toContain('/oauth/token');
+      expect(res.body.logo_uri).toContain('/icon.png');
       expect(res.body.response_types_supported).toEqual(['code']);
       expect(res.body.grant_types_supported).toEqual(['authorization_code']);
       expect(res.body.code_challenge_methods_supported).toEqual(['S256']);
