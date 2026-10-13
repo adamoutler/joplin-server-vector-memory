@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="tileGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2575fc"/>
+      <stop offset="100%" stop-color="#0e4bba"/>
+    </linearGradient>
+
+    <!-- Sparkle Glow Filter -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Sparkle Linear Gradient -->
+    <linearGradient id="sparkleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="40%" stop-color="#93e0ff"/>
+      <stop offset="70%" stop-color="#fef08a"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+
+    <!-- Server Metal Gradient -->
+    <linearGradient id="serverChassis" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#cbd5e1"/>
+      <stop offset="25%" stop-color="#94a3b8"/>
+      <stop offset="75%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+
+    <!-- Server Inner Bay -->
+    <linearGradient id="serverBay" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 1. Joplin Blue Squircle Base -->
+  <rect x="24" y="24" width="464" height="464" rx="104" ry="104" fill="url(#tileGradient)" filter="drop-shadow(0 16px 32px rgba(0, 32, 96, 0.4))"/>
+  <rect x="24" y="24" width="464" height="464" rx="104" ry="104" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="4"/>
+
+  <!-- 2. Joplin "J" Emblem -->
+  <g transform="translate(142, 64) scale(9.5)" fill="#ffffff" opacity="0.95">
+    <path d="m20.969 0h-8.904c-.084 0-.152.068-.152.152v2.827c0 .095.077.172.172.172h1.221c.493 0 .894.38.937.863v13.378h-.001l-.017.363-.05.282c-.011.044-.02.089-.033.132-.081.258-.208.497-.384.708-.007.007-.015.014-.021.021-.054.063-.11.123-.172.18-.063.057-.13.11-.2.16-.498.353-1.169.508-1.918.436-.955-.089-1.903-.523-2.669-1.22-.765-.696-1.242-1.558-1.34-2.427-.089-.778.144-1.462.655-1.927.002-.001.003-.002.004-.003.02-.018.041-.033.062-.05.366-.307.842-.493 1.387-.544.006 0 .012-.001.017-.002l.298-.014.35.017c.008 0 .016.002.024.003.499.05.993.199 1.462.425.01 0 .022.003.036.011.143.079.17-.005.174-.061v-4.256c0-.122-.085-.23-.203-.256-2.527-.556-5.005.022-6.754 1.615-1.528 1.389-2.267 3.395-2.027 5.502.213 1.876 1.176 3.679 2.712 5.076 1.497 1.362 3.402 2.213 5.368 2.399.271.025.543.038.809.038 1.877 0 3.619-.644 4.905-1.814 1.218-1.109 1.948-2.632 2.055-4.288l.01-10.866h.001v-2.955c.011-.513.429-.926.945-.926h1.221c.095 0 .172-.077.172-.172v-2.827c0-.084-.068-.152-.152-.152z"/>
+  </g>
+
+  <!-- 3. Foreground Rack Server Unit -->
+  <g transform="translate(68, 206)">
+    <!-- Server Drop Shadow -->
+    <rect x="0" y="8" width="376" height="136" rx="14" fill="rgba(0,0,0,0.5)" filter="drop-shadow(0 12px 24px rgba(0,0,0,0.6))"/>
+    
+    <!-- Outer Chassis / Faceplate -->
+    <rect x="0" y="0" width="376" height="136" rx="12" fill="url(#serverChassis)" stroke="#94a3b8" stroke-width="2"/>
+    
+    <!-- Rack Mount Ears -->
+    <rect x="4" y="8" width="20" height="120" rx="4" fill="#64748b"/>
+    <circle cx="14" cy="24" r="3.5" fill="#1e293b"/>
+    <circle cx="14" cy="112" r="3.5" fill="#1e293b"/>
+
+    <rect x="352" y="8" width="20" height="120" rx="4" fill="#64748b"/>
+    <circle cx="362" cy="24" r="3.5" fill="#1e293b"/>
+    <circle cx="362" cy="112" r="3.5" fill="#1e293b"/>
+
+    <!-- Drive Bays Area -->
+    <rect x="32" y="12" width="312" height="112" rx="6" fill="url(#serverBay)" stroke="#334155" stroke-width="1.5"/>
+
+    <!-- Drive Slots / Grilles -->
+    <!-- Bay 1 -->
+    <rect x="40" y="18" width="296" height="22" rx="4" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <line x1="50" y1="29" x2="280" y2="29" stroke="#475569" stroke-width="2" stroke-dasharray="4,4"/>
+    <circle cx="316" cy="29" r="3" fill="#38bdf8"/>
+
+    <!-- Bay 2 -->
+    <rect x="40" y="44" width="296" height="22" rx="4" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <line x1="50" y1="55" x2="280" y2="55" stroke="#475569" stroke-width="2" stroke-dasharray="4,4"/>
+    <circle cx="316" cy="55" r="3" fill="#34d399"/>
+
+    <!-- Bay 3 -->
+    <rect x="40" y="70" width="296" height="22" rx="4" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <line x1="50" y1="81" x2="280" y2="81" stroke="#475569" stroke-width="2" stroke-dasharray="4,4"/>
+    <circle cx="316" cy="81" r="3" fill="#38bdf8"/>
+
+    <!-- Bay 4 -->
+    <rect x="40" y="96" width="296" height="22" rx="4" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <line x1="50" y1="107" x2="260" y2="107" stroke="#475569" stroke-width="2" stroke-dasharray="4,4"/>
+    <!-- Status Badge -->
+    <rect x="272" y="100" width="46" height="14" rx="3" fill="#0284c7"/>
+    <text x="295" y="111" font-size="8" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-weight="bold" fill="#ffffff" text-anchor="middle">SERVER</text>
+  </g>
+
+  <!-- 4. Glowing Gemini Vector Sparkle (in front of server) -->
+  <g transform="translate(256, 274)" filter="url(#glow)">
+    <!-- Circuit / Synapse Light Trails -->
+    <path d="M-90,-10 C-40,-10 -20,-5 0,0 C20,5 40,10 90,10" stroke="#38bdf8" stroke-width="2" fill="none" opacity="0.8"/>
+    <path d="M-80,15 C-40,15 -15,5 0,0 C15,-5 40,-15 80,-15" stroke="#a78bfa" stroke-width="2" fill="none" opacity="0.7"/>
+
+    <!-- 4-pointed AI Sparkle Star -->
+    <path d="M 0,-72 C 3,-20 20,-3 72,0 C 20,3 3,20 0,72 C -3,20 -20,3 -72,0 C -20,-3 -3,-20 0,-72 Z" fill="url(#sparkleGrad)"/>
+    <!-- Core Bright White Star Center -->
+    <circle cx="0" cy="0" r="10" fill="#ffffff" filter="drop-shadow(0 0 6px #ffffff)"/>
+  </g>
+</svg>

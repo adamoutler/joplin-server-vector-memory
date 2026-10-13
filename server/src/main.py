@@ -2363,42 +2363,66 @@ async def proxy_oauth_request_status(request_id: str, request: Request):
     )
 
 
+_STATIC_ASSET_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "assets")
+)
+_FALLBACK_STATIC_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../client/public")
+)
+
+
+def _serve_static_asset(filename: str, media_type: str) -> FileResponse:
+    target_path = os.path.join(_STATIC_ASSET_DIR, filename)
+    if not os.path.isfile(target_path):
+        target_path = os.path.join(_FALLBACK_STATIC_DIR, filename)
+    return FileResponse(
+        target_path,
+        media_type=media_type,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=86400",
+        },
+    )
+
+
 @app.get("/favicon.ico", include_in_schema=False)
+async def serve_favicon_ico():
+    return _serve_static_asset("favicon.ico", "image/x-icon")
+
+
 @app.get("/icon.png", include_in_schema=False)
+async def serve_icon_png():
+    return _serve_static_asset("icon.png", "image/png")
+
+
 @app.get("/icon.svg", include_in_schema=False)
+async def serve_icon_svg():
+    return _serve_static_asset("icon.svg", "image/svg+xml")
+
+
 @app.get("/icon-128.png", include_in_schema=False)
+async def serve_icon_128_png():
+    return _serve_static_asset("icon-128.png", "image/png")
+
+
 @app.get("/icon-192.png", include_in_schema=False)
+async def serve_icon_192_png():
+    return _serve_static_asset("icon-192.png", "image/png")
+
+
 @app.get("/icon-512.png", include_in_schema=False)
+async def serve_icon_512_png():
+    return _serve_static_asset("icon-512.png", "image/png")
+
+
 @app.get("/apple-touch-icon.png", include_in_schema=False)
+async def serve_apple_touch_icon():
+    return _serve_static_asset("apple-touch-icon.png", "image/png")
+
+
 @app.get("/manifest.json", include_in_schema=False)
-async def serve_static_icon(request: Request):
-    filename = request.url.path.lstrip("/")
-    candidate_dirs = [
-        os.path.join(os.path.dirname(__file__), "assets"),
-        os.path.join(os.path.dirname(__file__), "../../client/public"),
-        "/app/client/public",
-    ]
-    for c_dir in candidate_dirs:
-        file_path = os.path.join(c_dir, filename)
-        if os.path.isfile(file_path):
-            media_type = (
-                "image/x-icon"
-                if filename.endswith(".ico")
-                else "image/svg+xml"
-                if filename.endswith(".svg")
-                else "application/json"
-                if filename.endswith(".json")
-                else "image/png"
-            )
-            return FileResponse(
-                file_path,
-                media_type=media_type,
-                headers={
-                    "Access-Control-Allow-Origin": "*",
-                    "Cache-Control": "public, max-age=86400",
-                },
-            )
-    return await _forward_oauth_endpoint(request, f"/{filename}")
+async def serve_manifest_json():
+    return _serve_static_asset("manifest.json", "application/json")
 
 
 # Actually, let's just append the routes directly
