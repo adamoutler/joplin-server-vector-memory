@@ -1,7 +1,7 @@
 # 🧠 Joplin Server Vector Memory MCP: Your Universal AI Brain
 
 [![SafeSkill Verified](https://img.shields.io/badge/SafeSkill-Verified%20Safe%2096%2F100-brightgreen?logo=shield)](https://safeskill.dev)
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/quality_gate?project=adamoutler_joplin-server-vector-memory)](https://sonarcloud.io/dashboard?id=adamoutler_joplin-server-vector-memory)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=adamoutler_joplin-server-vector-memory&metric=alert_status)](https://sonarcloud.io/dashboard?id=adamoutler_joplin-server-vector-memory)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=adamoutler_joplin-server-vector-memory&metric=security_rating)](https://sonarcloud.io/dashboard?id=adamoutler_joplin-server-vector-memory)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=adamoutler_joplin-server-vector-memory&metric=vulnerabilities)](https://sonarcloud.io/project/issues?id=adamoutler_joplin-server-vector-memory&types=VULNERABILITY)
 [![CI Pipeline](https://github.com/adamoutler/joplin-server-vector-memory/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/adamoutler/joplin-server-vector-memory/actions/workflows/ci.yml)
