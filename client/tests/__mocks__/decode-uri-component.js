@@ -6,7 +6,7 @@ var multiMatcher = new RegExp('(' + token + ')+', 'gi');
 function decodeComponents(components, split) {
 	try {
 		return [decodeURIComponent(components.join(''))];
-	} catch (err) {
+	} catch (_err) {
 		if (components.length === 1) {
 			return components;
 		}
@@ -20,7 +20,7 @@ function decodeComponents(components, split) {
 function decode(input) {
 	try {
 		return decodeURIComponent(input);
-	} catch (err) {
+	} catch (_err) {
 		var tokens = input.match(singleMatcher) || [];
 		for (var i = 1; i < tokens.length; i++) {
 			input = decodeComponents(tokens, i).join('');
@@ -36,7 +36,7 @@ function customDecodeUriComponent(input) {
 	}
 	try {
 		return decodeURIComponent(input);
-	} catch (err) {
+	} catch (_err) {
 		var replacement = input.replace(multiMatcher, decode);
 		return replacement;
 	}
