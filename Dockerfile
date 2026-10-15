@@ -27,15 +27,14 @@ RUN python3 -c "from sentence_transformers import SentenceTransformer; \
 # ==========================================
 # Stage 2: Builder (Node & Remaining Python)
 # ==========================================
-FROM node:22-bookworm AS builder
+FROM node:22-bookworm-slim AS builder
 
 # Install build dependencies for native modules (sqlite3)
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     python3-venv \
     build-essential \
-    sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -46,17 +45,27 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Install remaining Python dependencies from requirements.txt
 COPY server/requirements.txt ./server/
-RUN pip install --no-cache-dir -r server/requirements.txt
+RUN pip install --no-cache-dir -r server/requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Install Node dependencies and compile sqlite3
 COPY client/package*.json ./client/
 RUN cd client && \
-    npm ci --build-from-source=sqlite3 && \
+    npm ci --build-from-source=sqlite3 --omit=dev && \
     find . -type f -name "Cargo.lock" -delete && \
     npm cache clean --force
 
 # ==========================================
-# Stage 3: Final Runtime (Lightweight)
+# Stage 3: Testing (Optional, dev dependencies)
+# ==========================================
+FROM builder AS tester
+
+USER root
+COPY server/requirements-dev.txt ./server/
+RUN pip install --no-cache-dir -r server/requirements-dev.txt
+USER node
+
+# ==========================================
+# Stage 4: Final Runtime (Lightweight Production)
 # ==========================================
 FROM node:22-bookworm-slim AS runtime
 
@@ -72,19 +81,19 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 WORKDIR /app
 
 # Copy the fully populated python virtual environment
-COPY --from=builder /opt/venv /opt/venv
+COPY --chown=node:node --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy the Hugging Face cache containing pre-downloaded models
-COPY --from=python-base /opt/hf_cache /opt/hf_cache
+COPY --chown=node:node --from=python-base /opt/hf_cache /opt/hf_cache
 ENV HF_HOME="/opt/hf_cache"
 ENV HF_HUB_OFFLINE=1
 
 # Copy the node modules
-COPY --from=builder /app/client/node_modules ./client/node_modules
+COPY --chown=node:node --from=builder /app/client/node_modules ./client/node_modules
 
 # Copy full application code
-COPY . .
+COPY --chown=node:node . .
 
 # Environment setup
 ENV PYTHONUNBUFFERED=1
@@ -96,19 +105,8 @@ ENV SQLITE_DB_PATH="/app/data/vector_memory.sqlite"
 EXPOSE 3000
 EXPOSE 8000
 
-RUN chmod +x entrypoint.sh \
-    && mkdir -p /app/data && chown -R node:node /app
+RUN chmod +x entrypoint.sh && mkdir -p /app/data && chown -R node:node /app/data
 
 # Note: We start as root so the entrypoint can fix ownership of
 # volume-mounted /app/data, then drop to 'node' via gosu/exec.
 ENTRYPOINT ["./entrypoint.sh"]
-
-# ==========================================
-# Stage 4: Testing (Includes dev dependencies)
-# ==========================================
-FROM runtime AS tester
-
-USER root
-COPY server/requirements-dev.txt ./server/
-RUN pip install --no-cache-dir -r server/requirements-dev.txt
-USER node

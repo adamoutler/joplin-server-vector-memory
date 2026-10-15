@@ -1,8 +1,17 @@
-pytest
-pytest-playwright
-playwright
-pytest-playwright-visual
-pytest-timeout
-flake8
-pytest-cov
-pytest-xdist
+--extra-index-url https://download.pytorch.org/whl/cpu
+pytest==9.0.3
+pytest-playwright==0.7.2
+playwright==1.59.0
+pytest-playwright-visual==2.1.2
+pytest-timeout==2.4.0
+pytest-cov==7.1.0
+pytest-xdist==3.8.0
+pytest-base-url==2.1.0
+flake8==7.3.0
+pyflakes==3.4.0
+pycodestyle==2.14.0
+autopep8==2.3.2
+mccabe==0.7.0
+coverage==7.13.5
+pixelmatch==0.4.0
+execnet==2.1.2

@@ -4,6 +4,8 @@ client/node_modules/
 __pycache__/
 .pytest_cache/
 .git/
+.github/
+.gemini/
 .venv/
 new_venv/
 root_venv/
@@ -11,5 +13,16 @@ venv/
 node_modules/
 .ipynb_checkpoints/
 docs/
+plans/
 tests/
 repro_data/
+tmp-open-webui/
+*.log
+*.sqlite
+*.db
+.coverage
+server/.coverage
+coverage/
+client/coverage/
+server/test-results/
+client/test-results/

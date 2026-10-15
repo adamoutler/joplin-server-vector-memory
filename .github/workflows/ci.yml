@@ -97,6 +97,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
+        target: runtime
         platforms: linux/amd64
         tags: ${{ env.TEST_IMAGE }}
         labels: ${{ steps.meta.outputs.labels }}
@@ -166,6 +167,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
+        target: runtime
         platforms: linux/arm64
         tags: ghcr.io/${{ github.repository_owner }}/joplin-server-vector-memory-dev:arm64-${{ github.sha }}
         labels: ${{ steps.meta.outputs.labels }}
