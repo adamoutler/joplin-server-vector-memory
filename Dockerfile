@@ -15,8 +15,14 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install massive ML libraries separately for caching
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir torch sentence-transformers einops --extra-index-url https://download.pytorch.org/whl/cpu
+RUN pip install --no-cache-dir --upgrade pip "setuptools>=84.0.0" wheel && \
+    pip install --no-cache-dir \
+      torch==2.13.0 \
+      sentence-transformers==5.6.0 \
+      transformers==5.10.0 \
+      fsspec==2026.6.0 \
+      einops==0.8.2 \
+      --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Pre-download the model into the image to avoid runtime downloads
 # This caches the small fallback model
@@ -83,6 +89,18 @@ WORKDIR /app
 # Copy the fully populated python virtual environment
 COPY --chown=node:node --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+
+# Hardening: Remove unused package managers (npm, corepack, pip, wheel) from production runtime
+# Eliminates attack surface and vendored package manager CVEs in the final image
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm \
+           /usr/local/bin/npx \
+           /usr/local/bin/corepack \
+           /opt/venv/lib/python3.11/site-packages/pip* \
+           /opt/venv/lib/python3.11/site-packages/wheel* \
+           /opt/venv/bin/pip* \
+           /opt/venv/bin/wheel*
 
 # Copy the Hugging Face cache containing pre-downloaded models
 COPY --chown=node:node --from=python-base /opt/hf_cache /opt/hf_cache

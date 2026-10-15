@@ -253,7 +253,7 @@ jobs:
         PYTHONPATH: server:server/src
         APP_IMAGE: ${{ env.TEST_IMAGE }}
       run: |
-        python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py server/tests/test_partial_replacement.py server/tests/test_http_api_partial_update.py server/tests/test_db_edge.py server/tests/test_resources.py --junitxml=server/test-results/pytest-unit.xml --cov=server/src --cov-report=xml:server/test-results/pytest-cov.xml
+        python -m pytest -n auto --timeout=300 server/tests/test_server.py server/tests/test_config.py server/tests/test_openapi.py server/tests/test_db.py server/tests/test_http_api.py server/tests/test_fts_hybrid.py server/tests/test_extreme_friction_deletion.py server/tests/test_partial_replacement.py server/tests/test_http_api_partial_update.py server/tests/test_db_edge.py server/tests/test_resources.py server/tests/test_oauth_proxy.py server/tests/test_icons.py --junitxml=server/test-results/pytest-unit.xml --cov=server/src --cov-report=xml:server/test-results/pytest-cov.xml
 
     - name: Upload Test Results
       if: always()
