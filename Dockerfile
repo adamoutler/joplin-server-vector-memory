@@ -55,6 +55,7 @@ RUN pip install --no-cache-dir -r server/requirements.txt --extra-index-url http
 
 # Install Node dependencies and compile sqlite3
 COPY client/package*.json ./client/
+COPY client/vendor ./client/vendor
 RUN cd client && \
     npm ci --build-from-source=sqlite3 --omit=dev && \
     find . -type f -name "Cargo.lock" -delete && \

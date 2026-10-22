@@ -3,7 +3,7 @@ import globals from "globals";
 
 export default [
     {
-        ignores: ["coverage/**", "test-results/**"]
+        ignores: ["coverage/**", "test-results/**", "vendor/**"]
     },
     js.configs.recommended,
     {
