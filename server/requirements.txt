@@ -8,7 +8,7 @@ Authlib==1.7.1
 beartype==0.22.9
 cachetools==7.1.1
 caio==0.9.25
-certifi==2026.4.22
+certifi==2026.10.19
 cffi==2.0.0
 charset-normalizer==3.4.7
 click==8.3.3
