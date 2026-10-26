@@ -99,7 +99,6 @@ Your privacy is paramount. We've built the system so that your credentials stay 
 *   **[Local Embedding Plan](docs/local-embedding-plan.md)**: Details on our zero-configuration local AI fallback strategy.
 
 ### Development & Contributing
-*   **[Kanban Tickets](docs/kanban_tickets.md)**: Current roadmap, planned features, and bug fixes.
 *   **[CI/CD AI Feedback Loop](docs/CI_CD_AI_FEEDBACK_LOOP.md)**: How our autonomous AI agents handle testing and deployment.
 
 *Welcome to the future of personal knowledge management. Your AI brain is ready!* 🧠✨

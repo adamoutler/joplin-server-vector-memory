@@ -9,11 +9,12 @@ This skill outlines the strict requirements for creating, updating, and managing
 
 ## Core Directives for Kanban Management
 
-1.  **Exhaustive Detail:** Tickets must be self-contained. The agent executing the ticket will have NO context from the main chat session. You must include explicit file paths, precise logic requirements, and clear bug descriptions.
-2.  **Strict Definition of Done (DoD):** Never close a ticket without a clearly defined, empirically testable Definition of Done. The DoD must state exactly what constitutes success (e.g., "curl http://localhost:3000/docs returns an HTTP 200"). Vague criteria like "the bug is fixed" are unacceptable.
-3.  **Mandatory Test Recommendations:** Every ticket must explicitly demand test creation or modification to prevent regressions. Specify the type of test (unit, integration, E2E) and the file to modify.
-4.  **Formatting:** Always use standard Markdown (`description_html` property). 
-5.  **Strict Heading Rule:** The FIRST line of the description MUST be plain text or bold text. Do not start the description with a heading (e.g., `### Details`), as the ticket title already serves as the top-level heading. Headings may be used *after* the initial paragraph.
+1.  **Single Source of Truth (Remote Only):** All Kanban tickets, tasks, and backlogs are managed exclusively on the remote Kanban server. Under NO circumstances should tickets, task lists, or backlogs be created or tracked as files in the repository. The repository is strictly for code, tests, documentation, and QA artifacts.
+2.  **Exhaustive Detail:** Tickets must be self-contained. The agent executing the ticket will have NO context from the main chat session. You must include explicit file paths, precise logic requirements, and clear bug descriptions.
+3.  **Strict Definition of Done (DoD):** Never close a ticket without a clearly defined, empirically testable Definition of Done. The DoD must state exactly what constitutes success (e.g., "curl http://localhost:3000/docs returns an HTTP 200"). Vague criteria like "the bug is fixed" are unacceptable.
+4.  **Mandatory Test Recommendations:** Every ticket must explicitly demand test creation or modification to prevent regressions. Specify the type of test (unit, integration, E2E) and the file to modify.
+5.  **Formatting:** Always use standard Markdown (`description_html` property). 
+6.  **Strict Heading Rule:** The FIRST line of the description MUST be plain text or bold text. Do not start the description with a heading (e.g., `### Details`), as the ticket title already serves as the top-level heading. Headings may be used *after* the initial paragraph.
 
 ## Ticket Referencing
 
